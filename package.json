@@ -1,0 +1,41 @@
+{
+  "name": "eagleye",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "lint": "eslint .",
+    "knip": "knip",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepare": "husky || true",
+    "start": "node server.js 3019"
+  },
+  "knip": {
+    "ignore": [
+      "js/lib/d3.v7.min.js"
+    ]
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@vitalets/google-translate-api": "^9.2.1",
+    "better-sqlite3": "^12.10.0",
+    "dotenv": "^17.4.2",
+    "google-translate-api-x": "^10.7.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.9.1",
+    "@vitest/coverage-v8": "^4.1.7",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
+    "husky": "^9.1.7",
+    "jsdom": "^26.1.0",
+    "knip": "^6.14.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}

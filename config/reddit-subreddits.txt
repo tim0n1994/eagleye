@@ -1,0 +1,7 @@
+# Reddit subreddits crawled by the eagleye Reddit connector.
+# One subreddit per line (comma-separated also works). Lines starting with # are ignored.
+# Strip the leading r/ — just the bare name, e.g. LocalLLaMA.
+LocalLLaMA
+MachineLearning
+singularity
+artificial

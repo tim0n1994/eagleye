@@ -1,0 +1,7 @@
+# knowledge-graph
+- All feed items must have auto-generated Chinese-language tags for classification, aggregated into a 3D-view knowledge graph using mature open-source components. Confidence: 0.85
+- The 3D knowledge graph should be tag-centric only: nodes are tags (not individual feed items), showing tag clusters, co-occurrence, hierarchy, and tag-to-tag/tag-to-topic relationships. Individual feed items should NOT appear as graph nodes. Confidence: 0.90
+- Knowledge graph page uses dual-panel layout: left panel = searchable tree structure (tag hierarchy navigation), right panel = 3D visualization (larger, primary view). Confidence: 0.80
+- Every new source type (X, HN, arxiv, Hugging Face, GitHub, etc.) must be a first-class source feeding into the same unified tag pipeline and 3D knowledge graph — no parallel/special-case tag systems per source. Adding a new source = wiring it into the existing pipeline, not building a new one. Confidence: 0.90
+- Tag-to-topic relationships in the KG must support many-to-many: one tag can belong to multiple topics/sub-topics, and topics can share tags. Avoid strict tree-only hierarchy. Confidence: 0.85
+- Internalize the LLM methodology for knowledge graph construction (hierarchy building, topic aggregation, tag clustering logic) as reusable system prompts / instructions in the codebase, so non-frontier LLMs (not just the smartest one) can replicate the same quality. Confidence: 0.85
