@@ -1,0 +1,1803 @@
+/**
+ * Eagleye — API Routes
+ *
+ * All /api/* route handlers.
+ */
+
+const { getDB } = require('../db/connection');
+const { getValue, setValue } = require('../db/user-data');
+const { runFullPipeline } = require('../services/sync');
+const { generateDailyDigest, enrichItems } = require('../services/llm');
+const { getProvider, getProviderInfo } = require('../services/llm-provider');
+const { generateItemResearch, getResearchReport, answerItemResearchChat } = require('../services/research');
+const { generateDeployPlan, checkDeployEligibility } = require('../services/deploy');
+const { getSkills, getSkillById, getSkillStats } = require('../services/skill-crawler');
+const { generateId, escapeXML } = require('../services/utils');
+const { getJob, getRecentJobs, runJob, cancelJob, JOB_TYPES } = require('../services/jobs');
+const { getTopicTimeline, getTopicGraphNeighborhood, getFullGraph, getKG3DData } = require('../services/topic-graph');
+const { translateItems, translateItem } = require('../services/translate');
+const {
+  getLLMConfig,
+  saveLLMConfig,
+  clearLLMConfig,
+  parsePastedLLMConfig,
+  maskSecret,
+  testLLMConfig,
+} = require('../services/llm-provider');
+const { getSignals, getTodaySignals, getSignalById, getSignalTypes, getEntityMomentum, scoreSignals } = require('../services/signals');
+
+function sendJSON(res, status, data) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+  });
+  res.end(JSON.stringify(data));
+}
+
+function sendError(res, status, message) {
+  sendJSON(res, status, { error: message });
+}
+
+/**
+ * Register all API routes on the provided router.
+ * The router is just a map from pathname -> handler function.
+ */
+function registerRoutes(routes) {
+  // --- Items API ---
+  routes['/api/items'] = (req, res, parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const category = parsed.query.category;
+    const source = parsed.query.source;
+    const date = parsed.query.date;
+    const limit = parseInt(parsed.query.limit || '50', 10);
+    const offset = parseInt(parsed.query.offset || '0', 10);
+
+    let sql = `SELECT i.*, s.label as source_label, s.slug as source_slug FROM information_items i JOIN sources s ON i.source_id = s.id WHERE 1=1`;
+    const params = [];
+
+    if (category && category !== 'All') {
+      sql += ` AND i.id IN (SELECT it.item_id FROM item_topics it JOIN topics t ON it.topic_id = t.id WHERE t.slug = ?)`;
+      params.push(category);
+    }
+
+    if (source) {
+      sql += ` AND s.slug = ?`;
+      params.push(source);
+    }
+
+    if (date) {
+      sql += ` AND i.digest_date = ?`;
+      params.push(date);
+    }
+
+    sql += ` ORDER BY i.score DESC, i.published_at DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+
+    const items = db.prepare(sql).all(...params);
+
+    // Attach summaries if available
+    const getSummary = db.prepare('SELECT * FROM ai_summaries WHERE item_id = ?');
+    const getTopics = db.prepare(`
+      SELECT t.slug, t.name, it.relevance FROM item_topics it 
+      JOIN topics t ON it.topic_id = t.id 
+      WHERE it.item_id = ?
+    `);
+    const getTags = db.prepare(`
+      SELECT tg.slug, tg.name, itg.confidence FROM item_tags itg
+      JOIN tags tg ON itg.tag_id = tg.id
+      WHERE itg.item_id = ?
+    `);
+
+    const enriched = items.map(item => {
+      const summary = getSummary.get(item.id);
+      const topics = getTopics.all(item.id);
+      const tags = getTags.all(item.id);
+      try {
+        item.source_payload = JSON.parse(item.source_payload || '{}');
+        item.normalized_payload = JSON.parse(item.normalized_payload || '{}');
+        item.popularity = JSON.parse(item.popularity || '{}');
+      } catch {}
+      return {
+        ...item,
+        ai_summary: summary || null,
+        topics: topics || [],
+        tags: tags || [],
+      };
+    });
+
+    sendJSON(res, 200, { status: 'ok', items: enriched, total: enriched.length });
+  };
+
+  // --- Papers API ---
+  routes['/api/papers'] = (req, res, parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const source = parsed.query.source || 'all';
+    const limit = Math.min(parseInt(parsed.query.limit || '60', 10) || 60, 120);
+    const offset = parseInt(parsed.query.offset || '0', 10) || 0;
+    const params = [];
+    let sourceFilter = '';
+    if (source && source !== 'all') {
+      sourceFilter = 'AND s.slug = ?';
+      params.push(source);
+    }
+
+    const rows = db.prepare(`
+      SELECT i.*, s.label as source_label, s.slug as source_slug,
+             pm.paper_id, pm.provider, pm.arxiv_id, pm.doi, pm.abstract,
+             pm.authors_json, pm.categories_json, pm.pdf_url, pm.landing_url,
+             pm.code_url, pm.tasks_json, pm.venue,
+             ais.ai_title_zh, ais.one_liner_zh, ais.short_summary_zh, ais.confidence
+      FROM information_items i
+      JOIN sources s ON s.id = i.source_id
+      LEFT JOIN paper_metadata pm ON pm.item_id = i.id
+      LEFT JOIN ai_summaries ais ON ais.item_id = i.id
+      WHERE (
+        pm.item_id IS NOT NULL
+        OR s.slug IN ('hugging-face', 'arxiv-ai', 'physical-ai-arxiv')
+      )
+      ${sourceFilter}
+      ORDER BY i.published_at DESC, i.score DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    const getTags = db.prepare(`
+      SELECT tg.slug, tg.name, itg.confidence FROM item_tags itg
+      JOIN tags tg ON itg.tag_id = tg.id
+      WHERE itg.item_id = ?
+      ORDER BY itg.confidence DESC, tg.name ASC
+    `);
+
+    const parseJSON = (value, fallback) => {
+      try { return value ? JSON.parse(value) : fallback; } catch { return fallback; }
+    };
+
+    const papers = rows.map(row => ({
+      id: row.id,
+      title: row.title,
+      title_zh: row.ai_title_zh || '',
+      one_liner_zh: row.one_liner_zh || '',
+      short_summary_zh: row.short_summary_zh || '',
+      abstract: row.abstract || row.original_summary || '',
+      source_label: row.source_label,
+      source_slug: row.source_slug,
+      canonical_url: row.landing_url || row.canonical_url,
+      pdf_url: row.pdf_url || '',
+      code_url: row.code_url || '',
+      paper_id: row.paper_id || row.external_id || '',
+      provider: row.provider || row.source_slug,
+      arxiv_id: row.arxiv_id || '',
+      doi: row.doi || '',
+      authors: parseJSON(row.authors_json, []),
+      categories: parseJSON(row.categories_json, []),
+      tasks: parseJSON(row.tasks_json, []),
+      venue: row.venue || '',
+      published_at: row.published_at,
+      confidence: row.confidence || null,
+      tags: getTags.all(row.id),
+    }));
+
+    const sources = db.prepare(`
+      SELECT s.slug, s.label, COUNT(i.id) as count
+      FROM sources s
+      JOIN information_items i ON i.source_id = s.id
+      LEFT JOIN paper_metadata pm ON pm.item_id = i.id
+      WHERE pm.item_id IS NOT NULL OR s.slug IN ('hugging-face', 'arxiv-ai', 'physical-ai-arxiv')
+      GROUP BY s.slug
+      ORDER BY count DESC, s.slug ASC
+    `).all();
+
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN pm.pdf_url IS NOT NULL AND pm.pdf_url != '' THEN 1 ELSE 0 END) as with_pdf,
+        SUM(CASE WHEN EXISTS (SELECT 1 FROM item_tags it WHERE it.item_id = i.id) THEN 1 ELSE 0 END) as tagged
+      FROM information_items i
+      JOIN sources s ON s.id = i.source_id
+      LEFT JOIN paper_metadata pm ON pm.item_id = i.id
+      WHERE pm.item_id IS NOT NULL OR s.slug IN ('hugging-face', 'arxiv-ai', 'physical-ai-arxiv')
+    `).get();
+
+    sendJSON(res, 200, { status: 'ok', papers, sources, stats, offset, limit });
+  };
+
+  // --- Legacy items API (backward compat) ---
+  routes['/api/items-legacy'] = (req, res, parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const category = parsed.query.category;
+    let items;
+    if (category && category !== 'All') {
+      items = db.prepare('SELECT * FROM items WHERE category = ? ORDER BY created_at DESC LIMIT 100').all(category);
+    } else {
+      items = db.prepare('SELECT * FROM items ORDER BY created_at DESC LIMIT 100').all();
+    }
+    items.forEach(it => {
+      try { it.tags = JSON.parse(it.tags || '[]'); } catch { it.tags = []; }
+    });
+    sendJSON(res, 200, { status: 'ok', items });
+  };
+
+  // --- Categories API ---
+  routes['/api/categories'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+    const categories = db.prepare('SELECT category, COUNT(*) as count FROM items GROUP BY category').all();
+    sendJSON(res, 200, { status: 'ok', categories });
+  };
+
+  // --- Topics API ---
+  routes['/api/topics'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const topics = db.prepare(`SELECT t.*, 
+      (SELECT COUNT(*) FROM item_topics WHERE topic_id = t.id) as item_count
+      FROM topics t ORDER BY t.growth_score DESC, t.name`).all();
+
+    // Get edge counts for each topic
+    const edgeCount = db.prepare(`SELECT COUNT(*) as count FROM graph_edges WHERE 
+      (from_type = 'topic' AND from_id = ?) OR (to_type = 'topic' AND to_id = ?)`);
+
+    const enriched = topics.map(t => ({
+      ...t,
+      edge_count: edgeCount.get(t.id, t.id)?.count || 0,
+    }));
+
+    sendJSON(res, 200, { status: 'ok', topics: enriched });
+  };
+
+  // --- Single Topic API ---
+  routes['/api/topics/:slug'] = (req, res, parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const slug = params?.slug || parsed.query.slug;
+    const topic = db.prepare(`SELECT t.*, 
+      (SELECT COUNT(*) FROM item_topics WHERE topic_id = t.id) as item_count,
+      (SELECT COUNT(*) FROM topics WHERE parent_topic_id = t.id) as child_count
+      FROM topics t WHERE t.slug = ?`).get(slug);
+
+    if (!topic) return sendError(res, 404, 'Topic not found');
+
+    // Get top items for this topic
+    const items = db.prepare(`
+      SELECT i.*, s.label as source_label, it.relevance 
+      FROM information_items i 
+      JOIN item_topics it ON i.id = it.item_id 
+      JOIN sources s ON i.source_id = s.id
+      WHERE it.topic_id = ? 
+      ORDER BY it.relevance DESC, i.score DESC 
+      LIMIT 20
+    `).all(topic.id);
+
+    // Get graph neighbors
+    const neighbors = db.prepare(`
+      SELECT * FROM graph_edges 
+      WHERE (from_type = 'topic' AND from_id = ?) OR (to_type = 'topic' AND to_id = ?)
+      LIMIT 50
+    `).all(topic.id, topic.id);
+
+    sendJSON(res, 200, { status: 'ok', topic, items, neighbors });
+  };
+
+  // --- Sources API ---
+  routes['/api/sources'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const sources = db.prepare(`
+      SELECT s.*,
+        (SELECT COUNT(*) FROM information_items WHERE source_id = s.id) as total_items,
+        (SELECT COUNT(*) FROM information_items WHERE source_id = s.id AND digest_date = ?) as today_items,
+        sp.source_type, sp.early_signal_rate, sp.noise_rate,
+        sp.originality_rate, sp.last_30d_alpha_hits
+      FROM sources s
+      LEFT JOIN source_profiles sp ON sp.source_slug = s.slug
+      WHERE s.is_active = 1
+      ORDER BY CASE s.slug
+        WHEN 'x-following' THEN 0
+        WHEN 'hacker-news' THEN 1
+        WHEN 'github-trending' THEN 2
+        WHEN 'hugging-face' THEN 3
+        WHEN 'product-hunt' THEN 4
+        ELSE 99
+      END, s.label
+    `).all(new Date().toISOString().slice(0, 10).replace(/-/g, ''));
+
+    sendJSON(res, 200, { status: 'ok', sources });
+  };
+
+  // --- Single Source API ---
+  routes['/api/source/:slug'] = (req, res, parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const slug = params?.slug || parsed.query.slug;
+    const date = parsed.query.date;
+
+    const source = db.prepare('SELECT * FROM sources WHERE slug = ?').get(slug);
+    if (!source) return sendError(res, 404, 'Source not found');
+
+    let items;
+    if (date) {
+      items = db.prepare(`
+        SELECT i.*, s.label as source_label 
+        FROM information_items i 
+        JOIN sources s ON i.source_id = s.id 
+        WHERE s.slug = ? AND i.digest_date = ?
+        ORDER BY i.score DESC
+        LIMIT 50
+      `).all(slug, date);
+    } else {
+      items = db.prepare(`
+        SELECT i.*, s.label as source_label 
+        FROM information_items i 
+        JOIN sources s ON i.source_id = s.id 
+        WHERE s.slug = ?
+        ORDER BY i.published_at DESC
+        LIMIT 50
+      `).all(slug);
+    }
+
+    const getTopics = db.prepare(`
+      SELECT t.name, t.slug FROM topics t 
+      JOIN item_topics it ON t.id = it.topic_id 
+      WHERE it.item_id = ?
+    `);
+    items = items.map(item => ({
+      ...item,
+      topics: getTopics.all(item.id) || []
+    }));
+
+    sendJSON(res, 200, { exists: true, source, items, total: items.length });
+  };
+
+  // --- Research API ---
+  routes['/api/research'] = async (req, res, parsed) => {
+    const itemId = parsed.query.item_id || parsed.query.url;
+    const itemUrl = parsed.query.url;
+    if (!itemId && !itemUrl) return sendError(res, 400, 'item_id or url required');
+
+    const db = getDB();
+
+    // Check cached research
+    if (itemId) {
+      const cached = db?.prepare('SELECT * FROM research_reports WHERE item_id = ? AND status = ?').get(itemId, 'completed');
+      if (cached) {
+        return sendJSON(res, 200, { status: 'ok', content: cached.report_markdown, id: cached.id });
+      }
+    }
+
+    // Check legacy research table
+    if (itemUrl) {
+      const cached = db?.prepare('SELECT content FROM research WHERE url = ?').get(itemUrl);
+      if (cached) {
+        return sendJSON(res, 200, { status: 'ok', content: cached.content });
+      }
+    }
+
+    // Generate new research
+    const item = itemId ? db?.prepare(`
+      SELECT i.*, s.label as source_label FROM information_items i 
+      JOIN sources s ON i.source_id = s.id WHERE i.id = ?
+    `).get(itemId) : null;
+
+    // Get topics
+    let topics = [];
+    let relatedItems = [];
+    if (item) {
+      topics = db?.prepare(`
+        SELECT t.name FROM item_topics it JOIN topics t ON it.topic_id = t.id WHERE it.item_id = ?
+      `).all(item.id).map(r => r.name) || [];
+      
+      relatedItems = db?.prepare(`
+        SELECT i.title FROM information_items i 
+        WHERE i.id != ? AND i.source_id = ? 
+        ORDER BY i.published_at DESC LIMIT 5
+      `).all(item.id, item.source_id).map(r => r.title) || [];
+    }
+
+    const provider = getProvider();
+    let report = null;
+    if (provider) {
+      try {
+        const researchPrompt = `Generate a comprehensive research report about the following item.
+
+Title: ${item?.title || itemUrl}
+Source: ${item?.source_label || 'N/A'}
+URL: ${item?.canonical_url || 'N/A'}
+Topics: ${(topics || []).join(', ')}
+Related: ${(relatedItems || []).slice(0, 3).join(', ')}
+
+Write in Markdown: Executive Summary, Technical Analysis, Market Impact, Key Takeaways, Recommendations.`;
+        report = await provider.call(researchPrompt, { temperature: 0.3, maxTokens: 4096 });
+      } catch (err) {
+        console.error('Research report failed:', err.message);
+      }
+    }
+    const reportId = generateId();
+
+    if (db && itemId) {
+      db.prepare(`
+        INSERT INTO research_reports (id, item_id, status, prompt, report_markdown, model_provider, model_name, completed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).run(reportId, itemId, 'completed', '', report || '', 'gemini', 'gemini-2.0-flash');
+    }
+
+    // Cache in legacy table too
+    if (db && itemUrl) {
+      db.prepare('INSERT OR REPLACE INTO research (url, content) VALUES (?, ?)').run(itemUrl, report || '');
+    }
+
+    sendJSON(res, 200, { status: 'ok', content: report || 'Research failed to generate.', id: reportId });
+  };
+
+  // --- Graph API ---
+  routes['/api/graph'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    // Get entities (legacy)
+    const entities = db.prepare('SELECT * FROM entities').all();
+    
+    // Get links from item_entities (legacy)
+    const links = db.prepare(`
+      SELECT ie.entity_id as source, ie.item_id as target, i.title, i.category
+      FROM item_entities ie
+      JOIN items i ON ie.item_id = i.id
+    `).all();
+
+    // Build entity co-occurrence links
+    const entityLinks = [];
+    const itemToEntities = {};
+    links.forEach(l => {
+      if (!itemToEntities[l.target]) itemToEntities[l.target] = [];
+      itemToEntities[l.target].push(l.source);
+    });
+    
+    Object.values(itemToEntities).forEach(ents => {
+      for (let i = 0; i < ents.length; i++) {
+        for (let j = i + 1; j < ents.length; j++) {
+          entityLinks.push({ source: ents[i], target: ents[j] });
+        }
+      }
+    });
+
+    // New graph data
+    const topics = db.prepare('SELECT id, name as title FROM topics LIMIT 20').all();
+    const graphEdges = db.prepare('SELECT * FROM graph_edges ORDER BY weight DESC LIMIT 100').all();
+
+    sendJSON(res, 200, { 
+      status: 'ok', 
+      nodes: entities, 
+      links: entityLinks,
+      topics,
+      graph_edges: graphEdges,
+    });
+  };
+
+  // --- Sync API ---
+  routes['/api/sync'] = async (req, res, _parsed) => {
+    const jobId = await runJob(JOB_TYPES.FETCH_ALL, {});
+    sendJSON(res, 200, { status: 'queued', job_id: jobId, message: 'Sync queued' });
+  };
+
+  // --- Sync Get API ---
+  routes['/api/sync/get'] = (req, res, _parsed) => {
+    const bookmarks = getValue('bookmarks') || [];
+    const read = getValue('read') || [];
+    const customRss = getValue('custom-rss') || [];
+    sendJSON(res, 200, { bookmarks, read, customRss });
+  };
+
+  // --- Sync Set API ---
+  routes['/api/sync/set'] = (req, res, _parsed) => {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        if (data.bookmarks) setValue('bookmarks', data.bookmarks);
+        if (data.read) setValue('read', data.read);
+        if (data.customRss) setValue('custom-rss', data.customRss);
+        sendJSON(res, 200, { status: 'ok' });
+      } catch {
+        sendError(res, 400, 'Invalid JSON');
+      }
+    });
+  };
+
+  // --- Health API ---
+  routes['/api/health'] = (req, res, _parsed) => {
+    const db = getDB();
+    const dbStatus = db ? 'connected' : 'disconnected';
+    const itemCount = db ? db.prepare('SELECT COUNT(*) as count FROM information_items').get().count : 0;
+    const legacyCount = db ? db.prepare('SELECT COUNT(*) as count FROM items').get().count : 0;
+    
+    sendJSON(res, 200, { 
+      status: 'ok', 
+      time: new Date().toISOString(),
+      database: dbStatus,
+      items: { information_items: itemCount, legacy_items: legacyCount },
+      apiKey: process.env.GEMINI_API_KEY ? 'configured' : 'not set',
+    });
+  };
+
+  // --- Digest API ---
+  routes['/api/digest'] = (req, res, parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const date = parsed.query.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    
+    // Get digest from daily_digests table or build on the fly
+    const digest = db.prepare('SELECT * FROM daily_digests WHERE digest_date = ?').get(date);
+    
+    // Get items for this date
+    const items = db.prepare(`
+      SELECT i.*, s.label as source_label, s.slug as source_slug
+      FROM information_items i 
+      JOIN sources s ON i.source_id = s.id 
+      WHERE i.digest_date = ?
+      ORDER BY s.label, i.score DESC
+      LIMIT 100
+    `).all(date);
+
+    // Attach summaries and topics
+    const getSummary = db.prepare('SELECT * FROM ai_summaries WHERE item_id = ?');
+    const getTopics = db.prepare(`
+      SELECT t.name, t.slug FROM topics t 
+      JOIN item_topics it ON t.id = it.topic_id 
+      WHERE it.item_id = ?
+    `);
+    const enriched = items.map(item => {
+      const summary = getSummary.get(item.id);
+      const itemTopics = getTopics.all(item.id) || [];
+      try {
+        item.source_payload = JSON.parse(item.source_payload || '{}');
+        item.popularity = JSON.parse(item.popularity || '{}');
+      } catch {}
+      return { ...item, ai_summary: summary || null, topics: itemTopics };
+    });
+
+    // Group by source
+    const bySource = {};
+    for (const item of enriched) {
+      const src = item.source_label || 'Other';
+      if (!bySource[src]) bySource[src] = [];
+      bySource[src].push(item);
+    }
+
+    sendJSON(res, 200, {
+      status: 'ok',
+      date,
+      digest: digest || null,
+      by_source: bySource,
+      total: enriched.length,
+    });
+  };
+
+  // --- Digest Coverage API (daily counts for last 30 days) ---
+  routes['/api/digest/coverage'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const coverage = db.prepare(`
+      SELECT digest_date, COUNT(*) as count
+      FROM information_items
+      GROUP BY digest_date
+      ORDER BY digest_date DESC
+      LIMIT 30
+    `).all();
+
+    const coverageMap = {};
+    coverage.forEach(row => {
+      coverageMap[row.digest_date] = row.count;
+    });
+
+    sendJSON(res, 200, { status: 'ok', coverage: coverageMap });
+  };
+
+  // --- Graph V2 API (new knowledge graph) ---
+  routes['/api/graph/v2'] = (req, res, parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const topicId = parsed.query.topic_id;
+    
+    let nodes;
+    let edges;
+
+    if (topicId) {
+      // Get neighborhood for a specific topic
+      nodes = db.prepare(`
+        SELECT id, name as label, 'topic' as type, status FROM topics WHERE id = ? OR parent_topic_id = ?
+      `).all(topicId, topicId);
+      
+      edges = db.prepare(`
+        SELECT * FROM graph_edges 
+        WHERE (from_type = 'topic' AND from_id = ?) OR (to_type = 'topic' AND to_id = ?)
+        LIMIT 100
+      `).all(topicId, topicId);
+    } else {
+      // Get all topics as nodes
+      const topics = db.prepare('SELECT id, name as label, \'topic\' as type, status FROM topics LIMIT 50').all();
+      const tags = db.prepare('SELECT id, name as label, \'tag\' as type FROM tags LIMIT 50').all();
+      nodes = [...topics, ...tags];
+      edges = db.prepare('SELECT * FROM graph_edges ORDER BY weight DESC LIMIT 200').all();
+    }
+
+    sendJSON(res, 200, { status: 'ok', nodes, edges });
+  };
+
+  // --- KG v2 Metrics API ---
+  routes['/api/kg/metrics'] = (_req, res) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const count = (table) => db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get().c;
+    const coverageBySource = db.prepare(`
+      SELECT s.slug,
+             COALESCE(s.label_zh, s.label) AS label,
+             COUNT(i.id) AS items,
+             SUM(CASE WHEN f.item_id IS NOT NULL THEN 1 ELSE 0 END) AS with_features,
+             SUM(CASE WHEN tags.item_id IS NOT NULL THEN 1 ELSE 0 END) AS with_tags,
+             SUM(CASE WHEN topics.item_id IS NOT NULL THEN 1 ELSE 0 END) AS with_topics,
+             SUM(CASE WHEN mentions.item_id IS NOT NULL THEN 1 ELSE 0 END) AS with_entities,
+             SUM(CASE WHEN vectors.item_id IS NOT NULL THEN 1 ELSE 0 END) AS with_vectors
+      FROM sources s
+      LEFT JOIN information_items i ON i.source_id = s.id
+      LEFT JOIN item_features f ON f.item_id = i.id
+      LEFT JOIN (SELECT DISTINCT item_id FROM item_tag_assignments) tags ON tags.item_id = i.id
+      LEFT JOIN (SELECT DISTINCT item_id FROM item_topic_assignments) topics ON topics.item_id = i.id
+      LEFT JOIN (SELECT DISTINCT item_id FROM entity_mentions) mentions ON mentions.item_id = i.id
+      LEFT JOIN (SELECT DISTINCT item_id FROM item_vectors) vectors ON vectors.item_id = i.id
+      GROUP BY s.slug
+      ORDER BY CASE s.slug
+        WHEN 'x-following' THEN 0
+        WHEN 'hacker-news' THEN 1
+        WHEN 'github-trending' THEN 2
+        WHEN 'hugging-face' THEN 3
+        WHEN 'product-hunt' THEN 4
+        ELSE 99
+      END, s.slug
+    `).all().map(row => {
+      const items = Number(row.items || 0);
+      const pct = (value) => items ? Math.round((Number(value || 0) / items) * 1000) / 10 : 0;
+      return {
+        ...row,
+        feature_coverage_pct: pct(row.with_features),
+        tag_coverage_pct: pct(row.with_tags),
+        topic_coverage_pct: pct(row.with_topics),
+        entity_coverage_pct: pct(row.with_entities),
+        vector_coverage_pct: pct(row.with_vectors),
+      };
+    });
+
+    const recentRuns = db.prepare(`
+      SELECT id, scope, scope_value, status, extractor_version, metrics, error, created_at, completed_at
+      FROM kg_extraction_runs
+      ORDER BY created_at DESC
+      LIMIT 10
+    `).all().map(row => {
+      try { row.metrics = JSON.parse(row.metrics || '{}'); } catch {}
+      return row;
+    });
+
+    const vectorModels = db.prepare(`
+      SELECT vector_type, model_name, dimension, COUNT(*) AS items
+      FROM item_vectors
+      GROUP BY vector_type, model_name, dimension
+      ORDER BY items DESC, vector_type, model_name
+    `).all();
+
+    sendJSON(res, 200, {
+      status: 'ok',
+      tables: {
+        information_items: count('information_items'),
+        topic_taxonomy: count('topic_taxonomy'),
+        dynamic_topics: count('dynamic_topics'),
+        item_features: count('item_features'),
+        kg_tags: count('kg_tags'),
+        item_tag_assignments: count('item_tag_assignments'),
+        entity_mentions: count('entity_mentions'),
+        canonical_entities: count('canonical_entities'),
+        item_topic_assignments: count('item_topic_assignments'),
+        item_vectors: count('item_vectors'),
+        kg_edges: count('kg_edges'),
+      },
+      coverage_by_source: coverageBySource,
+      vector_models: vectorModels,
+      recent_runs: recentRuns,
+    });
+  };
+
+  // --- Deploy Plan API ---
+  routes['/api/deployment-plans/:id'] = (req, res, _parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+    
+    const plan = db.prepare('SELECT * FROM deployment_plans WHERE id = ?').get(params?.id || '');
+    if (!plan) return sendError(res, 404, 'Plan not found');
+    
+    try {
+      plan.commands = JSON.parse(plan.commands || '[]');
+      plan.env_vars = JSON.parse(plan.env_vars || '{}');
+      plan.detected_stack = JSON.parse(plan.detected_stack || '{}');
+      plan.risk_notes = JSON.parse(plan.risk_notes || '[]');
+    } catch {}
+    
+    sendJSON(res, 200, { status: 'ok', plan });
+  };
+
+  // --- Enrich API: Trigger AI summary enrichment ---
+  routes['/api/enrich'] = async (req, res, parsed) => {
+    const batchSize = parseInt(parsed.query.batch || process.env.JOB_ENRICH_BATCH_SIZE || '1600', 10);
+    const background = parsed.query.background !== 'false';
+    const priorityOnly = parsed.query.priority_only === 'true' || parsed.query.priority_only === '1';
+
+    if (background) {
+      const jobId = await runJob(JOB_TYPES.ENRICH_ITEMS, { batchSize, priorityOnly });
+      sendJSON(res, 200, {
+        status: 'ok',
+        job_id: jobId,
+        message: `Priority enrichment queued (batch: ${batchSize}${priorityOnly ? ', priority sources only' : ''})`,
+      });
+    } else {
+      try {
+        const result = await enrichItems(batchSize, { priorityOnly });
+        sendJSON(res, 200, { status: 'ok', result });
+      } catch (err) {
+        sendError(res, 500, `Enrichment failed: ${err.message}`);
+      }
+    }
+  };
+
+  // --- Full Re-enrich: clear all existing enrichment + re-process ---
+  routes['/api/enrich/reenrich'] = async (req, res, parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+    const batchSize = parseInt(parsed.query.batch || '0', 10) || 5000;
+
+    try {
+      const clearedSummaries = db.prepare('DELETE FROM ai_summaries').run().changes;
+      const clearedItemTags = db.prepare('DELETE FROM item_tags').run().changes;
+      const clearedGraphEdges = db.prepare("DELETE FROM graph_edges WHERE edge_type IN ('item_has_tag','item_belongs_topic','item_mentions_entity')").run().changes;
+      const clearedItemTopics = db.prepare("DELETE FROM item_topics WHERE assigned_by = 'keyword'").run().changes;
+
+      const result = await enrichItems(batchSize, { priorityOnly: false });
+
+      sendJSON(res, 200, {
+        status: 'ok',
+        cleared: { summaries: clearedSummaries, item_tags: clearedItemTags, graph_edges: clearedGraphEdges, item_topics: clearedItemTopics },
+        enriched: result,
+      });
+    } catch (err) {
+      sendError(res, 500, `Re-enrichment failed: ${err.message}`);
+    }
+  };
+
+  // --- Digest API: Build or get digest for a date ---
+  routes['/api/digest/build'] = async (req, res, parsed) => {
+    const date = parsed.query.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const background = parsed.query.background !== 'false';
+
+    if (background) {
+      const jobId = await runJob(JOB_TYPES.BUILD_DIGEST, { date });
+      sendJSON(res, 200, { status: 'ok', job_id: jobId, message: `Digest build queued for ${date}` });
+    } else {
+      try {
+        const digest = await generateDailyDigest(date);
+        sendJSON(res, 200, { status: 'ok', digest, date });
+      } catch (err) {
+        sendError(res, 500, `Digest build failed: ${err.message}`);
+      }
+    }
+  };
+
+  // --- Pipeline API: Run full fetch → enrich → digest pipeline ---
+  routes['/api/pipeline'] = async (req, res, _parsed) => {
+    try {
+      const jobId = await runFullPipeline();
+      sendJSON(res, 200, { status: 'ok', job_id: jobId, message: 'Full pipeline started' });
+    } catch (err) {
+      sendError(res, 500, `Pipeline failed: ${err.message}`);
+    }
+  };
+
+  // --- Jobs API: List recent jobs ---
+  routes['/api/jobs'] = (req, res, parsed) => {
+    const jobs = getRecentJobs(parseInt(parsed.query.limit || '20', 10));
+    sendJSON(res, 200, { status: 'ok', jobs });
+  };
+
+  // --- Single Job API ---
+  routes['/api/jobs/:id'] = (req, res, parsed, params) => {
+    const jobId = params?.id || parsed.query.id;
+    if (!jobId) return sendError(res, 400, 'Job ID required');
+    const job = getJob(jobId);
+    if (!job) return sendError(res, 404, 'Job not found');
+    sendJSON(res, 200, { status: 'ok', job });
+  };
+
+  // --- Cancel Job API: POST /api/jobs/:id/cancel ---
+  routes['/api/jobs/:id/cancel'] = (req, res, parsed, params) => {
+    const jobId = params?.id;
+    if (!jobId) return sendError(res, 400, 'Job ID required');
+    const ok = cancelJob(jobId);
+    if (!ok) {
+      const job = getJob(jobId);
+      return sendError(res, 409, `Job is already ${job?.status || 'unknown'}`);
+    }
+    sendJSON(res, 200, { status: 'ok', job_id: jobId, cancelled: true });
+  };
+
+  // --- Translation Backfill API: POST /api/translate/backfill?batch_size=50&force=false&background=true ---
+  routes['/api/translate/backfill'] = async (req, res, parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const all = parsed.query.all === 'true' || parsed.query.all === '1';
+    const batchSize = all
+      ? Number.MAX_SAFE_INTEGER
+      : Math.max(1, Math.min(parseInt(parsed.query.batch_size || '50', 10), 500));
+    const force = parsed.query.force === 'true' || parsed.query.force === '1';
+    const background = parsed.query.background !== 'false';
+    const sourceSlug = String(parsed.query.source || '').trim();
+
+    if (background) {
+      // Use the job system so this is cancellable and visible in /api/jobs
+      const jobId = await runJob(JOB_TYPES.TRANSLATE_BACKFILL, { batchSize, force, all, sourceSlug });
+      const translatedRow = db.prepare(`
+        SELECT COUNT(*) as c FROM information_items WHERE title_zh IS NOT NULL AND title_zh != ''
+      `).get();
+      return sendJSON(res, 200, {
+        status: 'queued',
+        job_id: jobId,
+        message: `Backfill queued (${sourceSlug || 'all-sources'}, ${all ? 'all pending' : `batch: ${batchSize}`}, force: ${force}). Cancel via POST /api/jobs/${jobId}/cancel.`,
+        total_translated: translatedRow.c,
+        batch_size: all ? 'all' : batchSize,
+        all,
+        source: sourceSlug || null,
+      });
+    }
+
+    const pendingRow = db.prepare(`
+      SELECT COUNT(DISTINCT i.id) as c
+      FROM information_items i
+      JOIN sources src ON src.id = i.source_id
+      LEFT JOIN ai_summaries s ON s.item_id = i.id
+      WHERE (
+        i.title_zh IS NULL OR i.title_zh = '' OR i.title_zh_status = 'pending'
+        OR (
+          s.item_id IS NOT NULL AND (
+            s.ai_title_zh IS NULL OR s.ai_title_zh = ''
+            OR s.one_liner_zh IS NULL OR s.one_liner_zh = ''
+            OR s.short_summary_zh IS NULL OR s.short_summary_zh = ''
+            OR s.translation_status = 'pending'
+          )
+        )
+      )
+      ${sourceSlug ? 'AND src.slug = ?' : ''}
+    `).get(...(sourceSlug ? [sourceSlug] : []));
+    const totalPending = pendingRow.c;
+    const translatedRow = db.prepare(`
+      SELECT COUNT(*) as c FROM information_items WHERE title_zh IS NOT NULL AND title_zh != ''
+    `).get();
+    const totalTranslated = translatedRow.c;
+
+    if (totalPending === 0 && !force) {
+      return sendJSON(res, 200, {
+        status: 'complete',
+        translated: 0,
+        failed: 0,
+        total_processed: 0,
+        total_pending: 0,
+        total_translated: totalTranslated,
+        message: 'All items already translated.',
+      });
+    }
+
+    const result = await translateItems({ batchSize, force, sourceSlug });
+
+    const updatedTranslated = db.prepare(`
+      SELECT COUNT(*) as c FROM information_items WHERE title_zh IS NOT NULL AND title_zh != ''
+    `).get().c;
+
+    sendJSON(res, 200, {
+      status: 'ok',
+      batch_size: batchSize,
+      all,
+      force,
+      source: sourceSlug || null,
+      ...result,
+      total_translated: updatedTranslated,
+    });
+  };
+
+  // --- Translation Status API: GET /api/translate/status ---
+  routes['/api/translate/status'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const itemsTotal = db.prepare('SELECT COUNT(*) as c FROM information_items').get().c;
+    const itemsTranslated = db.prepare(`
+      SELECT COUNT(*) as c FROM information_items WHERE title_zh IS NOT NULL AND title_zh != ''
+    `).get().c;
+    const itemsPending = itemsTotal - itemsTranslated;
+
+    const summariesTotal = db.prepare('SELECT COUNT(*) as c FROM ai_summaries').get().c;
+    const summariesTranslated = db.prepare(`
+      SELECT COUNT(*) as c FROM ai_summaries
+      WHERE ai_title_zh IS NOT NULL AND ai_title_zh != ''
+        AND one_liner_zh IS NOT NULL AND one_liner_zh != ''
+        AND short_summary_zh IS NOT NULL AND short_summary_zh != ''
+    `).get().c;
+    const summariesPending = summariesTotal - summariesTranslated;
+
+    const sourcesTranslated = db.prepare(`
+      SELECT COUNT(*) as c FROM sources WHERE label_zh IS NOT NULL AND label_zh != ''
+    `).get().c;
+    const sourcesTotal = db.prepare('SELECT COUNT(*) as c FROM sources').get().c;
+
+    const topicsTranslated = db.prepare(`
+      SELECT COUNT(*) as c FROM topics WHERE name_zh IS NOT NULL AND name_zh != ''
+    `).get().c;
+    const topicsTotal = db.prepare('SELECT COUNT(*) as c FROM topics').get().c;
+
+    sendJSON(res, 200, {
+      status: 'ok',
+      items: { total: itemsTotal, translated: itemsTranslated, pending: itemsPending },
+      summaries: { total: summariesTotal, translated: summariesTranslated, pending: summariesPending },
+      sources: { translated: sourcesTranslated, total: sourcesTotal },
+      topics: { translated: topicsTranslated, total: topicsTotal },
+      progress: itemsTotal > 0 ? Math.round((itemsTranslated / itemsTotal) * 100) : 0,
+    });
+  };
+
+  // --- Topic Timeline API ---
+  routes['/api/topics/:slug/timeline'] = (req, res, parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const slug = params?.slug || '';
+    const granularity = parsed.query.granularity || 'day';
+    const topic = db.prepare('SELECT id FROM topics WHERE slug = ?').get(slug);
+    if (!topic) return sendError(res, 404, 'Topic not found');
+
+    const timeline = getTopicTimeline(topic.id, granularity);
+    sendJSON(res, 200, { status: 'ok', timeline, granularity });
+  };
+
+  // --- Topic Graph Neighborhood API ---
+  routes['/api/topics/:slug/graph'] = (req, res, _parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const slug = params?.slug || '';
+    const topic = db.prepare('SELECT id FROM topics WHERE slug = ?').get(slug);
+    if (!topic) return sendError(res, 404, 'Topic not found');
+
+    const neighborhood = getTopicGraphNeighborhood(topic.id);
+    sendJSON(res, 200, { status: 'ok', ...neighborhood });
+  };
+
+  // --- Full Knowledge Graph API ---
+  routes['/api/graph/full'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const graph = getFullGraph();
+    sendJSON(res, 200, { status: 'ok', ...graph });
+  };
+
+  // --- 3D Knowledge Graph (tag aggregation) ---
+  routes['/api/kg3d'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+    const data = getKG3DData(db);
+    sendJSON(res, 200, { status: 'ok', nodes: data.nodes, edges: data.edges, tagItems: data.tagItems });
+  };
+
+  // --- Tag List API ---
+  routes['/api/tags'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const tags = db.prepare(`
+      SELECT t.id, t.slug, t.name, t.name as name_zh, t.type,
+             COUNT(it.item_id) as item_count
+      FROM tags t
+      JOIN item_tags it ON it.tag_id = t.id
+      WHERE t.type IN ('llm-extracted', 'general')
+      GROUP BY t.id
+      ORDER BY item_count DESC
+      LIMIT 200
+    `).all();
+
+    sendJSON(res, 200, { status: 'ok', tags });
+  };
+
+  // --- Tag Detail API ---
+  routes['/api/tags/:slug'] = (req, res, parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const slug = params?.slug || '';
+    const offset = parseInt(parsed.query.offset || '0', 10) || 0;
+    const limit = Math.min(parseInt(parsed.query.limit || '30', 10) || 30, 100);
+
+    const tag = db.prepare(`
+      SELECT t.id, t.slug, t.name, t.name as name_zh, t.type,
+             COUNT(it.item_id) as item_count
+      FROM tags t
+      JOIN item_tags it ON it.tag_id = t.id
+      WHERE t.slug = ? OR t.name = ?
+      GROUP BY t.id
+    `).get(slug, slug);
+
+    if (!tag) return sendError(res, 404, 'Tag not found');
+
+    const items = db.prepare(`
+      SELECT ii.*, s.label as source_label, s.slug as source_slug,
+             ais.ai_title_zh, ais.short_summary_zh, ais.one_liner_zh, ais.confidence
+      FROM information_items ii
+      JOIN item_tags it ON it.item_id = ii.id
+      LEFT JOIN sources s ON s.id = ii.source_id
+      LEFT JOIN ai_summaries ais ON ais.item_id = ii.id
+      WHERE it.tag_id = ?
+      ORDER BY ii.published_at DESC
+      LIMIT ? OFFSET ?
+    `).all(tag.id, limit, offset);
+
+    const getTopics = db.prepare(`
+      SELECT t.slug, t.name, t.name_zh, it.relevance
+      FROM item_topics it
+      JOIN topics t ON t.id = it.topic_id
+      WHERE it.item_id = ?
+      ORDER BY it.relevance DESC
+      LIMIT 5
+    `);
+    const getTags = db.prepare(`
+      SELECT tg.slug, tg.name, itg.confidence
+      FROM item_tags itg
+      JOIN tags tg ON tg.id = itg.tag_id
+      WHERE itg.item_id = ?
+      ORDER BY itg.confidence DESC, tg.name ASC
+      LIMIT 8
+    `);
+    const enrichedItems = items.map(item => {
+      try {
+        item.source_payload = JSON.parse(item.source_payload || '{}');
+        item.normalized_payload = JSON.parse(item.normalized_payload || '{}');
+        item.popularity = JSON.parse(item.popularity || '{}');
+      } catch {}
+      return {
+        ...item,
+        ai_summary: {
+          ai_title_zh: item.ai_title_zh || '',
+          short_summary_zh: item.short_summary_zh || '',
+          one_liner_zh: item.one_liner_zh || '',
+          confidence: item.confidence || null,
+        },
+        topics: getTopics.all(item.id),
+        tags: getTags.all(item.id),
+      };
+    });
+
+    const conceptRun = db.prepare(`
+      SELECT id FROM kg_concept_runs
+      WHERE status = 'completed'
+      ORDER BY completed_at DESC, created_at DESC
+      LIMIT 1
+    `).get();
+    let graph = null;
+    const related = db.prepare(`
+      SELECT other.name as label_zh, other.slug, COUNT(*) as shared_items
+      FROM item_tags a
+      JOIN item_tags b ON b.item_id = a.item_id AND b.tag_id != a.tag_id
+      JOIN tags other ON other.id = b.tag_id
+      WHERE a.tag_id = ?
+      GROUP BY other.id
+      ORDER BY shared_items DESC, other.name ASC
+      LIMIT 12
+    `).all(tag.id);
+    if (conceptRun?.id) {
+      const tagNode = db.prepare(`
+        SELECT id, label_zh, description_zh, slug
+        FROM kg_concept_nodes
+        WHERE run_id = ? AND kind = 'tag' AND source_tag_id = ?
+        LIMIT 1
+      `).get(conceptRun.id, tag.id);
+      if (tagNode?.id) {
+        const parents = db.prepare(`
+          SELECT p.id, p.kind, p.label_zh, p.slug, e.edge_type, e.confidence, e.weight, e.is_primary
+          FROM kg_concept_edges e
+          JOIN kg_concept_nodes p ON p.id = e.to_node_id
+          WHERE e.run_id = ? AND e.from_node_id = ?
+            AND e.edge_type IN ('primary_parent', 'secondary_parent', 'contains')
+          ORDER BY e.is_primary DESC, e.confidence DESC, p.kind ASC
+        `).all(conceptRun.id, tagNode.id);
+        graph = { runId: conceptRun.id, node: tagNode, parents, related };
+      }
+    }
+    if (!graph) {
+      graph = {
+        runId: conceptRun?.id || null,
+        node: { id: tag.id, label_zh: tag.name, slug: tag.slug },
+        parents: [],
+        related,
+      };
+    }
+
+    sendJSON(res, 200, { status: 'ok', tag, items: enrichedItems, graph, offset, limit });
+  };
+
+  // --- Build Tag Hierarchy (LLM clustering) ---
+  routes['/api/tags/build-hierarchy'] = async (req, res, parsed) => {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      });
+      return res.end();
+    }
+    if (req.method !== 'POST') {
+      return sendError(res, 405, 'Method not allowed. Use POST to build tag hierarchy.');
+    }
+    const background = parsed.query.background !== 'false';
+    if (background) {
+      const jobId = await runJob(JOB_TYPES.BUILD_TAG_HIERARCHY, {});
+      return sendJSON(res, 200, { status: 'ok', job_id: jobId, message: 'Tag hierarchy build queued' });
+    }
+    try {
+      const { buildTagHierarchy } = require('../services/tag-hierarchy');
+      const result = await buildTagHierarchy();
+      sendJSON(res, 200, { status: 'ok', result });
+    } catch (err) {
+      sendError(res, 500, `Hierarchy build failed: ${err.message}`);
+    }
+  };
+
+  // --- Domains API ---
+  routes['/api/domains'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+    const domains = db.prepare(`
+      SELECT d.*,
+        (SELECT COUNT(*) FROM tag_hierarchy th WHERE th.domain_id = d.id AND th.level = 1) as topic_count,
+        (SELECT COUNT(*) FROM tag_hierarchy th WHERE th.domain_id = d.id AND th.level = 3) as tag_count
+      FROM knowledge_domains d
+      ORDER BY d.display_order
+    `).all();
+    sendJSON(res, 200, { status: 'ok', domains });
+  };
+
+  // --- Build Topic Graph (trigger) ---
+  routes['/api/topics/build'] = async (req, res, parsed) => {
+    const date = parsed.query.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const background = parsed.query.background !== 'false';
+    const deep = parsed.query.deep === 'true' || parsed.query.deep === '1';
+
+    if (background) {
+      const jobId = await runJob(JOB_TYPES.BUILD_TOPIC_GRAPH, { date, deep });
+      sendJSON(res, 200, { status: 'ok', job_id: jobId, message: `Topic graph build queued for ${date}` });
+    } else {
+      try {
+        const { buildTopicGraph } = require('../services/topic-graph');
+        const result = await buildTopicGraph(date, { deep });
+        sendJSON(res, 200, { status: 'ok', result, date });
+      } catch (err) {
+        sendError(res, 500, `Topic graph build failed: ${err.message}`);
+      }
+    }
+  };
+
+  // --- X Following Config: GET / PUT ---
+  const { readXFollowingConfig, writeXFollowingConfig, getBlocklistArray, writeBlocklist, readBlocklist } = require('../services/x-following-config');
+
+  routes['/api/settings/x-following'] = (req, res, _parsed) => {
+    const method = req.method.toUpperCase();
+    if (method === 'GET') {
+      const cfg = readXFollowingConfig();
+      // Also report seed list from env if no file exists
+      const envUsers = (process.env.X_FOLLOWING_USERS || '').split(',').map(s => s.trim().replace(/^@/, '')).filter(Boolean);
+      return sendJSON(res, 200, {
+        status: 'ok',
+        config: cfg,
+        env_users: envUsers,
+        blocklist: getBlocklistArray(),
+      });
+    }
+    if (method === 'PUT') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          const result = { status: 'ok' };
+          if (Array.isArray(data.users)) {
+            const saved = writeXFollowingConfig(data.users);
+            result.saved = saved.users.length;
+            result.path = saved.path;
+          }
+          if (Array.isArray(data.blocked_users)) {
+            const savedBl = writeBlocklist(data.blocked_users);
+            result.blocked_saved = savedBl.users.length;
+            result.blocklist_path = savedBl.path;
+          }
+          sendJSON(res, 200, result);
+        } catch (err) {
+          sendError(res, 400, `Invalid JSON: ${err.message}`);
+        }
+      });
+      return;
+    }
+    sendError(res, 405, 'Method not allowed');
+  };
+
+  // --- X Following Cleanup: POST /api/settings/x-following/cleanup ---
+  // Removes signal_scores rows for items whose author is in the blocklist,
+  // so blocked content disappears from /signals. information_items are kept
+  // for audit/recovery. Returns the number of purged signal scores.
+  routes['/api/settings/x-following/cleanup'] = (req, res, _parsed) => {
+    if (req.method.toUpperCase() !== 'POST') return sendError(res, 405, 'Method not allowed');
+    const blocklist = readBlocklist();
+    if (blocklist.size === 0) {
+      return sendJSON(res, 200, { status: 'ok', purged: 0, message: 'Blocklist is empty — nothing to clean.' });
+    }
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+    // Build LIKE patterns for blocked handles stored as '@handle' in author.
+    const handles = [...blocklist];
+    const purged = db.transaction((hs) => {
+      let total = 0;
+      for (const h of hs) {
+        const likeAuthor = `@${h}%`;
+        const r = db.prepare(`
+          DELETE FROM signal_scores WHERE item_id IN (
+            SELECT id FROM information_items WHERE author LIKE ?
+          )
+        `).run(likeAuthor);
+        total += r.changes;
+      }
+      return total;
+    })(handles);
+    console.log(`  🧹 Cleaned ${purged} signal_scores for ${handles.length} blocked handles`);
+    sendJSON(res, 200, { status: 'ok', purged, blocked_handles: handles.length });
+  };
+
+  // --- X Following Sync: POST /api/x-following/sync?background=true ---
+  routes['/api/x-following/sync'] = async (req, res, parsed) => {
+    const background = parsed.query.background !== 'false';
+    if (background) {
+      const jobId = await runJob(JOB_TYPES.X_FOLLOWING_SYNC, {});
+      return sendJSON(res, 200, { status: 'ok', job_id: jobId, message: 'X following sync queued' });
+    }
+    try {
+      const { syncXFollowing } = require('../services/x-following');
+      const result = await syncXFollowing();
+      sendJSON(res, 200, { status: 'ok', result });
+    } catch (err) {
+      sendError(res, 500, `X sync failed: ${err.message}`);
+    }
+  };
+
+  // --- LLM Provider Info API ---
+  routes['/api/llm'] = (req, res, _parsed) => {
+    const info = getProviderInfo();
+    sendJSON(res, 200, { status: 'ok', ...info });
+  };
+
+  // --- LLM Settings: GET current config / PUT new / DELETE reset ---
+  // The current server dispatches by pathname only, so we branch on method.
+  routes['/api/settings/llm'] = (req, res, _parsed) => {
+    const method = req.method.toUpperCase();
+
+    if (method === 'GET') {
+      try {
+        const cfg = getLLMConfig() || {};
+        const info = getProviderInfo();
+        sendJSON(res, 200, {
+          status: 'ok',
+          config: {
+            provider: cfg.provider || '',
+            model: cfg.model || info.model || '',
+            base_url: cfg.base_url || (info.base_url || ''),
+            api_key: maskSecret(cfg.api_key),
+            source: cfg.source || 'env',
+            updated_at: cfg.updated_at || '',
+          },
+          active: {
+            provider: info.provider,
+            model: info.model,
+            key_configured: info.key_configured,
+            base_url: info.base_url || (cfg.provider === 'openai' ? (cfg.base_url || process.env.OPENAI_BASE_URL || '') : ''),
+          },
+        });
+      } catch (err) {
+        sendError(res, 500, `Failed to read LLM settings: ${err.message}`);
+      }
+      return;
+    }
+
+    if (method === 'PUT' || method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        let payload;
+        try {
+          payload = body ? JSON.parse(body) : {};
+        } catch {
+          return sendError(res, 400, 'Invalid JSON body');
+        }
+
+        try {
+          let next = null;
+          if (typeof payload.pasted === 'string' && payload.pasted.trim()) {
+            const parsed = parsePastedLLMConfig(payload.pasted);
+            if (parsed.error) return sendError(res, 400, parsed.error);
+            next = parsed;
+          } else if (payload.config && typeof payload.config === 'object') {
+            const { provider, api_key, base_url, model } = payload.config;
+            if (!provider) return sendError(res, 400, 'provider required');
+            if (!api_key) return sendError(res, 400, 'api_key required');
+            if (!base_url) return sendError(res, 400, 'base_url required');
+            if (!model) return sendError(res, 400, 'model required');
+            next = { provider, api_key, base_url, model };
+          } else {
+            return sendError(res, 400, 'Provide either { pasted: "..." } or { config: { provider, api_key, base_url, model } }');
+          }
+
+          next.source = payload.config?.source || (payload.pasted ? 'user-pasted' : 'manual');
+          saveLLMConfig(next);
+
+          sendJSON(res, 200, {
+            status: 'ok',
+            message: 'LLM config saved. Provider reloaded.',
+            config: {
+              ...next,
+              api_key: maskSecret(next.api_key),
+            },
+            active: getProviderInfo(),
+          });
+        } catch (err) {
+          sendError(res, 500, `Failed to save LLM settings: ${err.message}`);
+        }
+      });
+      return;
+    }
+
+    if (method === 'DELETE') {
+      try {
+        clearLLMConfig();
+        sendJSON(res, 200, { status: 'ok', message: 'LLM config reset to .env defaults.', active: getProviderInfo() });
+      } catch (err) {
+        sendError(res, 500, `Failed to reset: ${err.message}`);
+      }
+      return;
+    }
+
+    sendError(res, 405, 'Method not allowed');
+  };
+
+  // --- LLM Settings: POST /api/settings/llm/test — ping the endpoint ---
+  routes['/api/settings/llm/test'] = async (req, res, _parsed) => {
+    try {
+      const result = await testLLMConfig();
+      sendJSON(res, 200, { status: 'ok', ...result });
+    } catch (err) {
+      sendError(res, 500, `LLM test failed: ${err.message}`);
+    }
+  };
+
+  // --- LLM Settings: POST /api/settings/llm/parse — dry-run parse, no save ---
+  routes['/api/settings/llm/parse'] = (req, res, _parsed) => {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      let payload;
+      try {
+        payload = body ? JSON.parse(body) : {};
+      } catch {
+        return sendError(res, 400, 'Invalid JSON body');
+      }
+      const text = (payload.pasted || '').toString();
+      if (!text.trim()) return sendError(res, 400, 'pasted text required');
+      const result = parsePastedLLMConfig(text);
+      if (result.error) {
+        sendJSON(res, 200, { status: 'parse_error', error: result.error });
+        return;
+      }
+      sendJSON(res, 200, {
+        status: 'ok',
+        ...result,
+        masked: { ...result, api_key: maskSecret(result.api_key || '') },
+      });
+    });
+  };
+
+  // ────────────────────────────────────────────────────────────────────────
+  // §13: Missing API Endpoints
+  // ────────────────────────────────────────────────────────────────────────
+
+  // --- Single Item API (§13: GET /api/items/:id) ---
+  routes['/api/items/:id'] = (req, res, _parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const itemId = params?.id || '';
+    const item = db.prepare(`
+      SELECT i.*, s.label as source_label, s.slug as source_slug
+      FROM information_items i
+      JOIN sources s ON i.source_id = s.id
+      WHERE i.id = ?
+    `).get(itemId);
+
+    if (!item) return sendError(res, 404, 'Item not found');
+
+    try {
+      item.source_payload = JSON.parse(item.source_payload || '{}');
+      item.normalized_payload = JSON.parse(item.normalized_payload || '{}');
+      item.popularity = JSON.parse(item.popularity || '{}');
+    } catch {}
+
+    // Get summary
+    const summary = db.prepare('SELECT * FROM ai_summaries WHERE item_id = ?').get(itemId);
+
+    // Get topics
+    const topics = db.prepare(`
+      SELECT t.slug, t.name, it.relevance FROM item_topics it
+      JOIN topics t ON it.topic_id = t.id
+      WHERE it.item_id = ? ORDER BY it.relevance DESC
+    `).all(itemId);
+
+    // Get tags
+    const tags = db.prepare(`
+      SELECT tg.slug, tg.name, itg.confidence FROM item_tags itg
+      JOIN tags tg ON itg.tag_id = tg.id
+      WHERE itg.item_id = ?
+    `).all(itemId);
+
+    // Get deploy eligibility
+    const deployInfo = checkDeployEligibility(itemId);
+
+    sendJSON(res, 200, {
+      status: 'ok',
+      item: { ...item, ai_summary: summary, topics, tags },
+      deploy: deployInfo,
+    });
+  };
+
+  // --- Item Summary API (§13: GET /api/items/:id/summary) ---
+  routes['/api/items/:id/summary'] = (req, res, _parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const itemId = params?.id || '';
+    const summary = db.prepare('SELECT * FROM ai_summaries WHERE item_id = ?').get(itemId);
+    if (!summary) return sendError(res, 404, 'Summary not found for this item');
+
+    sendJSON(res, 200, { status: 'ok', summary });
+  };
+
+  // --- Trigger Research API (§13: POST /api/items/:id/research) ---
+  routes['/api/items/:id/research'] = async (req, res, _parsed, params) => {
+    const itemId = params?.id || '';
+    if (!itemId) return sendError(res, 400, 'Item ID required');
+    const force = _parsed?.query?.force === 'true' || _parsed?.query?.force === '1';
+
+    // Check for existing completed research
+    const db = getDB();
+    const existing = !force
+      ? db?.prepare('SELECT * FROM research_reports WHERE item_id = ? AND status = ? ORDER BY created_at DESC LIMIT 1').get(itemId, 'completed')
+      : null;
+    if (existing) {
+      return sendJSON(res, 200, { status: 'ok', report: existing, cached: true });
+    }
+
+    // Generate new research
+    try {
+      const result = await generateItemResearch(itemId);
+      if (result.error) return sendError(res, 500, result.error);
+      const report = getResearchReport(result.id);
+      sendJSON(res, 200, { status: 'ok', report, cached: false });
+    } catch (err) {
+      sendError(res, 500, `Research failed: ${err.message}`);
+    }
+  };
+
+  // --- Research Chat API (§13: POST /api/items/:id/research/chat) ---
+  routes['/api/items/:id/research/chat'] = (req, res, _parsed, params) => {
+    const itemId = params?.id || '';
+    if (!itemId) return sendError(res, 400, 'Item ID required');
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      let payload;
+      try {
+        payload = body ? JSON.parse(body) : {};
+      } catch {
+        return sendError(res, 400, 'Invalid JSON body');
+      }
+
+      try {
+        const result = await answerItemResearchChat(itemId, payload.message, payload.history || []);
+        if (result?.error) return sendError(res, 400, result.error);
+        sendJSON(res, 200, { status: 'ok', ...result });
+      } catch (err) {
+        sendError(res, 500, `Research chat failed: ${err.message}`);
+      }
+    });
+  };
+
+  // --- Get Research Report API (§13: GET /api/research/:id) ---
+  routes['/api/research/:id'] = (req, res, _parsed, params) => {
+    const reportId = params?.id || '';
+    if (!reportId) return sendError(res, 400, 'Report ID required');
+
+    const report = getResearchReport(reportId);
+    if (!report) return sendError(res, 404, 'Report not found');
+
+    sendJSON(res, 200, { status: 'ok', report });
+  };
+
+  // --- Trigger Deployment Plan API (§13: POST /api/items/:id/deployment-plan) ---
+  routes['/api/items/:id/deployment-plan'] = async (req, res, _parsed, params) => {
+    const itemId = params?.id || '';
+    if (!itemId) return sendError(res, 400, 'Item ID required');
+
+    try {
+      const result = await generateDeployPlan(itemId);
+      if (result.error) return sendError(res, 500, result.error);
+      sendJSON(res, 200, { status: 'ok', plan_id: result.id, eligibility: result.eligibility, plan: result.plan });
+    } catch (err) {
+      sendError(res, 500, `Deploy plan failed: ${err.message}`);
+    }
+  };
+
+  // --- Source Feed API (§13: GET /api/feed/:source) ---
+  routes['/api/feed/:source'] = (req, res, parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const sourceSlug = params?.source || '';
+    const source = db.prepare('SELECT * FROM sources WHERE slug = ?').get(sourceSlug);
+    if (!source) return sendError(res, 404, 'Source not found');
+
+    const format = parsed.query.format || 'json';
+    const limit = parseInt(parsed.query.limit || '20', 10);
+
+    const items = db.prepare(`
+      SELECT i.*, s.label as source_label
+      FROM information_items i
+      JOIN sources s ON i.source_id = s.id
+      WHERE s.slug = ?
+      ORDER BY i.published_at DESC
+      LIMIT ?
+    `).all(sourceSlug, limit);
+
+    if (format === 'xml' || format === 'atom') {
+      // Return Atom XML feed
+      let atom = `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>${escapeXML(source.label)} — Eagleye</title>
+  <link href="/feed/${sourceSlug}"/>
+  <link rel="self" href="/feed/${sourceSlug}?format=atom"/>
+  <updated>${escapeXML(new Date().toISOString())}</updated>
+  <id>urn:eagleye:source:${escapeXML(sourceSlug)}</id>`;
+      for (const item of items) {
+        atom += `
+  <entry>
+    <id>${escapeXML(item.canonical_url || item.id)}</id>
+    <title>${escapeXML(item.title)}</title>
+    <link href="${escapeXML(item.canonical_url || '')}"/>
+    <updated>${escapeXML(item.published_at || item.created_at)}</updated>
+    <summary>${escapeXML(item.original_summary || '')}</summary>
+  </entry>`;
+      }
+      atom += '\n</feed>';
+      res.writeHead(200, { 'Content-Type': 'application/atom+xml; charset=utf-8' });
+      res.end(atom);
+    } else {
+      // Return JSON
+      sendJSON(res, 200, { status: 'ok', source, items, total: items.length });
+    }
+  };
+
+  // --- Topic Feed API (§13: GET /api/topics/:slug/feed.xml) ---
+  routes['/api/topics/:slug/feed.xml'] = (req, res, _parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const slug = params?.slug || '';
+    const topic = db.prepare('SELECT * FROM topics WHERE slug = ?').get(slug);
+    if (!topic) return sendError(res, 404, 'Topic not found');
+
+    const items = db.prepare(`
+      SELECT i.*, s.label as source_label
+      FROM information_items i
+      JOIN item_topics it ON i.id = it.item_id
+      JOIN sources s ON i.source_id = s.id
+      WHERE it.topic_id = ?
+      ORDER BY i.published_at DESC
+      LIMIT 20
+    `).all(topic.id);
+
+    const summaries = db.prepare('SELECT item_id, one_liner, short_summary FROM ai_summaries');
+    const summaryMap = {};
+    summaries.all().forEach(s => { summaryMap[s.item_id] = s; });
+
+    let atom = `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>${escapeXML(topic.name)} — Eagleye Topics</title>
+  <link href="/topics/${escapeXML(slug)}"/>
+  <link rel="self" href="/topics/${escapeXML(slug)}/feed.xml"/>
+  <updated>${escapeXML(new Date().toISOString())}</updated>
+  <id>urn:eagleye:topic:${escapeXML(slug)}</id>`;
+
+    for (const item of items) {
+      const summary = summaryMap[item.id] || {};
+      atom += `
+  <entry>
+    <id>${escapeXML(item.canonical_url || item.id)}</id>
+    <title>${escapeXML(item.title)}</title>
+    <link href="${escapeXML(item.canonical_url || '')}"/>
+    <published>${escapeXML(item.published_at || item.created_at)}</published>
+    <updated>${escapeXML(item.published_at || item.created_at)}</updated>
+    <summary type="text">${escapeXML(summary.one_liner || summary.short_summary || '')}</summary>
+    <category term="${escapeXML(topic.slug)}"/>
+  </entry>`;
+    }
+    atom += '\n</feed>';
+
+    res.writeHead(200, { 'Content-Type': 'application/atom+xml; charset=utf-8' });
+    res.end(atom);
+  };
+
+  // --- Fetch Source Job API (§13: POST /api/jobs/fetch-source) ---
+  routes['/api/jobs/fetch-source'] = async (req, res, parsed) => {
+    const slug = parsed.query.slug || '';
+    const date = parsed.query.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    if (!slug) return sendError(res, 400, 'Source slug required');
+
+    try {
+      const jobId = await runJob(JOB_TYPES.FETCH_SOURCE, { slug, date });
+      sendJSON(res, 200, { status: 'ok', job_id: jobId, message: `Fetch queued for ${slug}` });
+    } catch (err) {
+      sendError(res, 500, `Failed to queue fetch: ${err.message}`);
+    }
+  };
+
+  // --- Skills API (§13: GET /api/skills) ---
+  routes['/api/skills'] = (req, res, parsed) => {
+    const options = {
+      category: parsed.query.category || '',
+      search: parsed.query.search || '',
+      sort: parsed.query.sort || 'installs',
+      source: parsed.query.source || '',
+      tag: parsed.query.tag || '',
+      limit: parsed.query.limit || '50',
+      offset: parsed.query.offset || '0',
+    };
+
+    const result = getSkills(options);
+    const stats = getSkillStats();
+
+    sendJSON(res, 200, { status: 'ok', ...result, stats });
+  };
+
+  // --- Single Skill API (§13: GET /api/skills/:id) ---
+  routes['/api/skills/:id'] = (req, res, _parsed, params) => {
+    const skillId = params?.id || '';
+    const skill = getSkillById(skillId);
+    if (!skill) return sendError(res, 404, 'Skill not found');
+    sendJSON(res, 200, { status: 'ok', skill });
+  };
+
+  // --- Save Item API ---
+  routes['/api/items/:id/save'] = (req, res, parsed, params) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const itemId = params?.id || '';
+    const note = parsed.query.note || '';
+
+    if (!itemId) return sendError(res, 400, 'Item ID required');
+
+    // Check if already saved
+    const existing = db.prepare('SELECT * FROM saved_items WHERE user_id = ? AND item_id = ?').get('anonymous', itemId);
+    if (existing) {
+      // Unsave if already saved
+      db.prepare('DELETE FROM saved_items WHERE user_id = ? AND item_id = ?').run('anonymous', itemId);
+      return sendJSON(res, 200, { status: 'ok', saved: false, message: 'Item unsaved' });
+    }
+
+    db.prepare('INSERT OR IGNORE INTO saved_items (user_id, item_id, note) VALUES (?, ?, ?)')
+      .run('anonymous', itemId, note);
+    sendJSON(res, 200, { status: 'ok', saved: true, message: 'Item saved' });
+  };
+
+  // --- Get Saved Items API ---
+  routes['/api/saved'] = (req, res, _parsed) => {
+    const db = getDB();
+    if (!db) return sendError(res, 500, 'Database not available');
+
+    const items = db.prepare(`
+      SELECT i.*, s.label as source_label, s.slug as source_slug, sv.note, sv.created_at as saved_at
+      FROM saved_items sv
+      JOIN information_items i ON sv.item_id = i.id
+      JOIN sources s ON i.source_id = s.id
+      WHERE sv.user_id = ?
+      ORDER BY sv.created_at DESC
+      LIMIT 100
+    `).all('anonymous');
+
+    sendJSON(res, 200, { status: 'ok', items, total: items.length });
+  };
+
+  // --- Signal Types API ---
+  routes['/api/signal-types'] = (req, res, _parsed) => {
+    const types = getSignalTypes();
+    sendJSON(res, 200, { status: 'ok', types });
+  };
+
+  // --- Signals API ---
+  routes['/api/signals'] = (req, res, parsed) => {
+    const signalType = parsed.query.type || 'all';
+    const date = parsed.query.date || '';
+    const sinceDays = parsed.query.sinceDays ? parseInt(parsed.query.sinceDays, 10) : null;
+    const sortBy = parsed.query.sort || 'alpha_score';
+    const limit = parseInt(parsed.query.limit || '50', 10);
+    const offset = parseInt(parsed.query.offset || '0', 10);
+
+    const signals = getSignals({ signalType, date, sinceDays, sortBy, limit, offset });
+    sendJSON(res, 200, { status: 'ok', signals });
+  };
+
+  // --- Today's Top Signals ---
+  routes['/api/signals/today'] = (req, res, parsed) => {
+    const limit = parseInt(parsed.query.limit || '50', 10);
+    const result = getTodaySignals(limit);
+    sendJSON(res, 200, { status: 'ok', ...result });
+  };
+
+  // --- Rescore Signals: POST /api/signals/rescore?date=YYYYMMDD&limit=500 ---
+  // Triggers a background score-signals job for a date (defaults to today).
+  // Useful after taxonomy/keyword changes to reclassify existing items.
+  routes['/api/signals/rescore'] = async (req, res, parsed) => {
+    const date = parsed.query.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const limit = parseInt(parsed.query.limit || '500', 10);
+    const jobId = await runJob(JOB_TYPES.SCORE_SIGNALS, { date, limit });
+    sendJSON(res, 200, {
+      status: 'ok',
+      job_id: jobId,
+      message: `Signal rescore queued for ${date} (up to ${limit} items). Poll /api/jobs/${jobId}.`,
+    });
+  };
+
+  // --- Entity Momentum Leaderboard ---
+  routes['/api/entities/momentum'] = (req, res, parsed) => {
+    const window = parsed.query.window || '7d';
+    const limit = Math.min(parseInt(parsed.query.limit || '20', 10), 100);
+    const entities = getEntityMomentum(window, limit);
+    sendJSON(res, 200, { status: 'ok', window, entities });
+  };
+
+  // --- Single Signal Detail ---
+  routes['/api/signals/:id'] = (req, res, _parsed, params) => {
+    const itemId = params?.id || '';
+    const signal = getSignalById(itemId);
+    if (!signal) return sendError(res, 404, 'Signal not found');
+    sendJSON(res, 200, { status: 'ok', signal });
+  };
+}
+
+module.exports = { sendJSON, sendError, registerRoutes };

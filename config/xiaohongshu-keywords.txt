@@ -1,0 +1,6 @@
+# XiaoHongShu (小红书) search keywords crawled by the eagleye XiaoHongShu connector.
+# One keyword per line (comma-separated also works). Lines starting with # are ignored.
+AI
+大模型
+AI Agent
+具身智能
