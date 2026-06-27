@@ -1,0 +1,17 @@
+{
+  "name": "Eagleye Bot",
+  "short_name": "Eagleye",
+  "description": "每日科技新闻聚合",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e1c2c",
+  "theme_color": "#e5824e",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
