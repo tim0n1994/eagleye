@@ -1,5 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
-  "entry": ["js/app.js", "js/sources.js"],
-  "project": ["js/**/*.js", "server/**/*.js"]
+  "entry": [
+    "js/app.js"
+  ],
+  "project": [
+    "js/**/*.js",
+    "server/**/*.js"
+  ]
 }
