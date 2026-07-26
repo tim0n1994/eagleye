@@ -13,7 +13,7 @@ async function fetchJSON(url) {
   return res.json();
 }
 
-export function progressiveLoad({ container, fetchMore, batchSize = 30, renderItem }) {
+function progressiveLoad({ container, fetchMore, batchSize = 30, renderItem }) {
   let offset = batchSize;
   let hasMore = true;
   let loading = false;

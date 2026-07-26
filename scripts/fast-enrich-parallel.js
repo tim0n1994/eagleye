@@ -4,9 +4,9 @@
  */
 
 require('dotenv').config();
-const { getDB } = require('./server/db/connection');
-const { runMigrations } = require('./server/db/migrate');
-const { enrichItems } = require('./server/services/llm');
+const { getDB } = require('../server/db/connection');
+const { runMigrations } = require('../server/db/migrate');
+const { enrichItems } = require('../server/services/llm');
 
 runMigrations();
 
