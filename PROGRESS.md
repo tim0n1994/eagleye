@@ -632,3 +632,74 @@ handler **内部**那行 `const { getDB } = require(...)` 也删掉了（同一�
 **剩余拆分空间**（本轮未做，风险/收益不如上面三块）：`api.js` 里 items/papers/topics/tags/graph
 这几组互相穿插，拆之前需要先理清共享 helper；settings 类（LLM/x-following/scheduler）可合成
 `routes/settings.js`。
+
+---
+
+## B66 拆分收官：api.js 全量分域 + pages.js 拆分（2026-07-27）
+
+B65 只抽了 auth/signals/elasticsearch 三块。本轮把两个单体全部拆完。
+
+### api.js：2243 行 → 49 行纯聚合器
+
+剩下的 70 条路由不再是连续区间（`/api/topics/*` 散在 7 处），按行区间抽会切错。
+改为**按 handler 逐块解析**：识别每个 `routes['...'] = ...` 语句块（含其上方注释），
+按 key 归域，再自动推导每个模块需要的 require。
+
+| 模块 | 路由 | 模块 | 路由 |
+|---|---:|---|---:|
+| `items.js` | 12 | `sources.js` | 3 |
+| `taxonomy.js`（topics+tags+domains） | 11 | `research.js`（+skills） | 5 |
+| `jobs.js`（sync/enrich/translate/job） | 11 | `digest.js`（+year） | 4 |
+| `settings.js`（llm/x-following/scheduler） | 8 | `system.js` | 5 |
+| `discovery.js`（search/compare/stories/watchlist） | 6 | `graph.js` | 5 |
+
+加上 B65 的三块，路由层现在是 **14 个模块 + `_shared.js`**，`api.js` 只剩 49 行 require + 14 行调用。
+
+**安全网**：拆分前把 110 个路由 key 快照成 JSON，每步比对 key 集合 + async handler 数（37）。
+全程 `missing 0 / extra 0`。**导入清理也由 eslint 报告驱动**，不靠手写——上一轮正是手写导入清理
+删掉了 handler 内部的 `require`。
+
+### pages.js：5687 行 → 30 行 barrel + 19 个页面模块
+
+前端风险更高（ES module、`kg3d.js` 反向依赖 `pages.js`）。做法：
+
+1. **先在浏览器取导出基线**（`pages.js` 顶层碰 `window`，Node 里导不进来）→ 45 个导出。
+2. **依赖分析先行**：把 82 个顶层声明按域归类后，检查跨模块引用——**结果全部只指向 `shared`，
+   零页面间依赖**，说明边界干净、无循环 import 风险。
+3. `pages.js` 改为 **barrel 再导出**，所以 `app-main.js` / `kg3d.js` / `pages.test.js` **一行都不用改**，
+   导出面由构造保证一致。
+4. 对 `shared.js` 用**显式列名**再导出（只放行原本公开的 8 个），避免 `export *` 把
+   `API_BASE`/`fetchJSON` 等内部符号也暴露出去。
+
+`settings` 拆出来仍有 1078 行，再按 `panels ← handlers ← 页面壳` 三层拆开
+（依赖无环：refreshers 不反向调用 wiring）。**最终所有页面模块 ≤ 545 行，全部落在项目 800 行准则内。**
+
+### eslint 抓到两个真 bug（拆分才暴露）
+
+1. **`_sourcesCache` 通过 import 赋值**：原本是模块级 `let`，拆开后 `home.js`/`sources.js` 仍在赋值——
+   **ES module 的 import 绑定是只读的**，运行时必然抛错。改为 `shared.js` 导出 `setSourcesCache()`，
+   读侧仍走 live binding。
+2. **`$` 从未被导入**：我的标识符正则用了 `\b`，而 `$` 不是 word 字符，`\b$` 永远不匹配 →
+   17 个模块少了 `$` 导入。`no-undef` 报出来。
+
+### 顺手修的既有 bug：Intelligence 页整页空白
+
+`/api/topics` 返回 `{status, topics:[...]}`，但 `intelligence.js` 里
+`const topicsData = topicsResp || []` 把信封当数组用，`.reduce` 抛错 →
+**整个情报页被替换成一行错误**。（同文件下方 20 行处的 `topicsResp.topics` 才是对的写法。）
+与拆分前的备份逐字节比对确认**是既有 bug，非拆分引入**。修复后该页正常渲染 41KB。
+
+### 验证
+
+| 门 | 结果 |
+|---|---|
+| 路由 | `missing 0 / extra 0`，async handler 37 不变 |
+| 前端导出面 | 浏览器实测 **45/45**，零缺失零多余，全部是 function |
+| 真实渲染 | 27 个 render 函数全部执行无异常；SPA 逐路由实测：`/` 78KB、`/signals` 3.1MB、`/tags` 60KB（200 标签）、`/papers` 292KB（4652 篇）、`/intelligence` 41KB、`/settings` 28KB（含 API keys 面板） |
+| 测试 | **210/210** |
+| eslint | 真实源码 **0 error**（107 warning 均为既有 `parsed` 未用参数等） |
+| 安全面 | 无回归：db 404 / 源码 404 / SSRF 403 / watchlist-feed 401 / 未登录 API 401 / 限流 401×10→429 |
+
+**一次误判记录**：中途测到 `/api/items?limit=60` 耗时 57 秒，一度以为是性能 bug。
+实为**自己造成的**——我同时触发了 27 个页面渲染，而 better-sqlite3 是同步的，全部在单线程排队。
+单独测同一请求为 **0.07 秒 / 209KB**。教训：在同步 DB 的单线程服务上做并发压测，测到的是自己。
