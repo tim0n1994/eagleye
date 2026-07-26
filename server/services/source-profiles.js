@@ -10,6 +10,7 @@
 // (YYYYMMDD strings) established in topic-graph.js.
 
 const { getDB } = require('../db/connection');
+const { burstScore } = require('./kleinberg');
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -23,6 +24,16 @@ function digestDaysAgo(date, days) {
   const d = new Date(date);
   d.setUTCDate(d.getUTCDate() - days);
   return toDigest(d);
+}
+
+/** Return a YYYYMMDD digest-date string N days before a YYYYMMDD `digestDate`. */
+function digestMinus(digestDate, days) {
+  const y = Number(digestDate.slice(0, 4));
+  const m = Number(digestDate.slice(4, 6)) - 1;
+  const d = Number(digestDate.slice(6, 8));
+  const dt = new Date(Date.UTC(y, m, d));
+  dt.setUTCDate(dt.getUTCDate() - days);
+  return toDigest(dt);
 }
 
 /**
@@ -182,8 +193,124 @@ function updateEntityMomentum(date = new Date()) {
     tx(rows);
   }
 
-  console.log(`  📊 Updated entity_momentum: ${totalRows} rows across ${allEntities.size} entities (3 windows).`);
-  return { entities: allEntities.size, rows: totalRows };
+  console.log(`  📊 Updated entity_momentum (base): ${totalRows} rows across ${allEntities.size} entities (3 windows).`);
+
+  // ─── Phase 1 enrichment: growth_rate, acceleration, burst_score ────────
+  // All three derive from ONE daily-mention series per entity over 30 days,
+  // so a single grouped query feeds them. Written with UPDATE after the base
+  // rows exist, so the 7d/30d rows keep their mention_count/zscore intact.
+  // (Anchored on the data's latest day, not `date` — see the function.)
+  const phase1 = computeEntityPhase1Metrics(db);
+  if (phase1.entities > 0) {
+    console.log(`  📊 Updated entity_momentum (Phase 1): growth/accel/burst for ${phase1.entities} entities.`);
+  }
+
+  return { entities: allEntities.size, rows: totalRows, phase1 };
+}
+
+// ─── Phase 1 metric computation ─────────────────────────────────────────
+
+/**
+ * Compute growth_rate, acceleration, and burst_score per entity from its daily
+ * mention series over the trailing 30 days, then UPDATE the 7d/30d rows.
+ *
+ *   growth_rate  (7d row)   = count(7d) / max(count(prev 7d), 1) - 1
+ *   acceleration (7d row)   = (count(24h) - count(7d)/7) / max(count(7d)/7, 1)
+ *   burst_score  (7d & 30d) = Kleinberg 2-state weight; 0 unless the most
+ *                             recent day is in a burst state (see kleinberg.js)
+ *
+ * Note: anchoring is on the data's newest digest_date, not wall-clock time, so
+ * this function takes no `date` argument. Returns { entities, updated }.
+ */
+function computeEntityPhase1Metrics(db) {
+  // Anchor on the newest digest_date in the data, not wall-clock "now": when
+  // ingestion lags a day or two (or during backfill), wall-clock comparison
+  // would place both the 7d and prev-7d windows over sparse/empty ranges and
+  // suppress every real spike. Relative-to-data anchoring keeps growth/accel/
+  // burst meaningful regardless of freshness.
+  const latestRow = db.prepare(`
+    SELECT MAX(i.digest_date) as d
+    FROM information_items i
+    JOIN entity_mentions em ON em.item_id = i.id
+    JOIN entity_links el ON el.mention_id = em.id
+  `).get();
+  if (!latestRow?.d) return { entities: 0, updated: 0 };
+  const latest = latestRow.d; // YYYYMMDD
+
+  const since30 = digestMinus(latest, 30);
+
+  // Daily mention counts per entity: entity_id → Map(digest_date → count)
+  const seriesRows = db.prepare(`
+    SELECT el.entity_id, i.digest_date, COUNT(*) as c
+    FROM entity_links el
+    JOIN entity_mentions em ON em.id = el.mention_id
+    JOIN information_items i ON i.id = em.item_id
+    WHERE i.digest_date >= ?
+    GROUP BY el.entity_id, i.digest_date
+  `).all(since30);
+
+  if (seriesRows.length === 0) return { entities: 0, updated: 0 };
+
+  // Build the zero-filled chronological date index for the 30d window (31 days),
+  // anchored on the data's latest day so growth/accel/burst line up with the
+  // densest stretch of data rather than wall-clock "now".
+  const dateIndex = [];
+  for (let d = 30; d >= 0; d--) dateIndex.push(digestMinus(latest, d));
+
+  // Group rows by entity → count map.
+  const byEntity = new Map();
+  for (const r of seriesRows) {
+    let m = byEntity.get(r.entity_id);
+    if (!m) { m = new Map(); byEntity.set(r.entity_id, m); }
+    m.set(r.digest_date, (m.get(r.digest_date) || 0) + r.c);
+  }
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const round3 = (v) => Math.round(v * 1000) / 1000;
+
+  const update7d = db.prepare(`
+    UPDATE entity_momentum
+    SET growth_rate = ?, acceleration = ?, burst_score = ?, prev_window_count = ?
+    WHERE entity_id = ? AND window = '7d'
+  `);
+  const update30d = db.prepare(`
+    UPDATE entity_momentum SET burst_score = ? WHERE entity_id = ? AND window = '30d'
+  `);
+
+  let updated = 0;
+  const tx = db.transaction(() => {
+    for (const [entityId, dayMap] of byEntity) {
+      // Full 30d series (zero-filled) + slice the last 7 for the 7d window.
+      const series30 = dateIndex.map(d => dayMap.get(d) || 0);
+      const series7 = series30.slice(-7);
+
+      const c24h = series7[series7.length - 1] || 0;
+      const c7d = series7.reduce((a, b) => a + b, 0);
+      const prev7 = dateIndex.slice(-14, -7).map(d => dayMap.get(d) || 0);
+      const cPrev7d = prev7.reduce((a, b) => a + b, 0);
+
+      const growthRate = c7d > 0 || cPrev7d > 0
+        ? clamp(c7d / Math.max(cPrev7d, 1) - 1, -1, 10)
+        : 0;
+      const weekAvg = c7d / 7;
+      const acceleration = weekAvg > 0
+        ? clamp((c24h - weekAvg) / Math.max(weekAvg, 1), -5, 10)
+        : (c24h > 0 ? 1 : 0);
+
+      // adaptive:true relaxes the burst rate for sparse series so genuinely
+      // accelerating niche entities (low absolute mention count) can register a
+      // burst instead of silently falling back to day-volume velocity.
+      const burst7d = round3(burstScore(series7, { adaptive: true }));
+      const burst30d = round3(burstScore(series30, { adaptive: true }));
+
+      update7d.run(round3(growthRate), round3(acceleration), burst7d, cPrev7d, entityId);
+      update30d.run(burst30d, entityId);
+      updated++;
+    }
+  });
+  tx();
+
+  return { entities: byEntity.size, updated };
 }
 
 module.exports = { updateSourceProfiles, updateEntityMomentum };

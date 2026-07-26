@@ -163,6 +163,17 @@ class BaseConnector {
     };
 
     const saved = [];
+    // Cross-day dedup: when a newly-inserted item has a content_hash that
+    // already exists from a DIFFERENT digest_date, assign both the same
+    // duplicate_group_id (§16). This surfaces "you've seen this before" without
+    // deleting the item (the digest-date model needs each day's row).
+    const findDupByHash = db.prepare(`
+      SELECT id, duplicate_group_id FROM information_items
+      WHERE content_hash = ? AND content_hash != '' AND id != ? AND digest_date != ?
+      LIMIT 1
+    `);
+    const setDupGroup = db.prepare(`UPDATE information_items SET duplicate_group_id = ? WHERE id = ?`);
+
     const tx = db.transaction(() => {
       for (const item of filtered) {
         if (!item.canonical_url) continue;
@@ -173,6 +184,16 @@ class BaseConnector {
         const paperMeta = rowId ? normalizePaperMetadata({ ...item, id: rowId }) : null;
         if (paperMeta) upsertPaperMetadata.run(paperMeta);
         if (result.changes > 0) {
+          // Cross-day dedup check: link to an existing group if this content
+          // was seen on a prior day (e.g. a trending repo that persists).
+          if (item.content_hash) {
+            const dup = findDupByHash.get(item.content_hash, item.id, item.digest_date);
+            if (dup) {
+              const groupId = dup.duplicate_group_id || dup.id;
+              setDupGroup.run(groupId, item.id);
+              if (!dup.duplicate_group_id) setDupGroup.run(groupId, dup.id);
+            }
+          }
           saved.push(item);
         }
       }

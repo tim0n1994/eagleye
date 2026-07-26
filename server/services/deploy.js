@@ -256,19 +256,34 @@ async function generateDeployPlan(itemId) {
     packageSummaries.push('Rust project with Cargo.toml');
   }
 
-  // Fetch README for excerpt
+  // Fetch README for excerpt. Try to discover the default branch via the GitHub
+  // API first (handles repos whose default branch isn't main/master), then fall
+  // back to main → master. Cached per repo_url so repeated plan generations
+  // don't re-fetch.
   let readmeExcerpt = payload.readme_excerpt || '';
   if (!readmeExcerpt && repoUrl) {
-    try {
-      const readmeUrl = repoUrl.replace('github.com', 'raw.githubusercontent.com') + '/main/README.md';
-      const readmeContent = await fetchURL(readmeUrl);
-      readmeExcerpt = (readmeContent || '').slice(0, 2000);      } catch {
-        // Try master branch
+    // Determine owner/repo from the GitHub URL.
+    const ghMatch = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+    const owner = ghMatch?.[1];
+    const repo = ghMatch?.[2]?.replace(/\.git$/, '');
+    const branches = ['main', 'master'];
+    // Try the GitHub API to get the real default branch (cheap, unauthenticated).
+    if (owner && repo) {
       try {
-        const readmeUrl = repoUrl.replace('github.com', 'raw.githubusercontent.com') + '/master/README.md';
+        const meta = await fetchURL(`https://api.github.com/repos/${owner}/${repo}`);
+        const def = meta ? JSON.parse(meta) : null;
+        if (def?.default_branch && !branches.includes(def.default_branch)) {
+          branches.unshift(def.default_branch); // try the real default first
+        }
+      } catch { /* API rate-limited or private — fall back to main/master */ }
+    }
+    for (const branch of branches) {
+      if (readmeExcerpt) break;
+      try {
+        const readmeUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`;
         const readmeContent = await fetchURL(readmeUrl);
-        readmeExcerpt = (readmeContent || '').slice(0, 2000);
-      } catch { /* no readme */ }
+        if (readmeContent && readmeContent.length > 0) readmeExcerpt = readmeContent.slice(0, 2000);
+      } catch { /* try next branch */ }
     }
   }
 

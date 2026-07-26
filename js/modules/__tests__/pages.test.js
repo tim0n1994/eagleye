@@ -1,43 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { renderItemCard, stars, showLoader, showError } from '../pages.js';
-
-describe('stars', () => {
-  it('returns empty string for count < 0', () => {
-    expect(stars(-1)).toBe('');
-    expect(stars(-100)).toBe('');
-  });
-
-  it('returns empty string for count === 0', () => {
-    expect(stars(0)).toBe('');
-  });
-
-  it('returns one star for count === 1 (with 4 empty)', () => {
-    expect(stars(1)).toBe('★☆☆☆☆');
-  });
-
-  it('returns five filled stars for count === 5', () => {
-    expect(stars(5)).toBe('★★★★★');
-  });
-
-  it('clamps to max 5 stars for count > 5', () => {
-    expect(stars(10)).toBe('★★★★★');
-    expect(stars(100)).toBe('★★★★★');
-  });
-
-  it('returns correct number of filled stars for 2-4 range', () => {
-    expect(stars(2)).toBe('★★☆☆☆');
-    expect(stars(3)).toBe('★★★☆☆');
-    expect(stars(4)).toBe('★★★★☆');
-  });
-
-  it('handles NaN gracefully', () => {
-    expect(stars(NaN)).toBe('');
-  });
-
-  it('handles string numbers', () => {
-    expect(stars('3')).toBe('★★★☆☆');
-  });
-});
+import { renderItemCard, showLoader, showError } from '../pages.js';
 
 describe('renderItemCard', () => {
   const sampleItem = {

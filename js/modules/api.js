@@ -88,5 +88,69 @@ export const API = {
   fetchGraph3D: async () => {
     const data = await fetchJSON(`${API_BASE}/kg3d`);
     return { nodes: data.nodes || [], edges: data.edges || [], tagItems: data.tagItems || {} };
-  }
+  },
+
+  // ─── Auth ──────────────────────────────────────────────────────────────
+  me: async () => {
+    const res = await fetchJSON(`${API_BASE}/auth/me`);
+    return res.user || null;
+  },
+
+  register: async (email, password) => {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  },
+
+  verify: async (email, code) => {
+    const res = await fetch(`${API_BASE}/auth/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  },
+
+  login: async (email, password) => {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  },
+
+  logout: async () => {
+    await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+  },
+
+  // ─── Admin ─────────────────────────────────────────────────────────────
+  adminUsers: async () => {
+    return await fetchJSON(`${API_BASE}/admin/users`);
+  },
+
+  adminSetRole: async (userId, role) => {
+    const res = await fetch(`${API_BASE}/admin/users/${userId}/role`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+    if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+    return await res.json();
+  },
+
+  adminSetStatus: async (userId, status) => {
+    const res = await fetch(`${API_BASE}/admin/users/${userId}/${status}`, { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+    return await res.json();
+  },
 };

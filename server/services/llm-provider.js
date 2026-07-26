@@ -230,17 +230,32 @@ function parsePastedLLMConfig(text) {
   ]);
   const chat_url = _extractField(raw, ['Chat URL', 'ChatURL', 'Chat Url', 'chat_url']);
   const models_url = _extractField(raw, ['Models URL', 'ModelsURL', 'Models Url', 'models_url']);
+  // Anthropic Messages API endpoints use a /messages path (vs OpenAI's
+  // /chat/completions). Detect it so we route to the claude provider and strip
+  // the path back to the /v1 base.
+  const messages_url = _extractField(raw, ['Messages URL', 'MessagesURL', 'Messages Url', 'messages_url']);
 
-  if (!base_url && chat_url) {
+  let isAnthropic = !!messages_url;
+
+  // Messages URL is the most authoritative source for the API base: it carries
+  // the version segment (/v1) that a bare "Base URL" host field often omits
+  // (e.g. Base URL "http://127.0.0.1:3458" + Messages URL ".../v1/messages").
+  // When present, derive base_url from it by stripping the /messages path,
+  // even if a Base URL field was also filled in.
+  if (messages_url) {
+    base_url = messages_url.replace(/\/messages.*$/i, '').replace(/\/+$/, '');
+    isAnthropic = true;
+  } else if (chat_url) {
     base_url = chat_url.replace(/\/chat\/completions.*$/i, '').replace(/\/+$/, '');
-  }
-  if (!base_url && models_url) {
+  } else if (models_url) {
     base_url = models_url.replace(/\/models.*$/i, '').replace(/\/+$/, '');
   }
   if (!base_url) {
     // last resort: any http(s)://… in the text
     const any = raw.match(/https?:\/\/[^\s'"]+/i);
-    if (any) base_url = any[0].replace(/\/chat\/completions.*$/i, '').replace(/\/models.*$/i, '').replace(/\/+$/, '');
+    if (any) {
+      base_url = any[0].replace(/\/messages.*$/i, '').replace(/\/chat\/completions.*$/i, '').replace(/\/models.*$/i, '').replace(/\/+$/, '');
+    }
   }
 
   if (!base_url) return { error: 'Could not find Base URL / endpoint in pasted config' };
@@ -248,7 +263,7 @@ function parsePastedLLMConfig(text) {
   if (!model) return { error: 'Could not find Model name in pasted config' };
 
   return {
-    provider: _normaliseProvider('openai', raw),
+    provider: _normaliseProvider(isAnthropic ? 'claude' : 'openai', raw),
     api_key: api_key,
     base_url: base_url,
     model: model,
@@ -456,14 +471,22 @@ class OpenAIProvider {
 }
 
 class ClaudeProvider {
-  constructor(apiKey) {
-    this.apiKey = apiKey;
+  constructor(opts = {}) {
+    // Accept either an apiKey string (legacy) or a full config object.
+    if (typeof opts === 'string') {
+      this.apiKey = opts;
+      this.model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+      this.baseUrl = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1').replace(/\/+$/, '');
+    } else {
+      this.apiKey = opts.apiKey || opts.api_key;
+      this.model = opts.model || process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+      this.baseUrl = (opts.baseUrl || opts.base_url || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1').replace(/\/+$/, '');
+    }
     this.name = 'claude';
-    this.model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
   }
 
   async call(prompt, options = {}) {
-    const url = 'https://api.anthropic.com/v1/messages';
+    const url = `${this.baseUrl}/messages`;
     const payload = {
       model: this.model,
       max_tokens: options.maxTokens || 4096,
@@ -503,7 +526,14 @@ class ClaudeProvider {
       }, (res) => {
         let data = '';
         res.on('data', c => data += c);
-        res.on('end', () => resolve(data));
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(data);
+          } else {
+            const snippet = (data || '').slice(0, 300).replace(/\s+/g, ' ');
+            reject(new Error(`LLM HTTP ${res.statusCode}: ${snippet || '(empty body)'}`));
+          }
+        });
       });
       req.on('error', reject);
       req.setTimeout(300000, () => { req.destroy(); reject(new Error('LLM request timeout')); });
@@ -525,7 +555,7 @@ function _buildFromRuntime() {
     return new GeminiProvider(cfg.api_key);
   }
   if (cfg.provider === 'claude' && cfg.api_key && cfg.model) {
-    return new ClaudeProvider(cfg.api_key);
+    return new ClaudeProvider({ apiKey: cfg.api_key, baseUrl: cfg.base_url, model: cfg.model });
   }
   return null;
 }
@@ -544,16 +574,43 @@ function getProvider() {
   const preferred = (process.env.LLM_PROVIDER || '').toLowerCase();
 
   if (preferred === 'openai' && openaiKey) return new OpenAIProvider(openaiKey);
-  if (preferred === 'claude' && claudeKey) return new ClaudeProvider(claudeKey);
+  if (preferred === 'claude' && claudeKey) return new ClaudeProvider({ apiKey: claudeKey, baseUrl: process.env.ANTHROPIC_BASE_URL, model: process.env.CLAUDE_MODEL });
   if (preferred === 'gemini' && geminiKey) return new GeminiProvider(geminiKey);
 
   // Auto-detect based on available keys
   if (geminiKey) return new GeminiProvider(geminiKey);
   if (openaiKey) return new OpenAIProvider(openaiKey);
-  if (claudeKey) return new ClaudeProvider(claudeKey);
+  if (claudeKey) return new ClaudeProvider({ apiKey: claudeKey, baseUrl: process.env.ANTHROPIC_BASE_URL, model: process.env.CLAUDE_MODEL });
 
   // Fallback: no provider available
   return null;
+}
+
+/**
+ * Provider for high-volume enrichment. Same endpoint/key as getProvider(),
+ * but overrides the model via ENRICH_LLM_MODEL (e.g. glm-4.5-air) so the
+ * heavy batch work doesn't overload the primary model (e.g. glm-5.2).
+ * Falls back to getProvider() if ENRICH_LLM_MODEL is not set.
+ */
+function getEnrichProvider() {
+  const enrichModel = process.env.ENRICH_LLM_MODEL;
+  if (!enrichModel) return getProvider();
+
+  // Reuse the active provider's type/key/base, just swap the model.
+  const cfg = getLLMConfig();
+  if (cfg) {
+    if (cfg.provider === 'openai') return new OpenAIProvider({ apiKey: cfg.api_key, baseUrl: cfg.base_url, model: enrichModel });
+    if (cfg.provider === 'claude') return new ClaudeProvider({ apiKey: cfg.api_key, baseUrl: cfg.base_url, model: enrichModel });
+    if (cfg.provider === 'gemini') return new GeminiProvider(cfg.api_key);
+  }
+
+  // .env fallback
+  const claudeKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (claudeKey) return new ClaudeProvider({ apiKey: claudeKey, baseUrl: process.env.ANTHROPIC_BASE_URL, model: enrichModel });
+  if (openaiKey) return new OpenAIProvider({ apiKey: openaiKey, baseUrl: process.env.OPENAI_BASE_URL, model: enrichModel });
+
+  return getProvider();
 }
 
 function getProviderInfo() {
@@ -618,6 +675,7 @@ function extractJSON(text) {
 
 module.exports = {
   getProvider,
+  getEnrichProvider,
   getProviderInfo,
   extractJSON,
   // New runtime-config exports

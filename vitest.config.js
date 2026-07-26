@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    include: ['js/**/*.test.js', 'js/**/*.spec.js'],
+    include: ['js/**/*.test.js', 'js/**/*.spec.js', 'server/**/*.test.js'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],

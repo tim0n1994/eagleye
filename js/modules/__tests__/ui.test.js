@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { UI } from '../ui.js';
+import { getLanguage } from '../i18n.js';
 
 describe('UI', () => {
   beforeEach(() => {
@@ -114,6 +115,7 @@ describe('UI', () => {
 
   it('renderCategories renders category list with All and sorted categories', () => {
     UI.cacheDom();
+    const allLabel = getLanguage() === 'zh' ? '全部' : 'All Sources';
     const categories = [
       { category: 'GitHub', count: 10 },
       { category: 'AI', count: 5 },
@@ -123,7 +125,7 @@ describe('UI', () => {
     UI.renderCategories(categories);
 
     const html = UI.dom.categoryList.innerHTML;
-    expect(html).toContain('全部');
+    expect(html).toContain(allLabel);
     expect(html).toContain('LIVE');
     expect(html).toContain('GitHub');
     expect(html).toContain('10');
@@ -165,9 +167,10 @@ describe('UI', () => {
 
   it('renderCategories handles empty categories (shows All link only)', () => {
     UI.cacheDom();
+    const allLabel = getLanguage() === 'zh' ? '全部' : 'All Sources';
     UI.renderCategories([]);
     const html = UI.dom.categoryList.innerHTML;
-    expect(html).toContain('全部');
+    expect(html).toContain(allLabel);
     // The "All" link has class "category-item"
     expect(html).toContain('category-item');
     // No additional category items beyond the "All" link

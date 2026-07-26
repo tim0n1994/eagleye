@@ -184,65 +184,65 @@ describe('timeAgo', () => {
     vi.useRealTimers();
   });
 
-  it('returns "刚刚" for dates less than 1 minute ago', () => {
-    expect(timeAgo(new Date(NOW - 30_000).toISOString())).toBe('刚刚');
+  it('returns "just now" for dates less than 1 minute ago', () => {
+    expect(timeAgo(new Date(NOW - 30_000).toISOString())).toBe('just now');
   });
 
-  it('returns "刚刚" for dates in the very recent past', () => {
-    expect(timeAgo(new Date(NOW - 1_000).toISOString())).toBe('刚刚');
+  it('returns "just now" for dates in the very recent past', () => {
+    expect(timeAgo(new Date(NOW - 1_000).toISOString())).toBe('just now');
   });
 
-  it('returns "刚刚" for future dates (negative diff)', () => {
-    expect(timeAgo(new Date(NOW + 60_000).toISOString())).toBe('刚刚');
+  it('returns "just now" for future dates (negative diff)', () => {
+    expect(timeAgo(new Date(NOW + 60_000).toISOString())).toBe('just now');
   });
 
   it('returns minutes for times 1-59 minutes ago', () => {
-    expect(timeAgo(new Date(NOW - 5 * 60_000).toISOString())).toBe('5 分钟前');
+    expect(timeAgo(new Date(NOW - 5 * 60_000).toISOString())).toBe('5m ago');
   });
 
-  it('returns "1 分钟前" for exactly 1 minute ago', () => {
-    expect(timeAgo(new Date(NOW - 60_000).toISOString())).toBe('1 分钟前');
+  it('returns "1m ago" for exactly 1 minute ago', () => {
+    expect(timeAgo(new Date(NOW - 60_000).toISOString())).toBe('1m ago');
   });
 
-  it('returns "59 分钟前" for 59 minutes ago', () => {
-    expect(timeAgo(new Date(NOW - 59 * 60_000).toISOString())).toBe('59 分钟前');
+  it('returns "59m ago" for 59 minutes ago', () => {
+    expect(timeAgo(new Date(NOW - 59 * 60_000).toISOString())).toBe('59m ago');
   });
 
   it('returns hours for times 1-23 hours ago', () => {
-    expect(timeAgo(new Date(NOW - 3 * 3_600_000).toISOString())).toBe('3 小时前');
+    expect(timeAgo(new Date(NOW - 3 * 3_600_000).toISOString())).toBe('3h ago');
   });
 
-  it('returns "1 小时前" for exactly 1 hour ago', () => {
-    expect(timeAgo(new Date(NOW - 3_600_000).toISOString())).toBe('1 小时前');
+  it('returns "1h ago" for exactly 1 hour ago', () => {
+    expect(timeAgo(new Date(NOW - 3_600_000).toISOString())).toBe('1h ago');
   });
 
-  it('returns "23 小时前" for 23 hours ago', () => {
-    expect(timeAgo(new Date(NOW - 23 * 3_600_000).toISOString())).toBe('23 小时前');
+  it('returns "23h ago" for 23 hours ago', () => {
+    expect(timeAgo(new Date(NOW - 23 * 3_600_000).toISOString())).toBe('23h ago');
   });
 
   it('returns days for times 1-29 days ago', () => {
-    expect(timeAgo(new Date(NOW - 7 * 86_400_000).toISOString())).toBe('7 天前');
+    expect(timeAgo(new Date(NOW - 7 * 86_400_000).toISOString())).toBe('7d ago');
   });
 
-  it('returns "1 天前" for exactly 1 day ago', () => {
-    expect(timeAgo(new Date(NOW - 86_400_000).toISOString())).toBe('1 天前');
+  it('returns "1d ago" for exactly 1 day ago', () => {
+    expect(timeAgo(new Date(NOW - 86_400_000).toISOString())).toBe('1d ago');
   });
 
-  it('returns "29 天前" for 29 days ago', () => {
-    expect(timeAgo(new Date(NOW - 29 * 86_400_000).toISOString())).toBe('29 天前');
+  it('returns "29d ago" for 29 days ago', () => {
+    expect(timeAgo(new Date(NOW - 29 * 86_400_000).toISOString())).toBe('29d ago');
   });
 
   it('returns formatted date for 30+ days ago', () => {
     const oldDate = new Date(NOW - 40 * 86_400_000);
-    expect(timeAgo(oldDate.toISOString())).toBe(oldDate.toLocaleDateString('zh-CN'));
+    expect(timeAgo(oldDate.toISOString())).toBe(oldDate.toLocaleDateString('en-US'));
   });
 
   it('returns formatted date for 1+ year ago', () => {
     const oldDate = new Date(NOW - 400 * 86_400_000);
-    expect(timeAgo(oldDate.toISOString())).toBe(oldDate.toLocaleDateString('zh-CN'));
+    expect(timeAgo(oldDate.toISOString())).toBe(oldDate.toLocaleDateString('en-US'));
   });
 
   it('handles ISO string with timezone offset', () => {
-    expect(timeAgo(new Date(NOW - 2 * 60_000).toISOString())).toBe('2 分钟前');
+    expect(timeAgo(new Date(NOW - 2 * 60_000).toISOString())).toBe('2m ago');
   });
 });

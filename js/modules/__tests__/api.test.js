@@ -17,10 +17,12 @@ describe('API', () => {
   });
 
   function mockFetchResponse(data, ok = true) {
+    const body = data === undefined || data === null ? '' : JSON.stringify(data);
     return Promise.resolve({
       ok,
-      json: () => Promise.resolve(data),
       status: ok ? 200 : 500,
+      text: () => Promise.resolve(body),
+      json: () => Promise.resolve(data),
     });
   }
 
@@ -95,7 +97,7 @@ describe('API', () => {
   it('triggerSync fetches /api/sync', async () => {
     mockFetch.mockResolvedValue(mockFetchResponse({ status: 'ok' }));
     const result = await API.triggerSync();
-    expect(mockFetch).toHaveBeenCalledWith('/api/sync');
+    expect(mockFetch).toHaveBeenCalledWith('/api/sync', { method: 'POST' });
     expect(result).toEqual({ status: 'ok' });
   });
 

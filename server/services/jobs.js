@@ -31,6 +31,8 @@ const JOB_TYPES = {
   X_FOLLOWING_SYNC: 'x-following-sync',
   TRANSLATE_BACKFILL: 'translate-backfill',
   SCORE_SIGNALS: 'score-signals',
+  RESCORE_ALL: 'rescore-all',
+  ITEM_RESEARCH: 'item-research',
   BUILD_TAG_HIERARCHY: 'build-tag-hierarchy',
 };
 
@@ -40,6 +42,7 @@ const SINGLETON_JOB_TYPES = new Set([
   JOB_TYPES.FULL_PIPELINE,
   JOB_TYPES.TRANSLATE_BACKFILL,
   JOB_TYPES.X_FOLLOWING_SYNC,
+  JOB_TYPES.RESCORE_ALL,
 ]);
 
 // ─── Job CRUD ───────────────────────────────────────────────────────────
@@ -354,7 +357,7 @@ async function executeJob(jobId) {
               WHERE i.digest_date = ?
             `).all(today);
             if (todayItems.length > 0) {
-              const rescoreResult = await scoreSignals(todayItems, { jobId });
+              const rescoreResult = await scoreSignals(todayItems, { jobId, autoResearch: true });
               rescored = rescoreResult?.scored || 0;
               console.log(`  📊 Auto-rescored ${rescored} items with fresh source profiles`);
             }
@@ -367,11 +370,13 @@ async function executeJob(jobId) {
           console.warn(`  ⚠  Source profiles failed (non-fatal): ${err.message}`);
         }
         if (isJobCancelled(jobId)) throw new Error('Job cancelled by user');
-        // Chinese translation backfill
+        // Chinese translation backfill — pass a larger batch so the backlog
+        // actually shrinks. Default translateItems batchSize is 10 which never
+        // clears the ~2.5k backlog; pipeline gives it 200 per run.
         let translateResult = null;
         try {
           updatePipelineStage(jobId, 'translate', 'running', { message: 'Starting Chinese card backfill' });
-          translateResult = await translateItems({ jobId });
+          translateResult = await translateItems({ jobId, batchSize: 200 });
           updatePipelineStage(jobId, 'translate', 'completed', null, translateResult);
           console.log(`  🌐 Translate backfill: translated=${translateResult.translated || 0}`);
         } catch (err) {
@@ -406,7 +411,17 @@ async function executeJob(jobId) {
         }
         updatePipelineStage(jobId, 'digest', 'running', { date: today });
         const digestResult = await generateDailyDigest(today, { jobId });
-        updatePipelineStage(jobId, 'digest', 'completed', null, { generated: !!digestResult, id: digestResult?.id || null });
+        if (digestResult && digestResult.id) {
+          updatePipelineStage(jobId, 'digest', 'completed', null, { generated: true, id: digestResult.id });
+        } else if (digestResult && digestResult.__skipped) {
+          // Not a failure — no data to summarize (e.g. date has no items yet).
+          updatePipelineStage(jobId, 'digest', 'completed', null, { generated: false, skipped: true, reason: digestResult.reason });
+          console.log(`  ⏭️  Daily digest skipped for ${today}: ${digestResult.reason}`);
+        } else {
+          // LLM failure (empty/unparseable response or exception).
+          updatePipelineStage(jobId, 'digest', 'failed', { error: 'digest LLM call failed (empty/unparseable response or exception)', generated: false });
+          console.warn(`  ⚠  Daily digest not generated for ${today} (LLM failure)`);
+        }
         // Build tag hierarchy
         let hierarchyResult = null;
         try {
@@ -467,6 +482,35 @@ async function executeJob(jobId) {
           ORDER BY i.score DESC LIMIT ?
         `).all(date, limit);
         result = await scoreSignals(items, { jobId });
+        break;
+      }
+
+      case JOB_TYPES.RESCORE_ALL: {
+        // Full-corpus rescore: walk every digest_date (oldest first) and
+        // re-classify with the current taxonomy, filling the backlog that the
+        // daily pipeline leaves behind. Singleton so a second trigger reuses
+        // the in-flight run rather than doubling LLM load.
+        const { rescoreAllSignals } = require('./signal-rescore');
+        const params = JSON.parse(job.params || '{}');
+        result = await rescoreAllSignals({ jobId, concurrency: params.concurrency });
+        break;
+      }
+
+      case JOB_TYPES.ITEM_RESEARCH: {
+        // Auto-triggered deep research for high-alpha items (Phase 3.B).
+        // Skips items that already have a completed report unless force=true.
+        const { generateItemResearch } = require('./research');
+        const params = JSON.parse(job.params || '{}');
+        if (!params.itemId) throw new Error('item-research job requires itemId');
+        const db = getDB();
+        const existing = !params.force
+          ? db?.prepare('SELECT id FROM research_reports WHERE item_id = ? AND status = ? ORDER BY created_at DESC LIMIT 1').get(params.itemId, 'completed')
+          : null;
+        if (existing) {
+          result = { itemId: params.itemId, skipped: true, reason: 'existing completed report', reportId: existing.id };
+        } else {
+          result = await generateItemResearch(params.itemId);
+        }
         break;
       }
 

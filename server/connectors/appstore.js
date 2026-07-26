@@ -81,7 +81,9 @@ class AppStoreRankConnector extends AppStoreBaseConnector {
 
 class AppStoreTrendConnector extends AppStoreBaseConnector {
   constructor() {
-    super('app-store-trend', 'top-grossing', 'us');
+    // Apple deprecated top-grossing (404). top-paid provides a distinct
+    // signal from app-store-rank (top-free) and is still supported.
+    super('app-store-trend', 'top-paid', 'us');
   }
 }
 

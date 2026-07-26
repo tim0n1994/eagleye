@@ -15,8 +15,8 @@ describe('PageRouter', () => {
     window.history.pushState = vi.fn();
 
     // Set up a fresh instance state without resetting singleton prototype
-    delete testRouter.routes;
-    testRouter.routes = {};
+    testRouter._stringRoutes = {};
+    testRouter._regexRoutes = [];
     testRouter.beforeRouteCallbacks = [];
     testRouter.afterRouteCallbacks = [];
     testRouter.currentRoute = null;
@@ -31,18 +31,15 @@ describe('PageRouter', () => {
   it('registers a string route', () => {
     const fn = vi.fn();
     testRouter.register('/test', fn);
-    expect(testRouter.routes['/test']).toBe(fn);
+    expect(testRouter._stringRoutes['/test']).toBe(fn);
   });
 
   it('registers a regex route', () => {
     const fn = vi.fn();
     testRouter.register(/^\/test\/(\d+)$/, fn);
-    // Regex keys get stringified in plain objects, so check via iteration
-    const found = Object.keys(testRouter.routes).some(k => {
-      const match = k.match(/\/test/);
-      return match;
-    });
-    expect(found).toBe(true);
+    expect(testRouter._regexRoutes).toHaveLength(1);
+    expect(testRouter._regexRoutes[0].pattern).toEqual(/^\/test\/(\d+)$/);
+    expect(testRouter._regexRoutes[0].renderFn).toBe(fn);
   });
 
   it('registers multiple routes', () => {
@@ -50,7 +47,7 @@ describe('PageRouter', () => {
     const fn2 = vi.fn();
     testRouter.register('/a', fn1);
     testRouter.register('/b', fn2);
-    expect(Object.keys(testRouter.routes)).toHaveLength(2);
+    expect(Object.keys(testRouter._stringRoutes)).toHaveLength(2);
   });
 
   // ─── beforeEach / afterEach ──────────────────────────────
@@ -78,16 +75,16 @@ describe('PageRouter', () => {
 
   // ─── _executeRoute ──────────────────────────────────────
 
-  it('executes render function with params', () => {
+  it('executes render function with params', async () => {
     const renderFn = vi.fn();
     const params = { slug: 'test-slug' };
 
-    testRouter._executeRoute('/test', renderFn, params);
+    await testRouter._executeRoute('/test', renderFn, params);
 
     expect(renderFn).toHaveBeenCalledWith(params);
   });
 
-  it('calls lifecycle callbacks before and after render', () => {
+  it('calls lifecycle callbacks before and after render', async () => {
     const order = [];
     const beforeCb = vi.fn(() => order.push('before'));
     const renderFn = vi.fn(() => order.push('render'));
@@ -95,23 +92,41 @@ describe('PageRouter', () => {
 
     testRouter.beforeEach(beforeCb);
     testRouter.afterEach(afterCb);
-    testRouter._executeRoute('/test', renderFn, {});
+    await testRouter._executeRoute('/test', renderFn, {});
 
     expect(order).toEqual(['before', 'render', 'after']);
   });
 
-  it('updates currentRoute', () => {
-    testRouter._executeRoute('/current', vi.fn(), {});
+  // Guards are awaited, so an async guard resolving false must stop the render
+  // rather than losing the race against it.
+  it('cancels the render when a guard returns false', async () => {
+    const renderFn = vi.fn();
+    testRouter.beforeEach(async () => false);
+    await testRouter._executeRoute('/test', renderFn, {});
+
+    expect(renderFn).not.toHaveBeenCalled();
+  });
+
+  it('still renders when a guard returns a non-false value', async () => {
+    const renderFn = vi.fn();
+    testRouter.beforeEach(async () => undefined);
+    await testRouter._executeRoute('/test', renderFn, {});
+
+    expect(renderFn).toHaveBeenCalled();
+  });
+
+  it('updates currentRoute', async () => {
+    await testRouter._executeRoute('/current', vi.fn(), {});
     expect(testRouter.currentRoute).toBe('/current');
   });
 
-  it('passes path and params to lifecycle callbacks', () => {
+  it('passes path and params to lifecycle callbacks', async () => {
     const beforeCb = vi.fn();
     const afterCb = vi.fn();
     testRouter.beforeEach(beforeCb);
     testRouter.afterEach(afterCb);
 
-    testRouter._executeRoute('/test', vi.fn(), { id: '42' });
+    await testRouter._executeRoute('/test', vi.fn(), { id: '42' });
 
     expect(beforeCb).toHaveBeenCalledWith('/test', { id: '42' });
     expect(afterCb).toHaveBeenCalledWith('/test', { id: '42' });
@@ -172,8 +187,8 @@ describe('PageRouter', () => {
     // Stub _handleRoute to test the matching logic directly
     testRouter._handleRoute = function () {
       const path = window.location.pathname;
-      if (this.routes[path]) {
-        this._executeRoute(path, this.routes[path], {});
+      if (this._stringRoutes[path]) {
+        this._executeRoute(path, this._stringRoutes[path], {});
       }
     };
     testRouter._executeRoute = vi.fn();
@@ -195,9 +210,9 @@ describe('PageRouter', () => {
     testRouter._handleRoute = function () {
       const path = window.location.pathname;
       const params = {};
-      if (!this.routes[path]) {
-        if (this.routes['/404']) {
-          this._executeRoute('/404', this.routes['/404'], params);
+      if (!this._stringRoutes[path]) {
+        if (this._stringRoutes['/404']) {
+          this._executeRoute('/404', this._stringRoutes['/404'], params);
         }
       }
     };
@@ -216,7 +231,8 @@ describe('PageRouter', () => {
   // ─── Constructor defaults ───────────────────────────────
 
   it('has correct initial state after reset', () => {
-    expect(Object.keys(testRouter.routes)).toHaveLength(0);
+    expect(Object.keys(testRouter._stringRoutes)).toHaveLength(0);
+    expect(testRouter._regexRoutes).toEqual([]);
     expect(testRouter.beforeRouteCallbacks).toEqual([]);
     expect(testRouter.afterRouteCallbacks).toEqual([]);
     expect(testRouter.currentRoute).toBeNull();

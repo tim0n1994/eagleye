@@ -4,22 +4,34 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Eagleye — AI-Driven Technology Intelligence</title>
-  <meta name="description" content="Eagleye — AI-driven technology intelligence radar. Aggregate, analyze, research, and deploy from HN, GitHub, Product Hunt, Hugging Face, Techmeme, Solidot and more.">
+  <meta name="description" content="Eagleye — Personal information filtering engine for AI, developers, and founders. 19 sources, AI knowledge cards, multi-dimensional alpha scoring, cross-source story clustering, personalized filtering, entity analytics, and deep research.">
   <meta name="theme-color" content="#0e1c2c">
+  <meta property="og:title" content="Eagleye — AI Technology Intelligence Radar">
+  <meta property="og:description" content="Personal information filtering engine: 19 sources, AI knowledge cards, alpha scoring, entity analytics, personalized filtering.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Eagleye — AI Technology Intelligence Radar">
+  <meta name="twitter:description" content="Personal information filtering engine with multi-dimensional alpha scoring and personalized filtering.">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
   <link rel="stylesheet" href="/css/style.css?v1780775161">
+  <link rel="stylesheet" href="/css/katex.min.css">
   <link rel="manifest" href="/manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="/js/lib/katex.min.js"></script>
+  <script src="/js/lib/pdf-lib.min.js"></script>
   <script src="/js/lib/d3.v7.min.js"></script>
-  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/3d-force-graph@1.73/dist/3d-force-graph.min.js"></script>
+  <script src="/js/lib/three.min.js"></script>
+  <script src="/js/lib/3d-force-graph.min.js"></script>
 </head>
 <body>
   <script>
     (function() {
-      const theme = localStorage.getItem('eagleye-theme') || 'dark';
+      // Theme: use stored pref, or auto-detect from system preference (prefers-color-scheme).
+      const storedTheme = localStorage.getItem('eagleye-theme');
+      const theme = storedTheme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
       document.documentElement.setAttribute('data-theme', theme);
       const stored = localStorage.getItem('eagleye-lang');
       const lang = (stored === 'en' || stored === 'zh') ? stored
@@ -45,6 +57,9 @@
         <!-- Rendered by JS -->
       </nav>
       <div class="header-actions">
+        <a class="icon-btn" id="userLink" href="/login" title="Sign In" style="text-decoration:none;font-size:12px;padding:6px 10px;">
+          <span>Sign In</span>
+        </a>
         <button class="icon-btn lang-btn" id="langToggle" title="Switch language">
           <span class="lang-btn-label">中</span>
         </button>
@@ -170,8 +185,6 @@
   <footer class="footer" id="mainFooter">
     <!-- Rendered by JS -->
   </footer>
-
-  <script src="/js/sources.js?v1780775161"></script>
   <script type="module" src="/js/app.js?v1780775161"></script>
   <link rel="stylesheet" href="/css/style.css?v1780775161">
 </body>

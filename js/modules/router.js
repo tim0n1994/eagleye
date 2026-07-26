@@ -80,10 +80,16 @@ class PageRouter {
     }
   }
 
-  _executeRoute(path, renderFn, params) {
+  async _executeRoute(path, renderFn, params) {
     this.currentRoute = path;
     this._currentParams = params;
-    this.beforeRouteCallbacks.forEach(cb => cb(path, params));
+    // A guard returning false cancels navigation. This used to be a forEach,
+    // which discarded the return value (and never awaited the async auth
+    // guard), so a signed-out visitor rendered the protected page and fired its
+    // data requests before the redirect to /login took effect.
+    for (const cb of this.beforeRouteCallbacks) {
+      if (await cb(path, params) === false) return;
+    }
     renderFn(params);
     this.afterRouteCallbacks.forEach(cb => cb(path, params));
   }
@@ -112,11 +118,13 @@ class PageRouter {
    * Re-render the current route without changing history.
    * Used for language changes and other in-place refreshes.
    */
-  rerenderCurrentRoute() {
+  async rerenderCurrentRoute() {
     const found = this._findCurrentRenderFn();
     if (!found) return;
     this._currentParams = found.params;
-    this.beforeRouteCallbacks.forEach(cb => cb(found.path, found.params));
+    for (const cb of this.beforeRouteCallbacks) {
+      if (await cb(found.path, found.params) === false) return;
+    }
     found.renderFn(found.params);
     this.afterRouteCallbacks.forEach(cb => cb(found.path, found.params));
   }

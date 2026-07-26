@@ -147,6 +147,19 @@ async function fetchAllSources(date, opts = {}) {
   }
   emitProgress({ current_index: finalResults.length, completed_sources: finalResults.length, results: finalResults, message: 'fetch complete' });
 
+  // Summary: distinguish fetch errors from genuine-empty so the pipeline log
+  // surfaces degraded sources (was: all empty results looked identical to
+  // errors, making diagnosis impossible).
+  const errors = finalResults.filter(r => r.error);
+  const empty = finalResults.filter(r => !r.error && (r.items || 0) === 0);
+  const withData = finalResults.filter(r => (r.items || 0) > 0);
+  if (errors.length > 0) {
+    console.log(`  ⚠  Fetch summary: ${withData.length} sources with data, ${empty.length} empty, ${errors.length} ERRORED:`);
+    for (const e of errors) console.log(`    ✗ ${e.source}: ${e.error}`);
+  } else {
+    console.log(`  ✅ Fetch summary: ${withData.length} sources with data, ${empty.length} empty (no errors)`);
+  }
+
   return finalResults;
 }
 
