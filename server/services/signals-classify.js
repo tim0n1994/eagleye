@@ -334,6 +334,6 @@ async function classifyUncategorizedRetry(items) {
 }
 
 module.exports = {
-  providerAvailable, preClassifyByTags, normalizeSignalType, normalizeThesisMatch,
+  providerAvailable, preClassifyByTags,
   classifySignals, classifyUncategorizedRetry, SIGNAL_TYPES,
 };

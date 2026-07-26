@@ -71,12 +71,11 @@ function resetAuthAttempts(req) {
 }
 
 module.exports = {
+  // clientKey/hit/reset are exported for the unit tests, which drive the pure
+  // sliding-window logic directly against their own store.
   clientKey,
   hit,
   reset,
   checkAuthAttempt,
   resetAuthAttempts,
-  WINDOW_MS,
-  MAX_ATTEMPTS,
-  _authStore,
 };

@@ -803,3 +803,23 @@ topic-graph 的 KG3D 块不引用上游任何函数；tools 的 `toolShell` 单�
 | 测试 | **210/210** |
 | eslint | **0 error** |
 | 安全面 | 无回归：db/源码/日志/config 全 404；SSRF 403；未登录 API 401；watchlist-feed 401；公开 feed 200；限流 401×10→429 |
+
+### B68 附记：knip 与 CI 的第三个 job
+
+验收时顺带查了 CI 的第三个 job（`npm run knip`）。**它和 lint 一样，在 `7fbaa97` 就已经是红的**
+（45 findings），不是本轮造成的。
+
+`knip.json` 的 `entry` 里引用了被我删除的 `js/sources.js`，这条是我的，已移除。
+
+**没有按 knip 报告去删代码**，原因是这份报告在本项目里不可靠：它把
+`server/services/auth.js` 的 15 个导出全报成未使用，但那些是
+`const auth = require(...)` + `auth.getSessionUser()` 的命名空间用法；
+最直接的反证是它把 `checkAuthAttempt` 也报成未使用，而 grep 显示
+`server/routes/_shared.js:10,35` 明确在用。照这份报告批量删就是"无证据删死代码"。
+
+只清理了确认属于本轮拆分多导出的部分（**先用 grep 逐个验证零外部引用**，不依赖 knip 结论）：
+`rate-limit.js` 的 `WINDOW_MS`/`MAX_ATTEMPTS`/`_authStore`、
+`signals-classify.js` 的 `normalizeSignalType`/`normalizeThesisMatch`。
+
+**knip 需要一次专门的处理**（先把 `server.js` 加进 entry 让依赖图完整，再逐条甄别命名空间用法），
+不适合夹在拆分里做——留作下一项。
