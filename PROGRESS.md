@@ -598,3 +598,37 @@ B63 只修了 4 个可直接触发的公网漏洞，其余列为"待决策"。�
 ```js
 ignores: ["js/lib/", "node_modules/", "kg-worker/", "_*.js", "enrich_all.js"],
 ```
+
+---
+
+## B65 路由层拆分（2026-07-27）
+
+`api.js` 是 3063 行、`registerRoutes` 一个函数里内联 110 条路由——服务层早就按域拆好了，
+路由层一直没跟上。本轮按 `services/` 的既有边界抽出三个最独立的域。
+
+| 模块 | 行数 | 路由 | 依赖 |
+|---|---:|---:|---|
+| `routes/_shared.js` | 143 | — | `sendJSON`/`sendError`/`readBody`/`requireAdmin`/`authThrottled`/`resolveFeedUser`/cache/`ftsSearch` |
+| `routes/auth.js` | 186 | 11 | 只依赖 `services/auth` —— 安全敏感面独立成文件，便于单独审查 |
+| `routes/signals.js` | 266 | 17 | 只依赖 `services/signals` —— alpha 雷达/实体/lens/For-You |
+| `routes/elasticsearch.js` | 318 | 12 | 只依赖 `services/{elasticsearch,es-rag,es-ai-setup}` |
+| `routes/api.js` | 2249 | 70 | 其余（items/topics/tags/graph/jobs/settings/feed…），composes 上面三个 |
+
+每个模块导出 `register(routes)` 并自带 requires；`api.js` 只负责组合 + 保留未抽取的路由。
+`3063 → 2249` 行，`110` 条路由不变。
+
+**安全网优先于重构**：动手前先把 110 个路由 key 快照到 JSON，每抽一块就比对一次
+**key 集合完全相等 + async handler 数量不变（37）**。三次抽取后仍是 `110 / missing 0 / extra 0 / async 37`。
+
+**eslint 抓到一个真 bug**：清理 api.js 遗留的死 import 时，我的批量替换把 `/api/auth/verify`
+handler **内部**那行 `const { getDB } = require(...)` 也删掉了（同一字符串），`getDB` 变成未定义。
+纯语法检查过得去，运行时才会在邮箱验证时 500。`no-undef` 当场报出来 → 改为顶层 import 并修正缩进。
+**这正是"拆分必须配静态检查"的理由**：110 条路由不可能靠肉眼比对。
+
+**验证**：路由 key 集合完全一致；`vitest` **210/210**；`eslint server/routes/` **0 error**；
+每个模块各抽一条路由实跑返回真实数据（signal-types/signals/entities/es-health/items/search 等）；
+11 条 SPA 路由 200；浏览器控制台 0 error；安全面无回归（db 404 / SSRF 403 / watchlist-feed 401 / 限流 401×10→429）。
+
+**剩余拆分空间**（本轮未做，风险/收益不如上面三块）：`api.js` 里 items/papers/topics/tags/graph
+这几组互相穿插，拆之前需要先理清共享 helper；settings 类（LLM/x-following/scheduler）可合成
+`routes/settings.js`。
