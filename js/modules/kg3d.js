@@ -9,6 +9,7 @@
 import { $, escapeHtml, escapeAttr } from './utils.js';
 import { API } from './api.js';
 import { showLoader, showError } from './pages.js';
+import { t } from './i18n.js';
 
 const COLORS = {
   domain:   0xe65100,
@@ -34,7 +35,7 @@ export async function renderKG3D(_params) {
     return;
   }
 
-  showLoader(container, 'Loading...');
+  showLoader(container, t('common.loading'));
 
   try {
     _data = await API.fetchGraph3D();
@@ -43,14 +44,14 @@ export async function renderKG3D(_params) {
     _data.tagItems = _data.tagItems || {};
 
     const html = `
-      <section class="page-section kg3d-layout">
+      <section class="page-section kg3d-layout" id="kg3dLayout">
         <div class="kg3d-header">
-          <h2>🧠 知识图谱 3D</h2>
-          <p>左树导航 · 右图探索 · 点击互动</p>
+          <h2>🧠 ${t('kg3d.title')}</h2>
+          <button class="action-btn" id="kg3dFullscreen" style="margin-left:auto">⛶ Fullscreen</button>
         </div>
         <div class="kg3d-tree-panel">
           <div class="kg3d-tree-search">
-            <input type="text" id="kg3dTreeSearch" placeholder="搜索标签/主题..." autocomplete="off">
+            <input type="text" id="kg3dTreeSearch" placeholder="${t('kg3d.search_ph')}" autocomplete="off">
           </div>
           <div class="kg3d-tree-body" id="kg3dTreeBody"></div>
         </div>
@@ -61,8 +62,35 @@ export async function renderKG3D(_params) {
     `;
     container.innerHTML = html;
 
+    // Wire fullscreen toggle: uses the Fullscreen API on the layout section.
+    const fsBtn = document.getElementById('kg3dFullscreen');
+    if (fsBtn) {
+      fsBtn.addEventListener('click', () => {
+        const layout = document.getElementById('kg3dLayout');
+        if (!layout) return;
+        if (!document.fullscreenElement) {
+          layout.requestFullscreen?.().then(() => {
+            fsBtn.textContent = '⛶ Exit';
+            layout.classList.add('kg3d-fullscreen-active');
+          }).catch(() => {});
+        } else {
+          document.exitFullscreen?.().then(() => {
+            fsBtn.textContent = '⛶ Fullscreen';
+            layout.classList.remove('kg3d-fullscreen-active');
+          }).catch(() => {});
+        }
+      });
+      document.addEventListener('fullscreenchange', () => {
+        const layout = document.getElementById('kg3dLayout');
+        if (!document.fullscreenElement && layout) {
+          fsBtn.textContent = '⛶ Fullscreen';
+          layout.classList.remove('kg3d-fullscreen-active');
+        }
+      });
+    }
+
     if (!_data.nodes.length) {
-      $('#kg3dContainer').innerHTML = '<p class="graph-placeholder">暂无数据。请先运行标签增强和层次聚类。</p>';
+      $('#kg3dContainer').innerHTML = '<p class="graph-placeholder">' + t('kg3d.empty') + '</p>';
       return;
     }
 
@@ -242,6 +270,7 @@ function wireSearch() {
   if (!searchInput) return;
   searchInput.addEventListener('input', () => {
     const q = searchInput.value.trim().toLowerCase();
+    const matchedIds = new Set();
     const rows = document.querySelectorAll('.kg3d-tree-row');
     rows.forEach(row => {
       const label = (row.querySelector('.kg3d-node-label')?.textContent || '').toLowerCase();
@@ -249,6 +278,16 @@ function wireSearch() {
       if (!node) return;
       if (!q || label.includes(q)) {
         node.style.display = '';
+        if (q && label.includes(q)) {
+          row.style.background = 'var(--accent-dim, rgba(229,130,78,0.2))';
+          row.style.borderLeft = '2px solid var(--accent)';
+          // Collect node IDs for 3D highlight.
+          const id = node.dataset.nodeId;
+          if (id) matchedIds.add(id);
+        } else {
+          row.style.background = '';
+          row.style.borderLeft = '';
+        }
         // Expand parents
         let p = node.parentElement;
         while (p) {
@@ -257,8 +296,25 @@ function wireSearch() {
         }
       } else {
         node.style.display = 'none';
+        row.style.background = '';
+        row.style.borderLeft = '';
       }
     });
+    // Highlight matched nodes in the 3D graph by enlarging them.
+    if (_graph && typeof _graph.nodeColor === 'function') {
+      try {
+        const origNodes = _graph.graphData()?.nodes || [];
+        if (q && matchedIds.size > 0) {
+          origNodes.forEach(n => {
+            n.__origSize = n.__origSize || n.val || 1;
+            n.val = matchedIds.has(n.id) ? (n.__origSize * 2.5) : n.__origSize;
+          });
+        } else {
+          origNodes.forEach(n => { if (n.__origSize) n.val = n.__origSize; });
+        }
+        _graph.graphData({ nodes: origNodes });
+      } catch { /* graph API may differ */ }
+    }
     // Update toggles
     document.querySelectorAll('.kg3d-tree-toggle').forEach(t => {
       const children = t.closest('.kg3d-tree-node')?.querySelector('.kg3d-tree-children');
@@ -303,9 +359,9 @@ function showPopover(node, tagItems) {
     const parentCount = Array.isArray(node.parentIds) ? node.parentIds.length : 1;
     popover.innerHTML = `
       <h3>🏷️ #${escapeHtml(node.labelZh)}</h3>
-      <p class="kg3d-popover-count">${node.itemCount || items.length} 个内容 · ${parentCount} 个上位概念</p>
+      <p class="kg3d-popover-count">${t('kg3d.items_count', { n: node.itemCount || items.length })} · ${t('kg3d.parents_count', { n: parentCount })}</p>
       ${node.multiParent ? '<div class="kg3d-node-state">多父概念：该 tag 同时属于多个 topic/subtopic</div>' : ''}
-      <h4>内容列表</h4>
+      <h4>${t('kg3d.item_list')}</h4>
       <div class="kg3d-popover-items">
         ${items.slice(0, 20).map(item => `
           <a href="${escapeAttr(item.url || '#')}" target="_blank" class="kg3d-popover-item" rel="noopener">
@@ -316,12 +372,12 @@ function showPopover(node, tagItems) {
     `;
   } else {
     const children = (_childrenMap[node.id] || []).slice(0, 20);
-    const typeLabel = { domain: '领域', topic: '方向', subtopic: '子方向' };
+    const typeLabel = { domain: t('kg3d.domain'), topic: t('kg3d.topic'), subtopic: t('kg3d.subtopic') };
     popover.innerHTML = `
       <h3>${node.type === 'domain' ? '🌐' : node.type === 'topic' ? '📂' : '◆'} ${escapeHtml(node.labelZh)}</h3>
-      <p class="kg3d-popover-count">${typeLabel[node.type] || node.type} · ${children.length} 个子节点</p>
+      <p class="kg3d-popover-count">${typeLabel[node.type] || node.type} · ${t('kg3d.children_count', { n: children.length })}</p>
       ${children.length ? `
-        <h4>子节点</h4>
+        <h4>${t('kg3d.children')}</h4>
         <div class="kg3d-popover-tags">
           ${children.map(c => `<span class="kg3d-popover-tag">${c.type==='tag'?'#':''}${escapeHtml(c.labelZh)} ${c.itemCount ? '<small>('+c.itemCount+')</small>' : ''}</span>`).join('')}
         </div>

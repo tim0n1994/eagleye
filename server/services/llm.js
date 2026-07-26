@@ -10,7 +10,7 @@
  * - enrichItems()              — Batch enrichment of items without summaries
  */
 
-const { getProvider, getProviderInfo, extractJSON } = require('./llm-provider');
+const { getProvider, getProviderInfo, getEnrichProvider, extractJSON } = require('./llm-provider');
 const { getDB } = require('../db/connection');
 // Circular dependency: jobs.js imports enrichItems/generateDailyDigest from here at top level.
 // Keep isJobCancelled as a lazy require to avoid the cycle breaking exports.
@@ -44,9 +44,18 @@ const ENRICH_PRIORITY_SQL = `
     WHEN 'github-trending' THEN 2
     WHEN 'hugging-face' THEN 3
     WHEN 'product-hunt' THEN 4
+    WHEN 'arxiv-ai' THEN 5
+    WHEN 'physical-ai-arxiv' THEN 6
+    WHEN 'reddit' THEN 7
+    WHEN 'xiaohongshu' THEN 8
     ELSE 99
   END
 `;
+
+// Max enrichment attempts before an item is considered "poisoned" and skipped.
+// Prevents the failure loop where items with unparseable LLM output are retried
+// on every pipeline run forever. Override via env for forced re-enrichment.
+const MAX_ENRICH_ATTEMPTS = parseInt(process.env.MAX_ENRICH_ATTEMPTS || '3', 10);
 
 // ─── §8.1 Per-Item Summary ──────────────────────────────────────────────
 
@@ -157,7 +166,7 @@ function createSummaryResult(item, data) {
  * plus extracted tags and entities.
  */
 async function generateItemSummary(item) {
-  const provider = getProvider();
+  const provider = getEnrichProvider();
   if (!provider) return null;
 
   const prompt = ITEM_SUMMARY_PROMPT
@@ -170,13 +179,13 @@ async function generateItemSummary(item) {
     .replace('{{content_excerpt}}', (item.original_summary || item.content_text || '').slice(0, 700))
     .replace('{{allowed_topics}}', JSON.stringify(getAllowedTopicsForPrompt()).slice(0, 1600));
 
-  const maxRetries = 2;
+  const maxRetries = 3;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const text = await provider.call(prompt, { temperature: 0.1, maxTokens: 1100 });
       if (!text) {
         if (attempt < maxRetries) {
-          await new Promise(r => setTimeout(r, 2000 * attempt));
+          await _llmBackoff(attempt, 'empty');
           continue;
         }
         return null;
@@ -190,10 +199,15 @@ async function generateItemSummary(item) {
 
       return createSummaryResult(item, data);
     } catch (err) {
+      // 1301 内容安全审核：不可恢复，立即跳过
+      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
+        console.log(`  ⏭  Summary skipped (${item.id?.slice(0, 8)}): content filtered by safety check`);
+        return null;
+      }
       if (attempt < maxRetries) {
-        await new Promise(r => setTimeout(r, 2000 * attempt));
+        await _llmBackoff(attempt, err.message);
       } else {
-        console.error(`  ❌ Summary generation failed after ${maxRetries} attempts:`, err.message);
+        console.error(`  ❌ Summary generation failed after ${maxRetries} attempts (${item.id?.slice(0, 8)}):`, err.message);
         return null;
       }
     }
@@ -235,7 +249,7 @@ items: {{items}}
 }`;
 
 async function generateItemSummariesBatch(items) {
-  const provider = getProvider();
+  const provider = getEnrichProvider();
   if (!provider || !items?.length) return [];
 
   const compactItems = items.map(item => ({
@@ -251,7 +265,7 @@ async function generateItemSummariesBatch(items) {
     .replace('{{allowed_topics}}', JSON.stringify(getAllowedTopicsForPrompt()).slice(0, 1400))
     .replace('{{items}}', JSON.stringify(compactItems));
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const text = await provider.call(prompt, { temperature: 0.1, maxTokens: Math.min(8192, 600 + items.length * 360) });
       const data = extractJSON(text);
@@ -261,13 +275,36 @@ async function generateItemSummariesBatch(items) {
           .filter(row => row && byId.has(row.id))
           .map(row => createSummaryResult(byId.get(row.id), row));
       }
+      console.warn(`  ⚠  Batch summary: LLM returned ${data ? typeof data : 'null'} (attempt ${attempt}/${3})`);
+      if (attempt < 3) await _llmBackoff(attempt, 'unparseable');
     } catch (err) {
-      if (attempt >= 2) {
-        console.error(`  ❌ Batch summary generation failed:`, err.message);
+      // 1301 内容安全审核：不可恢复，跳过不重试
+      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
+        console.warn(`  ⏭  Batch summary skipped (${items.length} items): content filtered by safety check`);
+        return [];
       }
+      console.warn(`  ⚠  Batch summary attempt ${attempt}/${3} failed (${items.length} items): ${err.message}`);
+      if (attempt < 3) await _llmBackoff(attempt, err.message);
     }
   }
+  console.warn(`  ⚠  Batch summary exhausted retries for ${items.length} items, falling back to single-item enrichment`);
   return [];
+}
+
+/**
+ * Backoff helper: model overload (529/1305) needs much longer waits than
+ * generic errors — the model capacity has to recover. Returns the ms waited.
+ */
+function _isOverloadError(msg) {
+  return /529|overloaded|1305|访问量过大|稍后再试/i.test(String(msg || ''));
+}
+
+async function _llmBackoff(attempt, errMsg) {
+  // 529 模型过载：需要长退避（10s/20s/30s），让它恢复容量
+  const base = _isOverloadError(errMsg) ? 10000 : 2000;
+  const ms = Math.min(30000, base * attempt);
+  await new Promise(r => setTimeout(r, ms));
+  return ms;
 }
 
 // ─── Entity & Tag Extraction ────────────────────────────────────────────
@@ -477,8 +514,11 @@ async function generateDailyDigest(date) {
   `).all(date);
 
   if (items.length === 0) {
-    console.log(`  ⚠  ${date}: no items with AI summaries yet, skipping digest`);
-    return null;
+    // 区分"这天完全没有 items"和"有 items 但全部无摘要"，便于定位
+    const totalCount = db.prepare('SELECT COUNT(*) as c FROM information_items WHERE digest_date = ?').get(date).c;
+    const reason = totalCount === 0 ? 'no items for this date' : `${totalCount} items but none joined (source/summary join dropped all)`;
+    console.log(`  ⚠  ${date}: ${reason}, skipping digest`);
+    return { __skipped: true, reason };
   }
 
   // Compact item format to fit in prompt
@@ -507,13 +547,31 @@ ${itemsText}
   "risk_watch": [{"risk": "", "evidence": "", "item_ids": []}]
 }`;
 
-  try {
-    const text = await provider.call(prompt, { temperature: 0.3, maxTokens: 4096 });
-    if (!text) return null;
+  // 每日简报只调一次 LLM，值得多等几轮撑过 glm-5.2 的间歇性过载(529)。
+  let text = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      text = await provider.call(prompt, { temperature: 0.3, maxTokens: 4096 });
+      break;
+    } catch (err) {
+      console.warn(`  ⚠  Digest attempt ${attempt}/5 failed for ${date}: ${err.message.slice(0, 120)}`);
+      if (attempt < 5) {
+        await _llmBackoff(attempt, err.message);
+      } else {
+        console.error(`  ❌ Digest generation failed for ${date} after 5 attempts: ${err.message.slice(0, 120)}`);
+        return null;
+      }
+    }
+  }
+  if (!text) {
+    console.warn(`  ⚠  Digest LLM returned empty/null for ${date} (items=${items.length})`);
+    return null;
+  }
 
     const data = extractJSON(text);
     if (!data) {
-      console.warn(`  ⚠  Digest LLM returned unparseable JSON for ${date}`);
+      const preview = (text || '').slice(0, 200).replace(/\s+/g, ' ');
+      console.warn(`  ⚠  Digest LLM returned unparseable JSON for ${date}: ${preview}`);
       return null;
     }
 
@@ -543,10 +601,6 @@ ${itemsText}
     );
 
     return { id: digestId, ...data };
-  } catch (err) {
-    console.error(`  ❌ Digest generation failed:`, err.message);
-    return null;
-  }
 }
 
 // ─── Batch Enrichment ───────────────────────────────────────────────────
@@ -559,8 +613,9 @@ async function enrichItems(batchSize = 1600, opts = {}) {
   const {
     jobId,
     priorityOnly = false,
+    resetAttempts = false,
     batchItemSize = Math.max(1, Math.min(parseInt(process.env.ENRICH_LLM_BATCH_ITEMS || '20', 10), 48)),
-    batchConcurrency = Math.max(1, Math.min(parseInt(process.env.ENRICH_LLM_BATCH_CONCURRENCY || '16', 10), 32)),
+    batchConcurrency = Math.max(1, Math.min(parseInt(process.env.ENRICH_LLM_BATCH_CONCURRENCY || '8', 10), 32)),
   } = opts;
   const db = getDB();
   if (!db) {
@@ -570,6 +625,14 @@ async function enrichItems(batchSize = 1600, opts = {}) {
   if (!getProvider()) {
     console.warn('  ⚠  No LLM provider configured; enrichment skipped.');
     return { enriched: 0, total: 0, skipped: true, reason: 'no-llm-provider' };
+  }
+
+  // If resetAttempts is set (e.g. after a prompt upgrade), clear the poison-pill
+  // counter so previously-failed items get another chance with the new prompt.
+  if (resetAttempts) {
+    const reset = db.prepare(`UPDATE information_items SET enrichment_attempts = 0 WHERE id NOT IN (SELECT item_id FROM ai_summaries)`);
+    const info = reset.run();
+    console.log(`  🔄 Reset enrichment_attempts for ${info.changes} unsummarized items`);
   }
 
   const updateProgress = (progress) => {
@@ -586,17 +649,32 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     FROM information_items i
     JOIN sources s ON i.source_id = s.id
     WHERE i.id NOT IN (SELECT item_id FROM ai_summaries)
+      AND i.enrichment_attempts < ?
       ${priorityFilter}
     ORDER BY ${ENRICH_PRIORITY_SQL} ASC,
              i.score DESC,
              COALESCE(i.published_at, i.created_at) DESC
     LIMIT ?
-  `).all(...(priorityOnly ? ENRICH_PRIORITY_SOURCES : []), batchSize);
+  `).all(MAX_ENRICH_ATTEMPTS, ...(priorityOnly ? ENRICH_PRIORITY_SOURCES : []), batchSize);
 
   if (items.length === 0) {
     console.log('  📡 No items to enrich.');
     return { enriched: 0, total: 0 };
   }
+
+  // Mark these items as "attempted" so a failure doesn't retry forever.
+  // Increment the attempt counter at selection time (not at failure time) so
+  // even a crash mid-batch counts as an attempt.
+  const markAttempted = db.prepare(`
+    UPDATE information_items
+    SET enrichment_attempts = enrichment_attempts + 1,
+        last_enrich_attempt = datetime('now')
+    WHERE id = ?
+  `);
+  const markTx = db.transaction(() => {
+    for (const item of items) markAttempted.run(item.id);
+  });
+  markTx();
 
   console.log(`  📡 Enriching ${items.length} items with AI...`);
   updateProgress({

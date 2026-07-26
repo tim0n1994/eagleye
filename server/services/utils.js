@@ -28,6 +28,7 @@ async function fetchURL(targetUrl, options = {}) {
         'User-Agent': 'EagleyeBot/1.0',
         'Accept': 'application/json, application/xml, text/xml, */*',
         'Connection': 'keep-alive',
+        ...options.headers,
       },
     };
 

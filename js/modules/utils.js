@@ -2,20 +2,22 @@
  * Utils module
  */
 
+import { t, getLanguage } from './i18n.js';
+
 export const $ = (sel, ctx) => (ctx || document).querySelector(sel);
 export function timeAgo(dateStr) {
   const now = Date.now();
   const date = new Date(dateStr);
   const diff = now - date.getTime();
-  if (diff < 0) return '刚刚';
+  if (diff < 0) return t('time.now');
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return mins + ' 分钟前';
+  if (mins < 1) return t('time.now');
+  if (mins < 60) return t('time.minutes', { n: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return hours + ' 小时前';
+  if (hours < 24) return t('time.hours', { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 30) return days + ' 天前';
-  return date.toLocaleDateString('zh-CN');
+  if (days < 30) return t('time.days', { n: days });
+  return date.toLocaleDateString(getLanguage() === 'zh' ? 'zh-CN' : 'en-US');
 }
 
 export function extractDomain(url) {
@@ -43,23 +45,23 @@ export function sleep(ms) {
 }
 
 export function escapeHtml(str) {
-  if (!str) return '';
+  if (str == null) return '';
   return String(str)
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
 
 export function escapeAttr(str) {
-  if (!str) return '';
+  if (str == null) return '';
   return String(str)
-    .replace(/&/g, '&')
-    .replace(/"/g, '"')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
-    .replace(/</g, '<')
-    .replace(/>/g, '>');
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 export function localDateStr(date) {
