@@ -290,7 +290,6 @@ export function renderScreenshotBeautify() {
   `);
 }
 
-// escapeHtml is imported from './utils.js' at the top of the file
 
 // ─── Placeholder functions for missing tools ──────────────────────────────────
 
