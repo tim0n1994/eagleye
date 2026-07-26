@@ -365,55 +365,6 @@ export function renderItemCard(item) {
   `;
 }
 
-/**
- * Compact feed row: one line per item, dense and scannable.
- * Used in source detail and digest pages for fast browsing.
- */
-export function renderItemRow(item) {
-  const payload = item.source_payload || {};
-  const popularity = item.popularity || {};
-  const summary = item.ai_summary || {};
-
-  const rankChip = popularity.points
-    ? `<span class="feed-rank">▲ ${popularity.points}</span>`
-    : popularity.stars
-    ? `<span class="feed-rank">★ ${popularity.stars}</span>`
-    : `<span class="feed-rank feed-rank-num">#${item.importance || 5}</span>`;
-  const commentChip = popularity.comments ? `<span class="feed-meta">💬 ${popularity.comments}</span>` : '';
-  const timeChip = `<span class="feed-time">${item.published_at ? timeAgo(item.published_at) : timeAgo(item.created_at)}</span>`;
-
-  const title = getItemDisplayTitle(item);
-  const oneLinerText = pickZh(
-    summary.one_liner || summary.short_summary,
-    summary.one_liner_zh || summary.short_summary_zh
-  );
-  const oneLiner = oneLinerText
-    ? `<span class="feed-oneliner">${escapeHtml(oneLinerText)}</span>`
-    : '';
-  const topics = (item.topics || []).slice(0, 2).map(t =>
-    `<a href="/topics/${escapeAttr(t.slug)}" class="feed-topic">${escapeHtml(pickZh(t.name, t.name_zh))}</a>`
-  ).join('');
-
-  const researchLabel = getLanguage() === 'zh' ? '研究' : 'Research';
-  const originalLabel = getLanguage() === 'zh' ? '原文' : 'Source';
-
-  return `
-    <article class="feed-row">
-      <div class="feed-row-rank">${rankChip}</div>
-      <div class="feed-row-main">
-        <h4 class="feed-row-title">
-          <a href="${escapeAttr(item.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(title)}</a>
-        </h4>
-        ${oneLiner ? `<div class="feed-row-sub">${oneLiner}</div>` : ''}
-      </div>
-      <div class="feed-row-meta">
-        ${commentChip}${topics}${timeChip}
-        <button class="feed-btn research-btn" data-item-id="${escapeAttr(item.id)}" data-title="${escapeAttr(getItemResearchTitle(item))}" title="${escapeAttr(researchLabel)}">🔍</button>
-        <a class="feed-btn feed-btn-link" href="${escapeAttr(item.canonical_url || '#')}" target="_blank" rel="noopener" title="${escapeAttr(originalLabel)}">↗</a>
-      </div>
-    </article>
-  `;
-}
 
 /**
  * Compact mini card for source detail 3-column grid.

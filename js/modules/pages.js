@@ -10,18 +10,11 @@
  * pulling the whole barrel.
  */
 
-// shared.js also exports internal helpers for the other page modules; the
-// barrel deliberately re-exports only what pages.js exposed before the split.
-export {
-  showLoader,
-  showError,
-  renderSourceNav,
-  hydrateSourceNavPills,
-  renderItemCard,
-  renderItemRow,
-  renderItemMiniCard,
-  markItemSeen,
-} from './pages/shared.js';
+// shared.js also exports internal helpers for the other page modules. The
+// barrel re-exports only the ones something actually imports through it
+// (app-main.js and pages.test.js); page modules pull the rest straight from
+// ./pages/shared.js.
+export { showLoader, showError, renderItemCard, markItemSeen } from './pages/shared.js';
 export * from './pages/home.js';
 export * from './pages/digest.js';
 export * from './pages/sources.js';
