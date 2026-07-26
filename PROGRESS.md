@@ -757,3 +757,49 @@ ignores: ["js/lib/", "node_modules/", "kg-worker/", "_*.js"],
 - `npm run lint` → **0 error**（106 warning 为既有 `parsed` 未用参数等）
 - 模拟 CI 树 → **exit 0**（修复前 exit 1）
 - `vitest` 210/210；112 路由注册正常；安全面无回归
+
+---
+
+## B68 剩余单体拆分（2026-07-27）
+
+B66 之后仍有 5 个文件超过项目自定的 800 行准则。本轮全部拆完，**现在全仓库最大文件 716 行**。
+
+| 文件 | 之前 | 之后 | 拆法 |
+|---|---:|---|---|
+| `js/modules/tools.js` | 2125 | **87**（注册表+分发器） | 6 个分类模块（text/image/media/files/calc/devnet）+ `tools/shell.js` |
+| `server/services/signals.js` | 1247 | **505**（读取层） | `signals-classify.js`(339) + `signals-score.js`(434) |
+| `server/services/topic-graph.js` | 982 | **632** | `kg3d-data.js`(362，3 种 KG3D 模式) |
+| `js/modules/i18n.js` | 976 | **108**（查找机制） | `i18n/en.js`(448) + `i18n/zh.js`(433) + `dictionary.js`(10) |
+| `server/services/llm.js` | 859 | **716** | `llm-digest.js`(155) + `llm-shared.js`(30) |
+
+**分层方向都先验证过无环**：signals 的 classify 是叶子、scoring→classify、reads 只需 `SIGNAL_TYPES`；
+topic-graph 的 KG3D 块不引用上游任何函数；tools 的 `toolShell` 单独成模块，避免组文件与分发器互相 import。
+
+`signals.js`/`topic-graph.js`/`llm.js` 保持原路径与原导出，所以**上游 require 一行未改**。
+
+### 拆分过程中被工具挡下的三个问题
+
+1. **模板字符串骗过了大括号计数**：tools.js 的 render 函数把 CSS/JS 嵌在模板字面量里，
+   naive 的 `{`/`}` 计数切错了 `calc.js` 和 `text.js`（`node --check` 直接报 parse error）。
+   改用更稳的边界规则——顶层函数结束于**第 0 列的单独 `}`**——重切后全部通过。
+2. **组文件忘了加 `export`**：原文件里这些 render 函数都是非导出的，搬出去后仍是非导出，
+   于是 `toolRegistry` 里 34 个 `render` 全是 `undefined`。**vitest 当场 21 红**
+   （`tool.render is not a function`）。补 export 后回到 210 全绿。
+3. `llm-digest.js` 抽出后缺 `extractJSON`/`getProviderInfo`，`llm-shared.js` 缺 `_isOverloadError`——
+   全部由 eslint `no-undef` 指出。
+
+### 验收（实跑）
+
+| 项 | 结果 |
+|---|---|
+| 文件大小 | **全仓库 0 个文件 >800 行**（最大 `llm.js` 716） |
+| 路由 | 112 注册，async 39 |
+| 服务导出 | signals 13/13、topic-graph 5/5，零缺失零多余 |
+| 前端导出 | `pages.js` **45/45** 全部是 function |
+| 工具注册表 | **35/35 slug 全部渲染**（357–7848 字节），未知 slug 正确回落 "not found" |
+| i18n | en 380 / zh 380 键对称；`setLanguage` 往返正确（LOADING… ↔ 加载中…）；缺失键回落为 key 本身 |
+| 真实渲染 | `/` 78KB、`/signals` 3.1MB、`/intelligence` 41KB、`/kg3d` 825KB、`/settings` 28KB（含 API keys 面板）、`/tools/json-formatter` 7.8KB；**控制台 0 error** |
+| 后端 API | 15 个端点逐一实跑 200（覆盖全部路由模块） |
+| 测试 | **210/210** |
+| eslint | **0 error** |
+| 安全面 | 无回归：db/源码/日志/config 全 404；SSRF 403；未登录 API 401；watchlist-feed 401；公开 feed 200；限流 401×10→429 |
