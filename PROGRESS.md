@@ -823,3 +823,86 @@ topic-graph 的 KG3D 块不引用上游任何函数；tools 的 `toolShell` 单�
 
 **knip 需要一次专门的处理**（先把 `server.js` 加进 entry 让依赖图完整，再逐条甄别命名空间用法），
 不适合夹在拆分里做——留作下一项。
+
+---
+
+## B69 收尾：knip / CI 第三个 job（2026-07-27）
+
+B68 留下的最后一项。目标是让 CI 三个 job 全绿，过程中 knip 帮忙抓到一个**我自己造成的真 bug**。
+
+### 🔴 B67 移动脚本时把 require 路径改断了
+
+B67 把 `enrich_all.js` 从根目录 `git mv` 到 `scripts/`，但它内部是
+`require('./server/db/connection')`——**相对根目录**。移过去之后这两行全部失效，脚本一跑就崩。
+`scripts/` 下其余 9 个文件用的都是 `../server/...`。
+
+knip 的 "Unresolved imports" 报出来的。同时发现 `scripts/fast-enrich-parallel.js`
+有同样的问题，且 `git show 7fbaa97` 确认**它在初始提交时就是断的**（既有，非本轮）。两个都已修正。
+
+教训：`git mv` 一个脚本要顺带检查它的相对路径，`node --check` 只看语法、看不出这个。
+
+### knip 的配置：先让它可信，再让它有用
+
+原配置 `entry: ["js/app.js", "js/sources.js"]`（后者已被删）导致依赖图不完整。
+把 entry 补全后 findings 从 45 涨到 102——**不是变差，是图终于走通了**。
+
+但补全之后暴露出 knip 在本项目的根本限制：**它追踪不了 CommonJS 的命名空间访问**。
+`server/services/auth.js` 的 15 个导出全被报成未使用，而实际是
+`const auth = require(...)` + `auth.getSessionUser()`。逐个 grep 反证：
+
+| 符号 | knip | 实际调用点 |
+|---|---|---:|
+| `getSessionUser` | 未使用 | 2 |
+| `getApiKeyOwner` | 未使用 | 1 |
+| `createSession` | 未使用 | 2 |
+| `hashPassword` | 未使用 | 1 |
+
+试过把 `project` 缩到 `js/**`（前端 ESM，导出分析准确），但那样后端依赖
+（bcryptjs / better-sqlite3 / resend）又全被误报成未使用。**两半无法同时准确。**
+
+最终配置：保留全量 scope（未使用文件、未使用依赖它都判得准），
+用 `--exclude exports,nsExports,types,enumMembers` 关掉在 CommonJS 上不可用的导出分析，
+并在 knip.json 与 package.json 注明原因。同时删掉 package.json 里过时的内联 `knip` 块
+（与 knip.json 冲突）。**现在 knip 只报一条真实发现。**
+
+### 前端死代码清理（grep 逐个验证，不依赖 knip 结论）
+
+导出分析虽在后端不可用，但它对前端 ESM 是准的，报的 8 条我逐个 grep 核实后处理：
+
+- `renderItemRow`（`pages/shared.js`，49 行）：**全仓库只有定义和 barrel 转发两处引用，真死代码**，删除。（注意 `ui.js` 的 `createItemRow` 是另一个函数且有测试覆盖。）
+- barrel 收窄：`renderSourceNav`/`hydrateSourceNavPills`/`renderItemMiniCard` 仍在用，但页面模块都是直接从 `./pages/shared.js` 导入，没人走 barrel → 从 barrel 的再导出列表移除。**前端导出面 45 → 41**（这是有意收窄，不是拆分丢失）。
+- `LANGS`、`progressiveLoad`：只在本文件内使用 → 去掉 `export`。
+
+### 🔴 顺带确认一个验证盲区：vitest 抓不到坏掉的 re-export
+
+删掉 `renderItemRow` 后 barrel 一度仍在转发它——这是个**链接期就该报错**的坏模块。
+但 `vitest` 依然 210 全绿。实测复现：故意保留这条坏转发，`pages.test.js` 仍 8/8 通过。
+
+原因是 Vite 的转换只解析测试真正用到的名字，而原生 ESM 会做完整链接。
+本会话早先 `shared.js` 缺 `API_BASE` 时，正是**浏览器**抛的
+`does not provide an export named`，当时 vitest 同样是全绿的。
+
+**结论：这个无打包器项目里，浏览器验证不是可选项——测试套件看不见模块图的断裂。**
+
+### 验收
+
+| 门 | 结果 |
+|---|---|
+| CI lint | **PASS** |
+| CI test | **PASS**（210/210） |
+| CI knip | 仅剩 2 条 unused dependency（见下，需你决定） |
+| 模块图 | 浏览器实测 barrel + `app-main.js` 全部链接成功，导出 41，控制台 0 error |
+| 路由 | 112 |
+| 脚本 | `scripts/` 下所有相对 require 均可解析 |
+
+### 需要你决定的一件事
+
+`@vitalets/google-translate-api` 与 `google-translate-api-x` 是 **dependencies（生产依赖），零引用**——
+`translate.js` 走的是 LLM provider，不是 Google Translate。两者只出现在初始提交，
+文档与路线图均无提及，判断是遗留。**生产依赖的移除我不擅自做**，确认后一条命令：
+
+```bash
+npm uninstall @vitalets/google-translate-api google-translate-api-x
+```
+
+跑完 CI 三个 job 即全绿。

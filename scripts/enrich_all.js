@@ -1,6 +1,6 @@
 require('dotenv').config();
-const { getDB } = require('./server/db/connection');
-const { enrichItems } = require('./server/services/llm');
+const { getDB } = require('../server/db/connection');
+const { enrichItems } = require('../server/services/llm');
 const db = getDB();
 
 async function run() {

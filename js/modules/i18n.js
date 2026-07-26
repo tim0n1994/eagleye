@@ -80,7 +80,7 @@ export function onLanguageChange(fn) {
   return () => _listeners.delete(fn);
 }
 
-export const LANGS = ['en', 'zh'];
+const LANGS = ['en', 'zh'];
 
 /**
  * Walk the current DOM and replace any `data-i18n` or `data-i18n-attr` elements
