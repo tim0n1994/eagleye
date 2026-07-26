@@ -16,6 +16,9 @@ eagleye.db
 eagleye.db-shm
 eagleye.db-wal
 
-# Ad-hoc scripts / one-off logs at repo root
-_*.js
-_*.log
+# Ad-hoc scripts / one-off logs at repo root. Anchored with a leading slash:
+# unanchored, `_*.js` also matched server/routes/_shared.js, which every route
+# module requires — it silently stayed out of git and the committed tree could
+# not boot.
+/_*.js
+/_*.log
