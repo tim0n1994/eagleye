@@ -32,7 +32,6 @@ export const UI = {
     this.dom.agentCount = $('#agentCount');
     this.dom.logEntries = $('#logEntries');
     this.dom.clearLog = $('#clearLog');
-    this.dom.bottomPanel = $('#bottomPanel');
   },
 
   /**
@@ -69,97 +68,6 @@ export const UI = {
     const savedOpen = localStorage.getItem('eagleye-sidebar-open');
     if (savedOpen === 'true' && sidebar) {
       sidebar.classList.add('open');
-    }
-  },
-
-  /**
-   * Set up drag-to-resize on the panel drag handle.
-   */
-  _initDragResize() {
-    const handle = document.getElementById('panelDragHandle');
-    const panel = this.dom.bottomPanel;
-    if (!handle || !panel) return;
-
-    let isDragging = false;
-    let startY = 0;
-    let startHeight = 0;
-
-    const getClientY = (e) => {
-      if (e.touches && e.touches.length > 0) return e.touches[0].clientY;
-      return e.clientY;
-    };
-
-    const clampHeight = (h) => {
-      return Math.min(window.innerHeight * 0.9, Math.max(120, h));
-    };
-
-    const onStart = (e) => {
-      e.preventDefault();
-      isDragging = true;
-      startY = getClientY(e);
-      startHeight = panel.offsetHeight;
-      document.body.style.cursor = 'row-resize';
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onEnd);
-      document.addEventListener('touchmove', onMove, { passive: false });
-      document.addEventListener('touchend', onEnd);
-    };
-
-    const onMove = (e) => {
-      if (!isDragging) return;
-      e.preventDefault();
-      const dy = startY - getClientY(e);
-      const newH = clampHeight(startHeight + dy);
-      this._setPanelHeight(newH);
-    };
-
-    const onEnd = () => {
-      isDragging = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onEnd);
-      document.removeEventListener('touchmove', onMove);
-      document.removeEventListener('touchend', onEnd);
-
-      // Save height preference
-      localStorage.setItem('eagleye-panel-height', String(panel.offsetHeight));
-    };
-
-    handle.addEventListener('mousedown', onStart);
-    handle.addEventListener('touchstart', onStart, { passive: false });
-
-    // Re-clamp on window resize if needed
-    this._resizeHandler = () => {
-      const currentH = panel.offsetHeight;
-      const maxH = window.innerHeight * 0.9;
-      if (currentH > maxH) {
-        this._setPanelHeight(maxH);
-        localStorage.setItem('eagleye-panel-height', String(maxH));
-      }
-    };
-    window.addEventListener('resize', this._resizeHandler);
-  },
-
-  /**
-   * Set the panel height and update page layout spacing.
-   * @param {number} h - New height in pixels
-   */
-  _setPanelHeight(h) {
-    const panel = this.dom.bottomPanel;
-    if (!panel) return;
-
-    panel.style.height = h + 'px';
-
-    // Sync main layout and footer spacing
-    const mainLayout = document.querySelector('.main-layout');
-    const footer = document.querySelector('.footer');
-    if (mainLayout) {
-      mainLayout.style.paddingBottom = h + 'px';
-    }
-    if (footer) {
-      footer.style.marginBottom = h + 'px';
     }
   },
 

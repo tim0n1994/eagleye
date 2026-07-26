@@ -244,7 +244,20 @@ async function generateItemResearch(itemId) {
   `).run(reportId, itemId, prompt, provider.name);
 
   try {
-    const text = await provider.call(prompt, { temperature: 0.2, maxTokens: 8192 });
+    // 重试撑过智谱账户级限流(429/1302) 和模型过载(529/1305)
+    let text = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        text = await provider.call(prompt, { temperature: 0.2, maxTokens: 8192 });
+        break;
+      } catch (callErr) {
+        if (attempt >= 4) throw callErr;
+        const isOverload = /429|529|1302|1305|rate.limit|overload|速率限制|访问量过大/i.test(callErr.message);
+        const ms = isOverload ? 8000 * attempt : 2000 * attempt;
+        console.warn(`  ⚠  Research attempt ${attempt}/4 failed (${itemId?.slice(0,8)}): ${callErr.message.slice(0,80)} — retry in ${ms/1000}s`);
+        await new Promise(r => setTimeout(r, ms));
+      }
+    }
     if (!text) throw new Error('LLM returned empty response');
 
     const info = getProviderInfo();
@@ -328,8 +341,112 @@ function getResearchReport(reportId) {
   return db.prepare('SELECT * FROM research_reports WHERE id = ?').get(reportId);
 }
 
+// ─── §9.2 Topic-Level Deep Research ─────────────────────────────────────
+
+const TOPIC_RESEARCH_PROMPT = `/no_think
+你是 Eagleye 的专题研究员。请基于以下 topic 的知识图谱和时间线数据做一次严谨的专题研究。
+
+Topic：{{topic_name}}
+描述：{{topic_description}}
+时间范围：{{from}} 到 {{to}}
+
+近期代表性条目：
+{{top_items}}
+
+相关实体：
+{{entities}}
+
+请输出 Markdown 报告：
+# 专题研究：{{topic_name}}
+## 一句话结论
+## 当前阶段判断
+## 关键节点（公司/项目/论文）
+## 时间线转折点
+## 新兴分支与标签
+## 对开发者/创业者/研究者的建议
+## 后续观察清单
+## 反面观点与不确定性
+
+规则：
+- 明确信息来自条目原文还是你的推理。
+- 不要编造引用。
+- 如果证据不足，要写明证据不足。`;
+
+/**
+ * Generate a topic-level deep research report (§9.2).
+ * Collects the topic's recent items + entities, runs the TOPIC_RESEARCH_PROMPT,
+ * and stores the result as a research_reports row (item_id = null, keyed by topic).
+ */
+async function generateTopicResearch(topicSlug, opts = {}) {
+  const db = getDB();
+  if (!db) return null;
+  const provider = getProvider();
+  if (!provider) return null;
+
+  const topic = db.prepare('SELECT * FROM topics WHERE slug = ?').get(topicSlug);
+  if (!topic) return null;
+
+  // Gather recent items for this topic (via item_topics).
+  const items = db.prepare(`
+    SELECT i.id, i.title, i.title_zh, i.digest_date, i.canonical_url,
+           s.label AS source_label,
+           a.one_liner_zh, a.short_summary_zh,
+           ss.alpha_score, ss.signal_type
+    FROM item_topics it
+    JOIN information_items i ON i.id = it.item_id
+    JOIN sources s ON i.source_id = s.id
+    LEFT JOIN ai_summaries a ON a.item_id = i.id
+    LEFT JOIN signal_scores ss ON ss.item_id = i.id
+    WHERE it.topic_id = ?
+    ORDER BY i.digest_date DESC
+    LIMIT 30
+  `).all(topic.id);
+
+  // Gather entities for this topic (via graph_edges item_mentions_entity path).
+  let entities = [];
+  try {
+    entities = db.prepare(`
+      SELECT DISTINCT e.name, e.type
+      FROM graph_edges ge
+      JOIN entities e ON e.id = ge.to_id
+      WHERE ge.from_type = 'topic' AND ge.from_id = ? AND ge.to_type = 'entity'
+      LIMIT 20
+    `).all(topic.id);
+  } catch { /* graph_edges schema may differ → skip */ }
+
+  const topItemsText = items.slice(0, 15).map(it =>
+    `- [${it.digest_date}] ${it.title_zh || it.title} (${it.source_label}, α=${(it.alpha_score || 0).toFixed(2)})`
+  ).join('\n') || '无';
+  const entityText = entities.map(e => `${e.name} (${e.type})`).join(', ') || '无';
+
+  const prompt = TOPIC_RESEARCH_PROMPT
+    .replace(/\{\{topic_name\}\}/g, topic.name)
+    .replace('{{topic_description}}', topic.description || '')
+    .replace('{{from}}', items[items.length - 1]?.digest_date || '—')
+    .replace('{{to}}', items[0]?.digest_date || '—')
+    .replace('{{top_items}}', topItemsText)
+    .replace('{{entities}}', entityText);
+
+  const reportId = generateId();
+  const info = getProviderInfo();
+  db.prepare(`INSERT INTO research_reports (id, item_id, status, prompt, model_provider, model_name) VALUES (?, NULL, 'running', ?, ?, ?)`)
+    .run(reportId, prompt.slice(0, 4000), info.provider, info.model);
+
+  try {
+    const report = await provider.call(prompt, { temperature: 0.2, maxTokens: 4000 });
+    if (!report) throw new Error('LLM returned empty response');
+    db.prepare(`UPDATE research_reports SET status = 'completed', report_markdown = ?, completed_at = datetime('now') WHERE id = ?`)
+      .run(report, reportId);
+    return { id: reportId, report_markdown: report, topic: topic.name };
+  } catch (err) {
+    db.prepare(`UPDATE research_reports SET status = 'failed', error = ? WHERE id = ?`).run(err.message, reportId);
+    return { id: reportId, error: err.message };
+  }
+}
+
 module.exports = {
   generateItemResearch,
+  generateTopicResearch,
   getResearchReport,
   loadResearchContext,
   answerItemResearchChat,

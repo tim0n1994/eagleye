@@ -46,12 +46,28 @@ function mimeType(ext) {
 }
 
 // --- Static File Serving ---
+// The repo root holds eagleye.db (password hashes, session tokens, API keys),
+// .env, server-side source and *.log. Serving ROOT wholesale made all of it
+// downloadable without auth, so static serving is restricted to the asset
+// surface index.html actually references. Add a path here to make it public.
+const PUBLIC_DIRS = ['/css/', '/js/', '/icons/'];
+const PUBLIC_FILES = new Set(['/index.html', '/manifest.json', '/sw.js', '/favicon.ico']);
+
+function isPublicAsset(p) {
+  return PUBLIC_FILES.has(p) || PUBLIC_DIRS.some((dir) => p.startsWith(dir));
+}
+
 function serveStatic(res, reqPath) {
   const safePath = path.normalize(reqPath).replace(/^(\.\.(\/|\\|$))+/g, '');
   const filePath = path.join(ROOT, safePath);
 
   if (!filePath.startsWith(ROOT)) {
     return sendError(res, 403, 'Forbidden');
+  }
+
+  // 404 rather than 403 so a probe can't distinguish "exists but private".
+  if (!isPublicAsset(safePath)) {
+    return sendError(res, 404, 'Not Found');
   }
 
   fs.readFile(filePath, (err, data) => {
@@ -130,16 +146,8 @@ async function proxyRSS(rssUrl) {
 }
 
 // --- Feed Generators ---
-function escapeXML(str) {
-  return String(str || '')
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')  // strip XML-invalid control chars
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
+// escapeXML lives in services/utils.js; api.js already imports it from there.
+const { escapeXML } = require('./server/services/utils');
 
 async function generateFeedXML() {
   const db = getDB();
@@ -233,14 +241,64 @@ async function handleRequest(req, res) {
 
   try {
     // --- API Routes ---
+    // Build the routes map once per request (cheap; avoids stale-handler bugs).
+    const routeMap = {};
+    registerRoutes(routeMap);
+
+    // --- Clean feed URL aliases (§13): rewrite public feed paths to their
+    // /api/ handlers so /topics/:slug/feed.xml etc. work as spec'd. Done before
+    // the /api/ check so the alias is transparent to everything below.
+    {
+      const topicFeed = pathname.match(/^\/topics\/([^/]+)\/feed\.xml$/);
+      const entityFeed = pathname.match(/^\/entities\/([^/]+)\/feed\.xml$/);
+      const sourceFeed = pathname.match(/^\/feed\/([^/]+)$/);
+      const watchlistFeed = pathname === '/watchlist/feed.xml';
+      if (watchlistFeed) {
+        const handler = routeMap['/api/watchlist/feed.xml'];
+        if (handler) return handler(req, res, parsed);
+      } else if (topicFeed) {
+        const handler = routeMap['/api/topics/:slug/feed.xml'];
+        if (handler) return handler(req, res, parsed, { slug: topicFeed[1] });
+      } else if (entityFeed) {
+        const handler = routeMap['/api/entities/:slug/feed.xml'];
+        if (handler) return handler(req, res, parsed, { slug: entityFeed[1] });
+      } else if (sourceFeed) {
+        const handler = routeMap['/api/feed/:source'];
+        if (handler) return handler(req, res, parsed, { source: sourceFeed[1] });
+      }
+    }
+
     if (pathname.startsWith('/api/')) {
-      // Build routes map on first call
-      const routeMap = {};
-      registerRoutes(routeMap);
+
+      // ─── Auth gate: all /api/ routes require login except auth endpoints ───
+      const AUTH_WHITELIST = new Set([
+        '/api/auth/login', '/api/auth/register', '/api/auth/verify', '/api/auth/me', '/api/auth/logout',
+      ]);
+      if (!AUTH_WHITELIST.has(pathname)) {
+        const auth = require('./server/services/auth');
+        // Try session cookie first, then API key (Authorization: Bearer eg_xxx)
+        let user = auth.getSessionUser(req);
+        if (!user) {
+          const authHeader = req.headers['authorization'] || '';
+          const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+          if (bearer) user = auth.getApiKeyOwner(bearer);
+        }
+        if (!user) return sendError(res, 401, 'Authentication required');
+        if (user.status !== 'active') return sendError(res, 403, 'Account disabled');
+        req.user = user;
+        // Admin-only endpoints
+        if (pathname.startsWith('/api/admin/') && user.role !== 'admin') {
+          return sendError(res, 403, 'Admin access required');
+        }
+      }
+      // Clean up expired sessions periodically (cheap check)
+      if (Math.random() < 0.01) {
+        try { getDB().prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run(); } catch {}
+      }
 
       // Match exact routes or parameterized routes
       const handler = routeMap[pathname];
-      
+
       if (handler) {
         if (handler.constructor.name === 'AsyncFunction') {
           await handler(req, res, parsed);
@@ -255,12 +313,14 @@ async function handleRequest(req, res) {
         { pattern: /^\/api\/topics\/([^/]+)\/feed\.xml$/, handlerName: '/api/topics/:slug/feed.xml' },
         { pattern: /^\/api\/topics\/([^/]+)\/timeline$/, handlerName: '/api/topics/:slug/timeline' },
         { pattern: /^\/api\/topics\/([^/]+)\/graph$/, handlerName: '/api/topics/:slug/graph' },
+        { pattern: /^\/api\/topics\/([^/]+)\/research$/, handlerName: '/api/topics/:slug/research' },
         { pattern: /^\/api\/topics\/(.+)$/, handlerName: '/api/topics/:slug' },
         { pattern: /^\/api\/items\/([^/]+)\/summary$/, handlerName: '/api/items/:id/summary' },
         { pattern: /^\/api\/items\/([^/]+)\/research\/chat$/, handlerName: '/api/items/:id/research/chat' },
         { pattern: /^\/api\/items\/([^/]+)\/research$/, handlerName: '/api/items/:id/research' },
         { pattern: /^\/api\/items\/([^/]+)\/deployment-plan$/, handlerName: '/api/items/:id/deployment-plan' },
         { pattern: /^\/api\/items\/([^/]+)\/save$/, handlerName: '/api/items/:id/save' },
+        { pattern: /^\/api\/items\/([^/]+)\/seen$/, handlerName: '/api/items/:id/seen' },
         { pattern: /^\/api\/items\/(.+)$/, handlerName: '/api/items/:id' },
         { pattern: /^\/api\/research\/(.+)$/, handlerName: '/api/research/:id' },
         { pattern: /^\/api\/feed\/(.+)$/, handlerName: '/api/feed/:source' },
@@ -273,26 +333,15 @@ async function handleRequest(req, res) {
         { pattern: /^\/api\/jobs\/([^/]+)\/cancel$/, handlerName: '/api/jobs/:id/cancel' },
         { pattern: /^\/api\/jobs\/(.+)$/, handlerName: '/api/jobs/:id' },
         { pattern: /^\/api\/compare\/(.+)$/, handlerName: '/api/compare/:competitor' },
+        { pattern: /^\/api\/entities\/([^/]+)\/feed\.xml$/, handlerName: '/api/entities/:slug/feed.xml' },
+        { pattern: /^\/api\/entities\/([^/]+)\/series$/, handlerName: '/api/entities/:slug/series' },
+        { pattern: /^\/api\/entities\/(.+)$/, handlerName: '/api/entities/:slug' },
+        { pattern: /^\/api\/signals\/([^/]+)$/, handlerName: '/api/signals/:id' },
+        { pattern: /^\/api\/admin\/users\/([^/]+)\/role$/, handlerName: '/api/admin/users/:id/role' },
+        { pattern: /^\/api\/admin\/users\/([^/]+)\/disable$/, handlerName: '/api/admin/users/:id/disable' },
+        { pattern: /^\/api\/admin\/users\/([^/]+)\/enable$/, handlerName: '/api/admin/users/:id/enable' },
+        { pattern: /^\/api\/auth\/keys\/(.+)$/, handlerName: '/api/auth/keys/:key' },
       ];
-
-      // More specific routes must come before less specific ones
-      const specificRoutes = [
-        '/api/topics/build',
-        '/api/topics/:slug/feed.xml',
-        '/api/jobs/fetch-source',
-        '/api/jobs/build-year-archive',
-        '/api/signals/rescore',
-      ];
-      for (const specific of specificRoutes) {
-        if (pathname === specific && routeMap[specific]) {
-          if (routeMap[specific].constructor.name === 'AsyncFunction') {
-            await routeMap[specific](req, res, parsed);
-          } else {
-            routeMap[specific](req, res, parsed);
-          }
-          return;
-        }
-      }
 
       for (const { pattern, handlerName } of paramRoutes) {
         const match = pathname.match(pattern);
@@ -339,11 +388,122 @@ async function handleRequest(req, res) {
       const rssUrl = parsed.query.url;
       if (!rssUrl) return sendError(res, 400, 'URL required');
 
+      // Only feeds already registered in `sources` may be proxied. This route is
+      // unauthenticated and the origin is published through a Cloudflare tunnel,
+      // so an arbitrary `url` let anyone on the internet use the server to read
+      // other services on this host and probe the LAN. The one real caller
+      // (Sources page) always passes a known sources.feed_url.
+      const known = getDB()?.prepare('SELECT 1 FROM sources WHERE feed_url = ?').get(rssUrl);
+      if (!known) return sendError(res, 403, 'Feed not registered');
+
       try {
         const result = await proxyRSS(rssUrl);
         sendJSON(res, 200, result);
       } catch (err) {
         sendError(res, 502, `RSS proxy error: ${err.message}`);
+      }
+      return;
+    }
+
+    // --- OPML export: all source RSS feeds in OPML format for RSS readers ---
+    if (pathname === '/opml.xml') {
+      try {
+        const db = getDB();
+        const sources = db.prepare('SELECT label, slug, feed_url FROM sources WHERE is_active = 1 AND feed_url IS NOT NULL').all();
+        let opml = '<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n<head><title>Eagleye Sources</title></head>\n<body>\n';
+        for (const s of sources) {
+          opml += `  <outline text="${s.label.replace(/"/g, '&quot;')}" title="${s.label.replace(/"/g, '&quot;')}" type="rss" xmlUrl="${s.feed_url}" htmlUrl="/sources/${s.slug}"/>\n`;
+        }
+        // Add watchlist + topic feeds
+        opml += `  <outline text="Eagleye Watchlist" type="rss" xmlUrl="http://localhost:${PORT}/watchlist/feed.xml" htmlUrl="/watchlist"/>\n`;
+        opml += `  <outline text="Eagleye Main Feed" type="rss" xmlUrl="http://localhost:${PORT}/feed.xml" htmlUrl="/"/>\n`;
+        opml += '</body>\n</opml>';
+        res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8' });
+        res.end(opml);
+      } catch (err) {
+        sendError(res, 500, `OPML error: ${err.message}`);
+      }
+      return;
+    }
+
+    // --- Weekly digest email HTML template: standalone email-ready HTML ---
+    if (pathname === '/email/digest') {
+      try {
+        const db = getDB();
+        const since7 = (() => {
+          const d = new Date(); d.setDate(d.getDate() - 7);
+          return d.toISOString().slice(0, 10).replace(/-/g, '');
+        })();
+        const signals = db.prepare(`
+          SELECT ss.signal_type, ss.alpha_score, i.title, i.title_zh, i.canonical_url,
+                 i.published_at, s.label as source_label,
+                 a.one_liner_zh, a.short_summary_zh
+          FROM signal_scores ss
+          JOIN information_items i ON i.id = ss.item_id
+          JOIN sources s ON i.source_id = s.id
+          LEFT JOIN ai_summaries a ON a.item_id = i.id
+          WHERE i.digest_date >= ? AND ss.signal_type != 'uncategorized'
+          ORDER BY ss.alpha_score DESC LIMIT 15
+        `).all(since7);
+
+        let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eagleye Weekly Digest</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f5f5f5;margin:0;padding:20px}.container{max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden}.header{background:#0e1c2c;color:#e5824e;padding:24px;text-align:center}.header h1{margin:0;font-size:24px}.header p{color:#999;margin:8px 0 0}.body{padding:24px}.item{border-bottom:1px solid #eee;padding:16px 0}.item:last-child{border-bottom:none}.item-title{font-size:15px;font-weight:600;color:#222;text-decoration:none}.item-meta{font-size:12px;color:#999;margin:4px 0}.item-summary{font-size:13px;color:#555;margin:8px 0;line-height:1.5}.badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:600;text-transform:uppercase;margin-right:4px}.footer{text-align:center;padding:20px;color:#999;font-size:11px}</style>
+</head><body><div class="container">
+<div class="header"><h1>🦅 Eagleye Weekly Digest</h1><p>Your top ${signals.length} signals this week</p></div>
+<div class="body">`;
+        for (const s of signals) {
+          const typeColor = { origin_signal: '#e5824e', new_repo: '#4ec55e', new_paper: '#4e9de5', model_release: '#c54ee5', funding_signal: '#2ecc71', agent_signal: '#9b59b6' }[s.signal_type] || '#888';
+          html += `<div class="item">
+<a href="${s.canonical_url || '#'}" class="item-title">${(s.title_zh || s.title || '').replace(/</g, '&lt;')}</a>
+<div class="item-meta"><span class="badge" style="background:${typeColor};color:#fff">${(s.signal_type || '').replace(/_/g, ' ')}</span> α${(s.alpha_score || 0).toFixed(2)} · ${(s.source_label || '')} · ${(s.published_at || '').slice(0,10)}</div>`;
+          if (s.short_summary_zh || s.one_liner_zh) {
+            html += `<p class="item-summary">${(s.short_summary_zh || s.one_liner_zh || '').replace(/</g, '&lt;')}</p>`;
+          }
+          html += `</div>`;
+        }
+        html += `</div><div class="footer">Generated by Eagleye · ${new Date().toISOString().slice(0,10)}<br/><a href="http://localhost:${PORT}/for-you" style="color:#e5824e">View full radar →</a></div>
+</div></body></html>`;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+      } catch (err) {
+        sendError(res, 500, `Email template error: ${err.message}`);
+      }
+      return;
+    }
+
+    // --- robots.txt ---
+    if (pathname === '/robots.txt') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end(`User-agent: *\nAllow: /\nSitemap: http://localhost:${PORT}/sitemap.xml\n`);
+      return;
+    }
+
+    // --- Sitemap.xml: list stable URLs for SEO (§3: every page has a shareable URL) ---
+    if (pathname === '/sitemap.xml') {
+      try {
+        const db = getDB();
+        const base = `http://localhost:${PORT}`;
+        let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+        // Static pages
+        const staticPages = ['/', '/for-you', '/papers', '/signals', '/digest', '/sources', '/tools', '/skills', '/kg3d', '/physical-ai', '/intelligence', '/industry-metrics', '/year', '/compare', '/search', '/help', '/saved', '/watchlist', '/stories', '/topics', '/tags'];
+        for (const p of staticPages) xml += `  <url><loc>${base}${p}</loc></url>\n`;
+        // Sources
+        const sources = db.prepare('SELECT slug FROM sources WHERE is_active = 1').all();
+        for (const s of sources) xml += `  <url><loc>${base}/sources/${s.slug}</loc></url>\n`;
+        // Topics
+        const topics = db.prepare('SELECT slug FROM topics').all();
+        for (const t of topics) xml += `  <url><loc>${base}/topics/${t.slug}</loc></url>\n`;
+        // Recent digest dates (last 30)
+        const dates = db.prepare('SELECT DISTINCT digest_date FROM information_items ORDER BY digest_date DESC LIMIT 30').all();
+        for (const d of dates) xml += `  <url><loc>${base}/digest/${d.digest_date}</loc></url>\n`;
+        // Years
+        const years = db.prepare('SELECT DISTINCT substr(digest_date,1,4) AS y FROM information_items').all();
+        for (const y of years) xml += `  <url><loc>${base}/year/${y.y}</loc></url>\n`;
+        xml += '</urlset>';
+        res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8' });
+        res.end(xml);
+      } catch (err) {
+        sendError(res, 500, `Sitemap error: ${err.message}`);
       }
       return;
     }
@@ -362,6 +522,25 @@ async function handleRequest(req, res) {
 
 // --- Start Server ---
 const server = http.createServer(handleRequest);
+
+// Graceful error handling: EADDRINUSE used to crash-loop the server (each
+// restart hit the still-listening old process, producing the EADDRINUSE storm
+// seen in server.log). Now we log clearly and exit so the supervisor can retry
+// cleanly, instead of crash-looping into the same port.
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n  ❌ Port ${PORT} is already in use. Another Eagleye instance may be running.`);
+    console.error('     Kill it (lsof -ti tcp:' + PORT + ' | xargs kill) or use a different port.\n');
+    process.exit(1);
+  }
+  console.error('Server error:', err.message);
+});
+
+// Catch unhandled rejections so a single failed async path doesn't crash the
+// whole server (the pipeline has many fire-and-forget background jobs).
+process.on('unhandledRejection', (reason) => {
+  console.warn('  ⚠  Unhandled promise rejection (non-fatal):', reason?.message || reason);
+});
 
 server.listen(PORT, () => {
   const addr = `http://localhost:${PORT}`;
@@ -392,6 +571,16 @@ server.listen(PORT, () => {
 
   // Optional: initial sync (disabled by default — user starts manually or via API)
   console.log('  System ready. Start sync via /api/sync');
+
+  // Start the built-in scheduler heartbeat (daily FULL_PIPELINE / RESCORE_ALL).
+  // Config persisted in user_data[scheduler_config]; default disabled until
+  // turned on via the Settings page or /api/scheduler.
+  try {
+    const scheduler = require('./server/services/scheduler');
+    scheduler.start();
+  } catch (err) {
+    console.warn('  ⚠  Scheduler failed to start (non-fatal):', err.message);
+  }
   console.log('');
 });
 

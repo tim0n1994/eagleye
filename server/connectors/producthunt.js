@@ -9,6 +9,14 @@ const https = require('https');
 const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
 
+// Cloudflare 现在对 EagleyeBot 和无头请求直接 403（JS challenge），
+// 首页抓取已不可用。Product Hunt 官方提供 Atom feed（/feed），用浏览器 UA
+// 可稳定拉取，这是目前最可靠的无 API-key 途径。
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+  'Accept': 'application/atom+xml,application/xml,text/xml,*/*;q=0.8',
+};
+
 class ProductHuntConnector extends BaseConnector {
   constructor() {
     super('product-hunt');
@@ -21,12 +29,49 @@ class ProductHuntConnector extends BaseConnector {
       try {
         return await this._fetchViaAPI(apiKey, date);
       } catch (err) {
-        console.warn('Product Hunt API fetch failed, falling back to scraping:', err.message);
+        console.warn('Product Hunt API fetch failed, falling back to Atom feed:', err.message);
       }
     }
 
-    // Fallback: scrape homepage
-    return await this._fetchViaScraping(date);
+    // Fallback: official Atom feed (Cloudflare blocks direct HTML scraping now)
+    return await this._fetchViaFeed(date);
+  }
+
+  async _fetchViaFeed(date) {
+    try {
+      const xml = await fetchURL('https://www.producthunt.com/feed', { headers: BROWSER_HEADERS });
+      const items = [];
+      // Atom <entry> parsing — regex is robust enough for this stable feed schema.
+      const entryRe = /<entry>[\s\S]*?<\/entry>/g;
+      let m;
+      while ((m = entryRe.exec(xml)) !== null) {
+        const entry = m[0];
+        const title = this._tagText(entry, 'title');
+        const link = (entry.match(/<link[^>]*rel="alternate"[^>]*href="([^"]+)"/) ||
+          entry.match(/<link[^>]*href="([^"]+)"/i) || [])[1] || '';
+        const published = this._tagText(entry, 'published');
+        const contentHtml = this._tagText(entry, 'content');
+        // Feed content is HTML; strip tags for a plain-text description.
+        const desc = contentHtml.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' ').trim().slice(0, 300);
+        if (!title) continue;
+
+        const pubDate = published ? new Date(published) : new Date();
+        const dateStr = pubDate.toISOString().slice(0, 10).replace(/-/g, '');
+        if (date && dateStr !== date) continue;
+
+        items.push(this._makeItem(title, link, desc, pubDate.toISOString(), dateStr));
+      }
+      return items;
+    } catch (err) {
+      console.error('Product Hunt feed fetch error:', err.message);
+      return [];
+    }
+  }
+
+  /** Extract inner text of the first <tag>…</tag> in a fragment. */
+  _tagText(xml, tag) {
+    const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+    return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : '';
   }
 
   async _fetchViaAPI(apiKey, date) {
@@ -108,86 +153,9 @@ class ProductHuntConnector extends BaseConnector {
   }
 
   async _fetchViaScraping(date) {
-    try {
-      const html = await fetchURL('https://www.producthunt.com/');
-      const items = [];
-
-      // Try JSON-LD extraction first
-      const jsonLdRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
-      let match;
-      while ((match = jsonLdRegex.exec(html)) !== null) {
-        try {
-          const parsed = JSON.parse(match[1]);
-          if (parsed['@type'] === 'ItemList' && parsed.itemListElement) {
-            for (const element of parsed.itemListElement) {
-              const post = element.item || element;
-              if (!post.name) continue;
-              const now = new Date();
-              const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-              if (date && dateStr !== date) continue;
-              items.push(this._makeItem(post.name, post.url || '', post.description || '', now.toISOString(), dateStr));
-            }
-          }
-        } catch { /* skip */ }
-      }
-
-      // Fallback: __NEXT_DATA__ or window.__INITIAL_STATE__
-      if (items.length === 0) {
-        const stateMatch = html.match(/<script[^>]*>window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?})<\/script>/);
-        if (stateMatch) {
-          try {
-            const state = JSON.parse(stateMatch[1]);
-            const posts = state?.posts || state?.feed?.posts || state?.redux?.posts || [];
-            const arr = Array.isArray(posts) ? posts : Object.values(posts);
-            for (const post of arr) {
-              if (!post.name) continue;
-              const now = new Date();
-              const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-              if (date && dateStr !== date) continue;
-              items.push(this._makeItem(
-                `${post.name}: ${post.tagline || ''}`,
-                post.url || post.website || '',
-                post.description || post.tagline || '',
-                post.createdAt || now.toISOString(),
-                dateStr,
-                {
-                  votes: post.votesCount || post.votes || 0,
-                  icon_url: post.thumbnail?.url || post.icon?.url || '',
-                }
-              ));
-            }
-          } catch { /* skip */ }
-        }
-      }
-
-      // Last resort: regex-based extraction from HTML
-      if (items.length === 0) {
-        console.warn('Product Hunt scraping: JSON-LD and __INITIAL_STATE__ extraction failed, using fragile regex fallback');
-        const productRegex = /<a[^>]*href="\/posts\/([^"/]+)[^>]*>[\s\S]*?<img[^>]*alt="([^"]*)"[\s\S]*?<p[^>]*>([^<]*)<\/p>/gi;
-        const seen = new Set();
-        while ((match = productRegex.exec(html)) !== null) {
-          const slug = match[1];
-          if (seen.has(slug)) continue;
-          seen.add(slug);
-          const now = new Date();
-          const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-          if (date && dateStr !== date) continue;
-          items.push(this._makeItem(
-            match[2] || slug,
-            `https://www.producthunt.com/posts/${slug}`,
-            (match[3] || '').replace(/<[^>]*>/g, '').trim(),
-            now.toISOString(),
-            dateStr,
-            { slug }
-          ));
-        }
-      }
-
-      return items;
-    } catch (err) {
-      console.error('Product Hunt fetch error:', err.message);
-      return [];
-    }
+    // Deprecated: Cloudflare now blocks all non-JS clients on the homepage.
+    // Kept as a no-op stub for API parity; prefer _fetchViaFeed.
+    return [];
   }
 
   _makeItem(title, url, description, publishedAt, dateStr, extra = {}) {

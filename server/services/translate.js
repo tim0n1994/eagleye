@@ -10,9 +10,13 @@
 const crypto = require('crypto');
 const { getDB } = require('../db/connection');
 const { isJobCancelled } = require('./jobs');
-const { getProvider, getProviderInfo, extractJSON } = require('./llm-provider');
+const { getProvider, getEnrichProvider, getProviderInfo, extractJSON } = require('./llm-provider');
 
-const PROMPT_VERSION = 'v3.1-local-llm-knowledge-card-zh';
+// Match the enrichment prompt version so rows aren't stamped with a different
+// version by the translate backfill (which used to overwrite prompt_version,
+// breaking cache invalidation). Translation only fills in *_zh fields; the
+// prompt_version should reflect which enrichment prompt generated the row.
+const PROMPT_VERSION = 'v3.1-knowledge-card-graph-zh';
 const DEFAULT_BATCH_ITEMS = Math.max(1, Math.min(parseInt(process.env.TRANSLATE_LLM_BATCH_ITEMS || '16', 10), 32));
 const DEFAULT_BATCH_WORKERS = Math.max(1, Math.min(parseInt(process.env.TRANSLATE_LLM_BATCH_WORKERS || '8', 10), 16));
 
@@ -219,23 +223,34 @@ function normalizeFeedCard(data, row) {
 }
 
 async function generateChineseFeedCard(row) {
-  const provider = getProvider();
+  const provider = getEnrichProvider();
   if (!provider) {
     throw new Error('No active local LLM provider configured. Configure it in Settings -> LLM.');
   }
 
   const prompt = buildPrompt(row);
-  const maxRetries = 2;
+  const maxRetries = 3;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const text = await provider.call(prompt, { temperature: 0.1, maxTokens: 1400 });
-    const data = extractJSON(text);
-    if (data && typeof data === 'object' && !Array.isArray(data)) {
-      const card = normalizeFeedCard(data, row);
-      if (card.title_zh || card.one_liner_zh || card.short_summary_zh) return card;
+    try {
+      const text = await provider.call(prompt, { temperature: 0.1, maxTokens: 1400 });
+      const data = extractJSON(text);
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const card = normalizeFeedCard(data, row);
+        if (card.title_zh || card.one_liner_zh || card.short_summary_zh) return card;
+      }
+    } catch (err) {
+      // 1301 内容安全审核：智谱拒绝处理敏感内容，不可恢复，立即跳过
+      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
+        throw new Error('content_filtered', { cause: err });
+      }
+      if (attempt >= maxRetries) throw err;
+      const isOverload = /429|529|1302|1305|rate.limit|overload|速率限制|访问量过大/i.test(err.message);
+      await new Promise(r => setTimeout(r, isOverload ? 8000 * attempt : 2000 * attempt));
+      continue;
     }
     if (attempt < maxRetries) {
-      await new Promise(r => setTimeout(r, 600 * attempt));
+      await new Promise(r => setTimeout(r, 2000 * attempt));
     }
   }
 
@@ -243,11 +258,11 @@ async function generateChineseFeedCard(row) {
 }
 
 async function generateChineseFeedCardsBatch(rows) {
-  const provider = getProvider();
+  const provider = getEnrichProvider();
   if (!provider || !rows?.length) return [];
 
   const prompt = buildBatchPrompt(rows);
-  const maxRetries = 2;
+  const maxRetries = 3;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -267,8 +282,20 @@ async function generateChineseFeedCardsBatch(rows) {
           .filter((entry) => entry.card.title_zh || entry.card.one_liner_zh || entry.card.short_summary_zh);
       }
     } catch (err) {
-      if (attempt >= maxRetries) {
-        console.warn(`  ⚠  Batch Chinese card generation failed: ${err.message}`);
+      // 1301 内容安全审核：不可恢复，跳过整批不重试
+      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
+        console.warn(`  ⏭  Batch Chinese card skipped (${rows.length} rows): content filtered by safety check`);
+        // Mark all rows as blocked so they don't re-enter the queue
+        try {
+          const blockStmt = getDB().prepare('UPDATE ai_summaries SET translation_status = ? WHERE item_id = ?');
+          for (const row of rows) blockStmt.run('blocked', row.id);
+        } catch {}
+        return [];
+      }
+      console.warn(`  ⚠  Batch Chinese card attempt ${attempt}/${maxRetries} failed (${rows.length} rows): ${err.message.slice(0, 100)}`);
+      if (attempt < maxRetries) {
+        const isOverload = /429|529|1302|1305|rate.limit|overload|速率限制|访问量过大/i.test(err.message);
+        await new Promise(r => setTimeout(r, isOverload ? 8000 * attempt : 2000 * attempt));
       }
     }
     if (attempt < maxRetries) {
@@ -284,7 +311,7 @@ async function translateText(text) {
   if (!trimmed) return '';
   if (containsChinese(trimmed)) return trimmed;
 
-  const provider = getProvider();
+  const provider = getEnrichProvider();
   if (!provider) return null;
   const prompt = `/no_think\n请将下面文本改写为自然、简洁的中文。保留专有名词。只输出中文文本，不要解释。\n\n${trimmed}`;
   const result = await provider.call(prompt, { temperature: 0.1, maxTokens: 300 });
@@ -323,7 +350,7 @@ function writeFeedCard(row, card) {
     UPDATE ai_summaries
     SET model_provider = COALESCE(NULLIF(model_provider, ''), ?),
         model_name = COALESCE(NULLIF(model_name, ''), ?),
-        prompt_version = ?,
+        prompt_version = COALESCE(NULLIF(prompt_version, ''), ?),
         ai_title = COALESCE(NULLIF(?, ''), ai_title),
         ai_title_zh = COALESCE(NULLIF(?, ''), ai_title_zh),
         one_liner = COALESCE(NULLIF(?, ''), one_liner),
@@ -360,7 +387,7 @@ function writeFeedCard(row, card) {
     canonical_url: row.canonical_url,
     prompt_version: PROMPT_VERSION,
     provider: info.provider,
-    model: info.model,
+    model: getEnrichProvider()?.model || info.model,
     generated_at: new Date().toISOString(),
   });
 
@@ -467,7 +494,7 @@ async function translateItems(opts = {}) {
   const db = getDB();
   if (!db) return { translated: 0, failed: 0, total: 0 };
 
-  if (!getProvider()) {
+  if (!getEnrichProvider()) {
     throw new Error('No active local LLM provider configured. Configure it in Settings -> LLM.');
   }
 
@@ -487,7 +514,7 @@ async function translateItems(opts = {}) {
         OR s.one_liner_zh IS NULL OR s.one_liner_zh = ''
         OR s.short_summary_zh IS NULL OR s.short_summary_zh = ''
         OR s.translation_status = 'pending'
-      )`;
+      ) AND COALESCE(s.translation_status, '') != 'blocked'`;
 
   const total = db.prepare(`
     SELECT COUNT(DISTINCT i.id) as c
@@ -526,12 +553,13 @@ async function translateItems(opts = {}) {
   `).all(...(sourceSlug ? [sourceSlug, limit] : [limit]));
 
   const info = getProviderInfo();
-  console.log(`  🧠 Generating Chinese feed cards ${items.length}/${total} with ${info.provider}:${info.model}...`);
+  const enrichModel = getEnrichProvider()?.model || info.model;
+  console.log(`  🧠 Generating Chinese feed cards ${items.length}/${total} with ${info.provider}:${enrichModel}...`);
   updateProgress({
     phase: 'translating',
     mode: 'local-llm-feed-card',
     provider: info.provider,
-    model: info.model,
+    model: enrichModel,
     processed: 0,
     translated: 0,
     failed: 0,
@@ -582,7 +610,13 @@ async function translateItems(opts = {}) {
         try {
           results.push(await translateRow(row));
         } catch (err) {
-          console.warn(`  ⚠  Chinese card backfill failed for ${String(row.id).slice(0, 8)}: ${err.message}`);
+          if (err.message === 'content_filtered') {
+            console.log(`  ⏭  Chinese card skipped (${String(row.id).slice(0, 8)}): content filtered by safety check`);
+            // Mark as blocked so it won't re-enter the queue on future runs
+            try { getDB().prepare('UPDATE ai_summaries SET translation_status = ? WHERE item_id = ?').run('blocked', row.id); } catch {}
+          } else {
+            console.warn(`  ⚠  Chinese card backfill failed for ${String(row.id).slice(0, 8)}: ${err.message.slice(0, 100)}`);
+          }
           results.push(null);
         }
       }
@@ -598,7 +632,7 @@ async function translateItems(opts = {}) {
       phase: 'translating',
       mode: 'local-llm-feed-card-batch',
       provider: info.provider,
-      model: info.model,
+      model: enrichModel,
       processed: Math.min(processed, items.length),
       translated,
       failed,
@@ -645,7 +679,7 @@ async function translateItems(opts = {}) {
     remaining: total - items.length,
     prompt_version: PROMPT_VERSION,
     provider: info.provider,
-    model: info.model,
+    model: enrichModel,
     source_slug: sourceSlug || null,
     batch_items: batchItemSize,
     workers: Math.min(batchWorkers, chunks.length),

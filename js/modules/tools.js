@@ -1325,65 +1325,801 @@ export function renderToolBySlug(slug, container) {
 // ─── Placeholder functions for missing tools ──────────────────────────────────
 
 function renderImageResizer() {
-  return `<div class="tool-placeholder"><p>Image Resizer - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>📐 Image Resizer</h2>
+        <p class="tool-desc">Resize images in your browser. No upload — uses Canvas API. Supports PNG/JPEG/WebP.</p>
+      </div>
+      <div class="tool-row">
+        <label>Select Image</label>
+        <input type="file" id="resizeFile" accept="image/*" class="tool-input" />
+      </div>
+      <div class="tool-grid-2" id="resizeControls" style="display:none">
+        <div class="tool-row">
+          <label>Width (px)</label>
+          <input type="number" id="resizeWidth" class="tool-input" />
+        </div>
+        <div class="tool-row">
+          <label>Height (px)</label>
+          <input type="number" id="resizeHeight" class="tool-input" />
+        </div>
+      </div>
+      <div class="tool-row" id="resizeFormatRow" style="display:none">
+        <label>Output Format</label>
+        <select id="resizeFormat" class="tool-input" style="width:auto">
+          <option value="image/png">PNG</option>
+          <option value="image/jpeg">JPEG</option>
+          <option value="image/webp">WebP</option>
+        </select>
+        <label>Quality (JPEG/WebP): <input type="range" id="resizeQuality" min="0.1" max="1" step="0.1" value="0.9" style="width:100px"/></label>
+      </div>
+      <button onclick="window.__resizeImage()" class="tool-btn" id="resizeBtn" style="display:none">Resize & Download</button>
+      <div id="resizePreview" class="resize-preview"></div>
+    </div>
+    <script>
+      window.__resizeOrig = null;
+      document.getElementById('resizeFile')?.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          const img = new Image();
+          img.onload = function() {
+            window.__resizeOrig = img;
+            document.getElementById('resizeWidth').value = img.width;
+            document.getElementById('resizeHeight').value = img.height;
+            document.getElementById('resizeControls').style.display = 'grid';
+            document.getElementById('resizeFormatRow').style.display = 'flex';
+            document.getElementById('resizeBtn').style.display = 'block';
+            document.getElementById('resizePreview').innerHTML = '<p class="subtle">Original: ' + img.width + '×' + img.height + '</p>';
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+      window.__resizeImage = function() {
+        const img = window.__resizeOrig;
+        if (!img) return;
+        const w = parseInt(document.getElementById('resizeWidth').value) || img.width;
+        const h = parseInt(document.getElementById('resizeHeight').value) || img.height;
+        const fmt = document.getElementById('resizeFormat').value;
+        const q = parseFloat(document.getElementById('resizeQuality').value) || 0.9;
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(function(blob) {
+          const url = URL.createObjectURL(blob);
+          const sizeKB = (blob.size / 1024).toFixed(0);
+          document.getElementById('resizePreview').innerHTML =
+            '<p class="subtle">Resized: ' + w + '×' + h + ' (' + sizeKB + ' KB)</p>' +
+            '<img src="' + url + '" style="max-width:100%;max-height:300px;border:1px solid var(--rule);border-radius:var(--radius)"/>' +
+            '<br/><a href="' + url + '" download="resized-image.' + fmt.split('/')[1] + '" class="tool-btn" style="display:inline-block;margin-top:8px">⬇ Download</a>';
+        }, fmt, q);
+      };
+    </script>
+  `;
 }
 
 function renderImageConverter() {
-  return `<div class="tool-placeholder"><p>Image Converter - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>🔄 Image Converter</h2>
+        <p class="tool-desc">Convert images between PNG, JPEG, and WebP. No upload — uses Canvas API.</p>
+      </div>
+      <div class="tool-row">
+        <label>Select Image</label>
+        <input type="file" id="convFile" accept="image/*" class="tool-input" />
+      </div>
+      <div class="tool-row" id="convFormatRow" style="display:none">
+        <label>Convert to</label>
+        <select id="convFormat" class="tool-input" style="width:auto">
+          <option value="image/png">PNG</option>
+          <option value="image/jpeg">JPEG</option>
+          <option value="image/webp">WebP</option>
+        </select>
+        <label>Quality: <input type="range" id="convQuality" min="0.1" max="1" step="0.1" value="0.9" style="width:100px"/></label>
+      </div>
+      <button onclick="window.__convImage()" class="tool-btn" id="convBtn" style="display:none">Convert & Download</button>
+      <div id="convResult" class="tool-result"></div>
+    </div>
+    <script>
+      window.__convOrig = null;
+      window.__convName = '';
+      document.getElementById('convFile')?.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        window.__convName = file.name.replace(/[.][^.]+$/, '');
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          const img = new Image();
+          img.onload = function() {
+            window.__convOrig = img;
+            document.getElementById('convFormatRow').style.display = 'flex';
+            document.getElementById('convBtn').style.display = 'block';
+            document.getElementById('convResult').innerHTML = '<p class="subtle">Original: ' + img.width + '×' + img.height + ' (' + (file.size/1024).toFixed(0) + ' KB)</p>';
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+      window.__convImage = function() {
+        const img = window.__convOrig;
+        if (!img) return;
+        const fmt = document.getElementById('convFormat').value;
+        const q = parseFloat(document.getElementById('convQuality').value) || 0.9;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width; canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        // For JPEG, fill white background (JPEG doesn't support transparency).
+        if (fmt === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(function(blob) {
+          const url = URL.createObjectURL(blob);
+          const ext = fmt.split('/')[1];
+          const sizeKB = (blob.size / 1024).toFixed(0);
+          document.getElementById('convResult').innerHTML =
+            '<p class="subtle">Converted: ' + ext.toUpperCase() + ' (' + sizeKB + ' KB)</p>' +
+            '<img src="' + url + '" style="max-width:100%;max-height:300px;border:1px solid var(--rule);border-radius:var(--radius)"/>' +
+            '<br/><a href="' + url + '" download="' + window.__convName + '-converted.' + ext + '" class="tool-btn" style="display:inline-block;margin-top:8px">⬇ Download</a>';
+        }, fmt, q);
+      };
+    </script>
+  `;
 }
 
 function renderHEICToJPG() {
-  return `<div class="tool-placeholder"><p>HEIC to JPG - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>📱 HEIC to JPG</h2>
+        <p class="tool-desc">Convert HEIC/HEIF images (from iPhones) to JPG. No upload — uses the browser's native image decoder. Note: HEIC support depends on your browser/OS (Safari on macOS works best).</p>
+      </div>
+      <div class="tool-row">
+        <label>Select HEIC Image</label>
+        <input type="file" id="heicFile" accept=".heic,.heif,image/heic,image/heif,image/*" class="tool-input" />
+      </div>
+      <div class="tool-row" id="heicQualityRow" style="display:none">
+        <label>JPEG Quality: <input type="range" id="heicQuality" min="0.1" max="1" step="0.1" value="0.9" style="width:100px"/></label>
+      </div>
+      <button onclick="window.__heicConvert()" class="tool-btn" id="heicBtn" style="display:none">Convert to JPG</button>
+      <div id="heicResult" class="tool-result"></div>
+    </div>
+    <script>
+      document.getElementById('heicFile')?.addEventListener('change', function(e) {
+        const hasFile = !!e.target.files[0];
+        document.getElementById('heicQualityRow').style.display = hasFile ? 'flex' : 'none';
+        document.getElementById('heicBtn').style.display = hasFile ? 'block' : 'none';
+        if (hasFile) document.getElementById('heicResult').innerHTML = '<p class="subtle">Ready to convert ' + e.target.files[0].name + '</p>';
+      });
+      window.__heicConvert = function() {
+        const file = document.getElementById('heicFile')?.files[0];
+        if (!file) return;
+        const result = document.getElementById('heicResult');
+        result.innerHTML = '<p class="subtle">Converting...</p>';
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          const img = new Image();
+          img.onload = function() {
+            const q = parseFloat(document.getElementById('heicQuality').value) || 0.9;
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width; canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff'; // JPEG doesn't support transparency
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            canvas.toBlob(function(blob) {
+              if (!blob) { result.innerHTML = '<p class="tool-status error">Conversion failed. Your browser may not support HEIC decoding. Try Safari on macOS.</p>'; return; }
+              const url = URL.createObjectURL(blob);
+              const baseName = file.name.replace(/\\.[^.]+$/, '');
+              const sizeKB = (blob.size / 1024).toFixed(0);
+              result.innerHTML =
+                '<p class="subtle">Converted: ' + img.width + '×' + img.height + ' (' + sizeKB + ' KB JPG)</p>' +
+                '<img src="' + url + '" style="max-width:100%;max-height:300px;border:1px solid var(--rule);border-radius:var(--radius)"/>' +
+                '<br/><a href="' + url + '" download="' + baseName + '.jpg" class="tool-btn" style="display:inline-block;margin-top:8px">⬇ Download JPG</a>';
+            }, 'image/jpeg', q);
+          };
+          img.onerror = function() {
+            result.innerHTML = '<p class="tool-status error">Cannot decode HEIC. Your browser does not support HEIC images natively. Use Safari on macOS/iOS, or install a HEIC codec.</p>';
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      };
+    </script>
+  `;
 }
 
 function renderImageCropper() {
-  return `<div class="tool-placeholder"><p>Image Cropper - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>✂️ Image Cropper</h2>
+        <p class="tool-desc">Crop images by specifying the region. Enter top-left X/Y and width/height. No upload — uses Canvas API.</p>
+      </div>
+      <div class="tool-row">
+        <label>Select Image</label>
+        <input type="file" id="cropFile" accept="image/*" class="tool-input" />
+      </div>
+      <div class="tool-grid-2" id="cropControls" style="display:none">
+        <div class="tool-row"><label>X (left)</label><input type="number" id="cropX" class="tool-input" value="0" /></div>
+        <div class="tool-row"><label>Y (top)</label><input type="number" id="cropY" class="tool-input" value="0" /></div>
+        <div class="tool-row"><label>Width</label><input type="number" id="cropW" class="tool-input" /></div>
+        <div class="tool-row"><label>Height</label><input type="number" id="cropH" class="tool-input" /></div>
+      </div>
+      <button onclick="window.__cropImage()" class="tool-btn" id="cropBtn" style="display:none">Crop & Download</button>
+      <div id="cropResult" class="tool-result"></div>
+    </div>
+    <script>
+      window.__cropOrig = null;
+      window.__cropName = '';
+      document.getElementById('cropFile')?.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        window.__cropName = file.name.replace(/\\.[^.]+$/, '');
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          const img = new Image();
+          img.onload = function() {
+            window.__cropOrig = img;
+            document.getElementById('cropX').value = 0;
+            document.getElementById('cropY').value = 0;
+            document.getElementById('cropW').value = img.width;
+            document.getElementById('cropH').value = img.height;
+            document.getElementById('cropControls').style.display = 'grid';
+            document.getElementById('cropBtn').style.display = 'block';
+            document.getElementById('cropResult').innerHTML = '<p class="subtle">Original: ' + img.width + '×' + img.height + '</p>';
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+      window.__cropImage = function() {
+        const img = window.__cropOrig;
+        if (!img) return;
+        const x = Math.max(0, parseInt(document.getElementById('cropX').value) || 0);
+        const y = Math.max(0, parseInt(document.getElementById('cropY').value) || 0);
+        const w = Math.min(parseInt(document.getElementById('cropW').value) || 0, img.width - x);
+        const h = Math.min(parseInt(document.getElementById('cropH').value) || 0, img.height - y);
+        if (w <= 0 || h <= 0) { document.getElementById('cropResult').innerHTML = '<p class="tool-status error">Invalid crop region</p>'; return; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+        canvas.toBlob(function(blob) {
+          const url = URL.createObjectURL(blob);
+          const sizeKB = (blob.size / 1024).toFixed(0);
+          document.getElementById('cropResult').innerHTML =
+            '<p class="subtle">Cropped: ' + w + '×' + h + ' (' + sizeKB + ' KB)</p>' +
+            '<img src="' + url + '" style="max-width:100%;max-height:300px;border:1px solid var(--rule);border-radius:var(--radius)"/>' +
+            '<br/><a href="' + url + '" download="' + window.__cropName + '-cropped.png" class="tool-btn" style="display:inline-block;margin-top:8px">⬇ Download</a>';
+        }, 'image/png');
+      };
+    </script>
+  `;
 }
 
 function renderVideoCompressor() {
-  return `<div class="tool-placeholder"><p>Video Compressor - Coming soon</p></div>`;
+  return `<div class="tool-container"><div class="tool-header"><h2>🎬 Video Compressor</h2></div><p>Browser-based video encoding is too resource-intensive for a local tool. We recommend:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>HandBrake</strong> — free, open-source video transcoder (handbrake.fr)</li><li><strong>ffmpeg</strong> — <code>ffmpeg -i input.mp4 -crf 28 output.mp4</code></li></ul></div>`
 }
 
 function renderVideoToGIF() {
-  return `<div class="tool-placeholder"><p>Video to GIF - Coming soon</p></div>`;
+  return `<div class="tool-container"><div class="tool-header"><h2>🎞️ Video to GIF</h2></div><p>Convert video to GIF with ffmpeg or an online tool:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>ffmpeg</strong> — <code>ffmpeg -i input.mp4 -vf "fps=10,scale=320:-1" output.gif</code></li><li><strong>ezgif.com</strong> — browser-based, no install</li></ul></div>`
 }
 
 function renderAudioCompressor() {
-  return `<div class="tool-placeholder"><p>Audio Compressor - Coming soon</p></div>`;
+  return `<div class="tool-container"><div class="tool-header"><h2>🎵 Audio Compressor</h2></div><p>Compress audio with ffmpeg or Audacity:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>ffmpeg</strong> — <code>ffmpeg -i input.wav -b:a 128k output.mp3</code></li><li><strong>Audacity</strong> — free, open-source audio editor</li></ul></div>`
 }
 
 function renderMediaConverter() {
-  return `<div class="tool-placeholder"><p>Media Converter - Coming soon</p></div>`;
+  return `<div class="tool-container"><div class="tool-header"><h2>🔀 Media Converter</h2></div><p>For format conversion across media types:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>ffmpeg</strong> — handles video/audio/image conversion</li><li><strong>CloudConvert</strong> — browser-based, 200+ formats</li></ul><p class="subtle">Image-only conversion? Use our <a href="/tools/image-converter">Image Converter</a> tool (runs locally in browser).</p></div>`
 }
 
 function renderAudioExtractor() {
-  return `<div class="tool-placeholder"><p>Audio Extractor - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>🎵 Audio Extractor</h2>
+        <p class="tool-desc">Extract the audio track from a video file. No upload — uses the Web Audio API + MediaRecorder. Outputs WebM audio.</p>
+      </div>
+      <div class="tool-row">
+        <label>Select Video</label>
+        <input type="file" id="audioExtractFile" accept="video/*" class="tool-input" />
+      </div>
+      <button onclick="window.__extractAudio()" class="tool-btn" id="audioExtractBtn" style="display:none">Extract Audio</button>
+      <div id="audioExtractResult" class="tool-result"></div>
+    </div>
+    <script>
+      document.getElementById('audioExtractFile')?.addEventListener('change', function(e) {
+        const hasFile = !!e.target.files[0];
+        document.getElementById('audioExtractBtn').style.display = hasFile ? 'block' : 'none';
+        if (hasFile) {
+          const f = e.target.files[0];
+          document.getElementById('audioExtractResult').innerHTML = '<p class="subtle">Selected: ' + f.name + ' (' + (f.size/1048576).toFixed(1) + ' MB)</p>';
+        }
+      });
+      window.__extractAudio = async function() {
+        const file = document.getElementById('audioExtractFile')?.files[0];
+        if (!file) return;
+        const result = document.getElementById('audioExtractResult');
+        result.innerHTML = '<p class="subtle">Extracting audio... (this may take a moment)</p>';
+        try {
+          // Create a video element to decode the file, capture its audio track.
+          const video = document.createElement('video');
+          video.src = URL.createObjectURL(file);
+          video.muted = false;
+          await new Promise((resolve, reject) => { video.onloadedmetadata = resolve; video.onerror = reject; });
+
+          // Use captureStream to grab the audio.
+          if (!video.captureStream) { throw new Error('captureStream not supported in this browser'); }
+          const stream = video.captureStream();
+          const audioTracks = stream.getAudioTracks();
+          if (audioTracks.length === 0) { throw new Error('No audio track found in this video'); }
+
+          const audioStream = new MediaStream(audioTracks);
+          const recorder = new MediaRecorder(audioStream);
+          const chunks = [];
+          recorder.ondataavailable = function(e) { if (e.data.size > 0) chunks.push(e.data); };
+          recorder.onstop = function() {
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            const url = URL.createObjectURL(blob);
+            const sizeKB = (blob.size / 1024).toFixed(0);
+            const baseName = file.name.replace(/[.][^.]+$/, '');
+            result.innerHTML =
+              '<p class="subtle">Extracted audio: ' + sizeKB + ' KB</p>' +
+              '<audio src="' + url + '" controls style="width:100%;margin:8px 0"></audio>' +
+              '<a href="' + url + '" download="' + baseName + '-audio.webm" class="tool-btn" style="display:inline-block">⬇ Download audio</a>';
+            URL.revokeObjectURL(video.src);
+          };
+          recorder.start();
+          video.play();
+          video.onended = function() { if (recorder.state !== 'inactive') recorder.stop(); };
+        } catch(err) {
+          result.innerHTML = '<p class="tool-status error">❌ ' + err.message + '</p>';
+        }
+      };
+    </script>
+  `;
 }
 
 function renderVoiceRecorder() {
-  return `<div class="tool-placeholder"><p>Voice Recorder - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>🎙️ Voice Recorder</h2>
+        <p class="tool-desc">Record audio from your microphone. Everything stays local — no upload. Downloads as WebM.</p>
+      </div>
+      <div class="tool-recorder-area">
+        <div id="recStatus" class="rec-status">Ready</div>
+        <div id="recTimer" class="rec-timer">00:00</div>
+        <div class="rec-controls">
+          <button id="recStart" onclick="window.__recStart()" class="tool-btn">● Record</button>
+          <button id="recStop" onclick="window.__recStop()" class="tool-btn tool-btn-secondary" disabled>■ Stop</button>
+        </div>
+      </div>
+      <div id="recResult" class="rec-result"></div>
+      <audio id="recPlayer" controls style="display:none; width:100%; margin-top:12px;"></audio>
+    </div>
+    <script>
+      window.__recState = { mediaRecorder: null, chunks: [], startTime: 0, timer: null, stream: null };
+      window.__recStart = async function() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          window.__recState.stream = stream;
+          window.__recState.chunks = [];
+          const mr = new MediaRecorder(stream);
+          window.__recState.mediaRecorder = mr;
+          mr.ondataavailable = function(e) { if (e.data.size > 0) window.__recState.chunks.push(e.data); };
+          mr.onstop = function() {
+            const blob = new Blob(window.__recState.chunks, { type: 'audio/webm' });
+            const url = URL.createObjectURL(blob);
+            const player = document.getElementById('recPlayer');
+            player.src = url;
+            player.style.display = 'block';
+            const sizeKB = (blob.size / 1024).toFixed(0);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'recording-' + Date.now() + '.webm';
+            a.textContent = '⬇ Download recording (' + sizeKB + ' KB)';
+            a.className = 'tool-btn';
+            const result = document.getElementById('recResult');
+            result.innerHTML = '';
+            result.appendChild(a);
+            document.getElementById('recStatus').textContent = 'Recording saved (' + sizeKB + ' KB)';
+            document.getElementById('recStatus').className = 'rec-status success';
+            stream.getTracks().forEach(t => t.stop());
+          };
+          mr.start();
+          window.__recState.startTime = Date.now();
+          document.getElementById('recStart').disabled = true;
+          document.getElementById('recStop').disabled = false;
+          document.getElementById('recStatus').textContent = '🔴 Recording...';
+          document.getElementById('recStatus').className = 'rec-status recording';
+          window.__recState.timer = setInterval(function() {
+            const elapsed = Math.floor((Date.now() - window.__recState.startTime) / 1000);
+            const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const s = String(elapsed % 60).padStart(2, '0');
+            document.getElementById('recTimer').textContent = m + ':' + s;
+          }, 1000);
+        } catch(err) {
+          document.getElementById('recStatus').textContent = '❌ Microphone access denied: ' + err.message;
+          document.getElementById('recStatus').className = 'rec-status error';
+        }
+      };
+      window.__recStop = function() {
+        if (window.__recState.mediaRecorder && window.__recState.mediaRecorder.state !== 'inactive') {
+          window.__recState.mediaRecorder.stop();
+        }
+        if (window.__recState.timer) clearInterval(window.__recState.timer);
+        document.getElementById('recStart').disabled = false;
+        document.getElementById('recStop').disabled = true;
+      };
+    </script>
+  `;
 }
 
 function renderPDFCompressor() {
-  return `<div class="tool-placeholder"><p>PDF Compressor - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>📄 PDF Optimizer</h2>
+        <p class="tool-desc">Reduce PDF file size by stripping metadata and re-saving with optimized object streams. No upload — runs in your browser via pdf-lib.</p>
+      </div>
+      <div class="tool-row">
+        <label>Select PDF</label>
+        <input type="file" id="pdfFile" accept="application/pdf" class="tool-input" />
+      </div>
+      <button onclick="window.__pdfCompress()" class="tool-btn" id="pdfCompressBtn" style="display:none">Optimize & Download</button>
+      <div id="pdfResult" class="tool-result"></div>
+    </div>
+    <script>
+      document.getElementById('pdfFile')?.addEventListener('change', function(e) {
+        const hasFile = !!e.target.files[0];
+        document.getElementById('pdfCompressBtn').style.display = hasFile ? 'block' : 'none';
+        if (hasFile) {
+          const f = e.target.files[0];
+          document.getElementById('pdfResult').innerHTML = '<p class="subtle">Selected: ' + f.name + ' (' + (f.size/1024).toFixed(0) + ' KB)</p>';
+        }
+      });
+      window.__pdfCompress = async function() {
+        const file = document.getElementById('pdfFile')?.files[0];
+        if (!file) return;
+        if (typeof PDFLib === 'undefined') {
+          document.getElementById('pdfResult').innerHTML = '<p class="tool-status error">pdf-lib not loaded. Refresh the page.</p>';
+          return;
+        }
+        const { PDFDocument } = PDFLib;
+        const result = document.getElementById('pdfResult');
+        result.innerHTML = '<p class="subtle">Processing...</p>';
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+          // Strip metadata to reduce size.
+          pdfDoc.setTitle('');
+          pdfDoc.setAuthor('');
+          pdfDoc.setSubject('');
+          pdfDoc.setKeywords([]);
+          pdfDoc.setProducer('pdf-lib');
+          pdfDoc.setCreator('pdf-lib');
+          // Save with object streams (more compact).
+          const optimized = await pdfDoc.save({ useObjectStreams: true });
+          const blob = new Blob([optimized], { type: 'application/pdf' });
+          const origKB = (file.size / 1024).toFixed(0);
+          const newKB = (blob.size / 1024).toFixed(0);
+          const savings = file.size > 0 ? Math.round((1 - blob.size / file.size) * 100) : 0;
+          const url = URL.createObjectURL(blob);
+          result.innerHTML =
+            '<div class="tool-output-group">' +
+            '<div class="tool-output-label">Original</div><div class="tool-output-value">' + origKB + ' KB</div></div>' +
+            '<div class="tool-output-group"><div class="tool-output-label">Optimized</div>' +
+            '<div class="tool-output-value">' + newKB + ' KB</div></div>' +
+            '<div class="tool-output-group"><div class="tool-output-label">Savings</div>' +
+            '<div class="tool-output-value ' + (savings > 0 ? 'tool-status success' : 'tool-status') + '">' +
+            (savings > 0 ? '↓ ' + savings + '%' : 'No reduction (already optimized)') + '</div></div>' +
+            '<a href="' + url + '" download="optimized.pdf" class="tool-btn" style="display:inline-block;margin-top:12px">⬇ Download optimized PDF</a>';
+        } catch(err) {
+          result.innerHTML = '<p class="tool-status error">❌ ' + err.message + '</p>';
+        }
+      };
+    </script>
+  `;
 }
 
 function renderTimezoneConverter() {
-  return `<div class="tool-placeholder"><p>Timezone Converter - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>🌍 Timezone Converter</h2>
+        <p class="tool-desc">Convert a time across timezones. Enter a time, pick source + target zones.</p>
+      </div>
+      <div class="tool-row">
+        <label>Time</label>
+        <input type="datetime-local" id="tzInput" class="tool-input" />
+      </div>
+      <div class="tool-row">
+        <label>From</label>
+        <select id="tzFrom" class="tool-select">
+          ${['UTC','America/New_York','America/Los_Angeles','America/Chicago','Europe/London','Europe/Paris','Europe/Berlin','Asia/Shanghai','Asia/Tokyo','Asia/Singapore','Asia/Kolkata','Australia/Sydney','Pacific/Auckland'].map(tz => `<option value="${tz}">${tz}</option>`).join('')}
+        </select>
+      </div>
+      <div class="tool-row">
+        <label>To</label>
+        <select id="tzTo" class="tool-select">
+          ${['UTC','America/New_York','America/Los_Angeles','America/Chicago','Europe/London','Europe/Paris','Europe/Berlin','Asia/Shanghai','Asia/Tokyo','Asia/Singapore','Asia/Kolkata','Australia/Sydney','Pacific/Auckland'].map(tz => `<option value="${tz}">${tz}</option>`).join('')}
+        </select>
+      </div>
+      <button onclick="window.__tzConvert()" class="tool-btn">Convert</button>
+      <div id="tzResult" class="tool-result"></div>
+    </div>
+    <script>
+      window.__tzConvert = function() {
+        const input = document.getElementById('tzInput')?.value;
+        if (!input) { document.getElementById('tzResult').innerHTML = '<p class="tool-status">⚠ Pick a date/time</p>'; return; }
+        const fromTz = document.getElementById('tzFrom').value;
+        const toTz = document.getElementById('tzTo').value;
+        try {
+          // Parse the datetime-local input as if it's in the "from" timezone.
+          // datetime-local gives "YYYY-MM-DDTHH:MM" with no tz offset.
+          const dateStr = input.length === 16 ? input : input + ':00';
+          // Construct an ISO string and use the browser's Intl to format.
+          // Trick: create the date, then use the offset difference.
+          const dt = new Date(dateStr + 'Z');
+          // Compute the from-tz offset at that instant.
+          const fromFmt = new Intl.DateTimeFormat('en-US', { timeZone: fromTz, timeZoneName: 'shortOffset' }).formatToParts(dt);
+          const fromOffsetPart = fromFmt.find(p => p.type === 'timeZoneName')?.value || '';
+          const toFmt = new Intl.DateTimeFormat('en-US', { timeZone: toTz, dateStyle: 'full', timeStyle: 'long' }).format(dt);
+          const fromDisp = new Intl.DateTimeFormat('en-US', { timeZone: fromTz, dateStyle: 'full', timeStyle: 'long' }).format(dt);
+          document.getElementById('tzResult').innerHTML =
+            '<div class="tool-output-group">' +
+            '<div class="tool-output-label">' + fromTz + '</div>' +
+            '<div class="tool-output-value">' + fromDisp + '</div>' +
+            '</div><div class="tool-output-group">' +
+            '<div class="tool-output-label">' + toTz + '</div>' +
+            '<div class="tool-output-value">' + toFmt + '</div>' +
+            '</div>';
+        } catch(err) {
+          document.getElementById('tzResult').innerHTML = '<p class="tool-status error">❌ ' + err.message + '</p>';
+        }
+      };
+    </script>
+  `;
 }
 
 function renderLatexPreview() {
-  return `<div class="tool-placeholder"><p>LaTeX Preview - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>📐 LaTeX Preview</h2>
+        <p class="tool-desc">Render LaTeX math equations live. Type LaTeX, see the rendered output. Uses KaTeX (fast, no server).</p>
+      </div>
+      <div class="tool-row">
+        <label>LaTeX Input</label>
+        <textarea id="latexInput" class="tool-textarea" rows="4" placeholder="\\frac{1}{1+e^{-x}} = \\sigma(x)" spellcheck="false">\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}</textarea>
+      </div>
+      <div class="tool-btn-group">
+        <button onclick="window.__latexRender()" class="tool-btn">Render</button>
+        <button onclick="window.__latexClear()" class="tool-btn tool-btn-secondary">Clear</button>
+      </div>
+      <div class="tool-row">
+        <label>Rendered Output</label>
+        <div id="latexOutput" class="latex-output"></div>
+      </div>
+      <div id="latexStatus" class="tool-status"></div>
+      <details class="tool-help">
+        <summary>Quick reference</summary>
+        <div class="latex-ref">
+          <code>\\frac{a}{b}</code> — fraction ·
+          <code>\\sqrt{x}</code> — square root ·
+          <code>\\sum</code> · <code>\\int</code> · <code>\\lim</code> ·
+          <code>\\alpha \\beta \\gamma</code> — Greek ·
+          <code>x^{2}</code> · <code>x_{i}</code> — super/subscript ·
+          <code>\\begin{matrix}a&b\\\\c&d\\end{matrix}</code> — matrix
+        </div>
+      </details>
+    </div>
+    <script>
+      window.__latexRender = function() {
+        const input = document.getElementById('latexInput')?.value || '';
+        const output = document.getElementById('latexOutput');
+        const status = document.getElementById('latexStatus');
+        if (!input.trim()) { output.innerHTML = ''; status.textContent = '⚠ Enter LaTeX'; return; }
+        if (typeof katex === 'undefined') {
+          output.innerHTML = '<p class="tool-status error">KaTeX library not loaded. Refresh the page.</p>';
+          return;
+        }
+        try {
+          katex.render(input, output, { throwOnError: false, displayMode: true });
+          status.textContent = '✅ Rendered';
+          status.className = 'tool-status success';
+        } catch(err) {
+          output.innerHTML = '';
+          status.textContent = '❌ ' + err.message;
+          status.className = 'tool-status error';
+        }
+      };
+      window.__latexClear = function() {
+        document.getElementById('latexInput').value = '';
+        document.getElementById('latexOutput').innerHTML = '';
+        document.getElementById('latexStatus').textContent = '';
+      };
+      // Auto-render on load
+      setTimeout(window.__latexRender, 100);
+    </script>
+  `;
 }
 
 function renderAppStats() {
-  return `<div class="tool-placeholder"><p>App Stats - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>📊 App Stats</h2>
+        <p class="tool-desc">Eagleye system statistics — items, sources, signals, enrichment coverage.</p>
+      </div>
+      <div id="appStatsResult" class="tool-result"><p class="subtle">Loading stats...</p></div>
+    </div>
+    <script>
+      fetch('/api/metrics/industry').then(r=>r.json()).then(data => {
+        const c = data.corpus || {};
+        const kg = data.kg || {};
+        const el = document.getElementById('appStatsResult');
+        if (!el) return;
+        const stat = (label, val) => '<div class="metric-stat"><div class="metric-stat-value">' + val + '</div><div class="metric-stat-label">' + label + '</div></div>';
+        el.innerHTML =
+          '<div class="metrics-stat-grid">' +
+          stat('Items', (c.items||0).toLocaleString()) +
+          stat('Scored', (c.scored||0).toLocaleString()) +
+          stat('Summaries', (c.summaries||0).toLocaleString()) +
+          stat('Reports', (c.reports||0).toLocaleString()) +
+          stat('Signal Types', c.signalTypes||0) +
+          stat('Entities', (c.entities||0).toLocaleString()) +
+          stat('KG Features', (kg.features||0).toLocaleString()) +
+          stat('KG Tags', (kg.tags||0).toLocaleString()) +
+          stat('KG Topics', (kg.topics||0)) +
+          '</div>' +
+          '<h4 style="margin:16px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.16em;color:var(--fg-mute)">Source Diversity</h4>' +
+          '<table class="metrics-table"><thead><tr><th>Source</th><th>Items (30d)</th></tr></thead><tbody>' +
+          (data.sources||[]).map(s => '<tr><td>' + s.label + '</td><td>' + s.items_30d + '</td></tr>').join('') +
+          '</tbody></table>';
+      }).catch(err => {
+        document.getElementById('appStatsResult').innerHTML = '<p class="tool-status error">Failed to load: ' + err.message + '</p>';
+      });
+    </script>
+  `;
 }
 
 function renderUTMGenerator() {
-  return `<div class="tool-placeholder"><p>UTM Generator - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>🔗 UTM Generator</h2>
+        <p class="tool-desc">Build UTM tracking URLs for campaigns. No upload, fully local.</p>
+      </div>
+      <div class="tool-row">
+        <label>Website URL *</label>
+        <input type="url" id="utmUrl" class="tool-input" placeholder="https://example.com/page" />
+      </div>
+      <div class="tool-grid-2">
+        <div class="tool-row">
+          <label>Source *</label>
+          <input type="text" id="utmSource" class="tool-input" placeholder="google, newsletter, twitter" />
+        </div>
+        <div class="tool-row">
+          <label>Medium *</label>
+          <input type="text" id="utmMedium" class="tool-input" placeholder="cpc, email, social" />
+        </div>
+      </div>
+      <div class="tool-grid-2">
+        <div class="tool-row">
+          <label>Campaign</label>
+          <input type="text" id="utmCampaign" class="tool-input" placeholder="spring_sale" />
+        </div>
+        <div class="tool-row">
+          <label>Term</label>
+          <input type="text" id="utmTerm" class="tool-input" placeholder="running_shoes" />
+        </div>
+      </div>
+      <div class="tool-row">
+        <label>Content</label>
+        <input type="text" id="utmContent" class="tool-input" placeholder="logolink, textlink" />
+      </div>
+      <button onclick="window.__utmGen()" class="tool-btn">Generate UTM URL</button>
+      <textarea id="utmResult" class="tool-textarea" readonly placeholder="Generated URL will appear here..."></textarea>
+      <div id="utmStatus" class="tool-status"></div>
+    </div>
+    <script>
+      window.__utmGen = function() {
+        const url = document.getElementById('utmUrl')?.value.trim();
+        const source = document.getElementById('utmSource')?.value.trim();
+        const medium = document.getElementById('utmMedium')?.value.trim();
+        if (!url || !source || !medium) {
+          document.getElementById('utmStatus').textContent = '⚠ URL, Source, and Medium are required';
+          document.getElementById('utmStatus').className = 'tool-status';
+          return;
+        }
+        try {
+          const u = new URL(url);
+          if (source) u.searchParams.set('utm_source', source);
+          if (medium) u.searchParams.set('utm_medium', medium);
+          const campaign = document.getElementById('utmCampaign')?.value.trim();
+          const term = document.getElementById('utmTerm')?.value.trim();
+          const content = document.getElementById('utmContent')?.value.trim();
+          if (campaign) u.searchParams.set('utm_campaign', campaign);
+          if (term) u.searchParams.set('utm_term', term);
+          if (content) u.searchParams.set('utm_content', content);
+          document.getElementById('utmResult').value = u.toString();
+          document.getElementById('utmStatus').textContent = '✅ Generated';
+          document.getElementById('utmStatus').className = 'tool-status success';
+        } catch(err) {
+          document.getElementById('utmStatus').textContent = '❌ Invalid URL: ' + err.message;
+          document.getElementById('utmStatus').className = 'tool-status error';
+        }
+      };
+      window.__utmCopy = function() {
+        const val = document.getElementById('utmResult')?.value;
+        if (val) navigator.clipboard.writeText(val).then(() => {
+          document.getElementById('utmStatus').textContent = '✅ Copied!';
+        });
+      };
+    </script>
+  `;
 }
 
 function renderPeepbo() {
-  return `<div class="tool-placeholder"><p>Peepbo - Coming soon</p></div>`;
+  return `
+    <div class="tool-container">
+      <div class="tool-header">
+        <h2>🦅 Peepbo</h2>
+        <p class="tool-desc">A random high-alpha signal from the Eagleye radar. Click for another.</p>
+      </div>
+      <div id="peepboCard" style="background:var(--bg-card);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:var(--radius);padding:24px;margin:16px 0;min-height:120px">
+        <p class="subtle">Loading a random signal...</p>
+      </div>
+      <button onclick="window.__peepbo()" class="tool-btn">🔄 Another signal</button>
+      <button onclick="window.__peepboCopy()" class="tool-btn tool-btn-secondary">📋 Copy</button>
+      <button onclick="window.__peepboShare()" class="tool-btn tool-btn-secondary">📤 Share</button>
+    </div>
+    <script>
+      window.__peepboData = null;
+      window.__peepbo = function() {
+        const card = document.getElementById('peepboCard');
+        if (!card) return;
+        card.innerHTML = '<p class="subtle">...</p>';
+        fetch('/api/signals?limit=50&sort=alpha_score').then(r=>r.json()).then(data => {
+          const signals = (data.signals||[]).filter(s => s.alpha_score >= 0.5);
+          if (!signals.length) { card.innerHTML = '<p class="subtle">No signals available. Run a sync first.</p>'; return; }
+          const s = signals[Math.floor(Math.random() * signals.length)];
+          window.__peepboData = s;
+          card.innerHTML =
+            '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.16em;color:var(--fg-mute);margin-bottom:8px">' +
+            (s.signal_type||'signal').replace(/_/g,' ') + ' · α' + (s.alpha_score||0).toFixed(2) + '</div>' +
+            '<h3 style="margin:0 0 8px;font-size:16px"><a href="' + (s.canonical_url||'#') + '" target="_blank" rel="noopener" style="color:var(--fg);text-decoration:none">' +
+            (s.ai_title || s.title || '').slice(0,120) + '</a></h3>' +
+            (s.one_liner ? '<p style="margin:0;color:var(--fg-dim);font-size:13px">' + s.one_liner.slice(0,200) + '</p>' : '') +
+            '<div style="margin-top:10px;font-size:11px;color:var(--fg-mute)">' + (s.source_label||'') + '</div>';
+        }).catch(err => { card.innerHTML = '<p class="tool-status error">' + err.message + '</p>'; });
+      };
+      window.__peepboCopy = function() {
+        const s = window.__peepboData;
+        if (!s) return;
+        const text = (s.ai_title || s.title || '') + '\\n' + (s.one_liner || '') + '\\n' + (s.canonical_url || '');
+        navigator.clipboard?.writeText(text).then(() => {
+          if (window.__toast) window.__toast('Copied to clipboard!', 'success');
+        }).catch(() => {});
+      };
+      window.__peepboShare = function() {
+        const s = window.__peepboData;
+        if (!s || !s.canonical_url) return;
+        if (navigator.share) {
+          navigator.share({ title: s.ai_title || s.title || 'Eagleye Signal', url: s.canonical_url }).catch(() => {});
+        } else {
+          navigator.clipboard?.writeText(s.canonical_url).then(() => {
+            if (window.__toast) window.__toast('Link copied!', 'success');
+          }).catch(() => {});
+        }
+      };
+      setTimeout(window.__peepbo, 200);
+    </script>
+  `;
 }

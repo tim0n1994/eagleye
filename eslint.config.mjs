@@ -26,9 +26,9 @@ export default [
       "curly": ["warn", "multi-line"],
     },
   },
-  // Server-side CommonJS files
+  // Server-side CommonJS files (server + operational scripts)
   {
-    files: ["server.js", "server/**/*.js", "sw.js"],
+    files: ["server.js", "server/**/*.js", "scripts/**/*.js", "sw.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "commonjs",

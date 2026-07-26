@@ -1,11 +1,14 @@
 {
-  "name": "Eagleye Bot",
+  "name": "Eagleye — AI Technology Intelligence Radar",
   "short_name": "Eagleye",
-  "description": "每日科技新闻聚合",
-  "start_url": "/",
+  "description": "Personal information filtering engine: 19 sources, AI knowledge cards, multi-dimensional alpha scoring, cross-source story clustering, and personalized filtering.",
+  "start_url": "/for-you",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0e1c2c",
   "theme_color": "#e5824e",
+  "categories": ["news", "productivity", "utilities"],
   "icons": [
     {
       "src": "/icons/icon.svg",
@@ -13,5 +16,11 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
+  ],
+  "shortcuts": [
+    { "name": "For You", "url": "/for-you" },
+    { "name": "Signals", "url": "/signals" },
+    { "name": "Search", "url": "/search" },
+    { "name": "Watchlist", "url": "/watchlist" }
   ]
 }
