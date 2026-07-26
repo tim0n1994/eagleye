@@ -8,7 +8,9 @@
 
 import { $, escapeHtml, escapeAttr } from './utils.js';
 import { API } from './api.js';
-import { showLoader, showError } from './pages.js';
+// Import from the shared module rather than the pages barrel: kg3d only needs
+// the loaders, and the barrel would pull in every page module behind them.
+import { showLoader, showError } from './pages/shared.js';
 import { t } from './i18n.js';
 
 const COLORS = {
