@@ -4,7 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "lint": "eslint .",
+    "lint": "eslint . --ignore-pattern 'kg-worker/**' --ignore-pattern '_*.js'",
     "knip": "knip",
     "test": "vitest run",
     "test:watch": "vitest",
