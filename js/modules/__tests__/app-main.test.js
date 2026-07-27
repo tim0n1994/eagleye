@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { formatDeployPlan } from '../app-main.js';
 
 describe('app-main', () => {
   let container;
@@ -146,77 +147,62 @@ describe('app-main', () => {
   });
 
   // ─── formatDeployPlan ────────────────────────────────────
+  // These test the REAL exported function (which delegates to renderMarkdown),
+  // not a hand-copied regex replica. Earlier the replica drifted out of sync
+  // with production after formatDeployPlan was rewritten to call renderMarkdown,
+  // so the suite reported green while exercising dead code.
 
-  // Replicate the private function for testing
-  function formatDeployPlan(md) {
-    if (!md) return '<p>No plan content available.</p>';
-    const html = md
-      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/^- (.+)$/gm, '<li>$1</li>')
-      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-      .replace(/\n{2,}/g, '</p><p>')
-      .replace(/\n/g, '<br>')
-      .trim();
-    return '<p>' + html + '</p>';
-  }
-
-  it('formatDeployPlan converts heading levels', () => {
-    expect(formatDeployPlan('# Title')).toContain('<h2>Title</h2>');
-    expect(formatDeployPlan('## Section')).toContain('<h3>Section</h3>');
-    expect(formatDeployPlan('### Subsection')).toContain('<h4>Subsection</h4>');
+  it('formatDeployPlan renders headings', () => {
+    // marked emits standard heading levels (h1/h2/h3), not the old h2/h3/h4
+    // remap the regex replica used. Wrapped in the research-markdown container.
+    expect(formatDeployPlan('# Title')).toContain('<h1>Title</h1>');
+    expect(formatDeployPlan('## Section')).toContain('<h2>Section</h2>');
+    expect(formatDeployPlan('### Subsection')).toContain('<h3>Subsection</h3>');
   });
 
-  it('formatDeployPlan converts bold text', () => {
-    const result = formatDeployPlan('This is **bold** text');
-    expect(result).toContain('<strong>bold</strong>');
+  it('formatDeployPlan renders bold text', () => {
+    expect(formatDeployPlan('This is **bold** text')).toContain('<strong>bold</strong>');
   });
 
-  it('formatDeployPlan converts inline code', () => {
-    const result = formatDeployPlan('Use `npm install` command');
-    expect(result).toContain('<code>npm install</code>');
+  it('formatDeployPlan renders inline code', () => {
+    expect(formatDeployPlan('Use `npm install` command')).toContain('<code>npm install</code>');
   });
 
-  it('formatDeployPlan converts unordered lists', () => {
+  it('formatDeployPlan renders unordered lists', () => {
     const result = formatDeployPlan('- Item 1\n- Item 2\n- Item 3');
+    expect(result).toContain('<ul>');
     expect(result).toContain('<li>Item 1</li>');
     expect(result).toContain('<li>Item 2</li>');
     expect(result).toContain('<li>Item 3</li>');
   });
 
-  it('formatDeployPlan converts ordered lists', () => {
+  it('formatDeployPlan renders ordered lists', () => {
     const result = formatDeployPlan('1. First\n2. Second\n3. Third');
+    expect(result).toContain('<ol>');
     expect(result).toContain('<li>First</li>');
     expect(result).toContain('<li>Second</li>');
     expect(result).toContain('<li>Third</li>');
   });
 
-  it('formatDeployPlan wraps paragraphs', () => {
+  it('formatDeployPlan wraps output in the markdown container', () => {
     const result = formatDeployPlan('Paragraph one.\n\nParagraph two.');
-    expect(result).toContain('<p>');
+    expect(result).toContain('<div class="research-markdown">');
     expect(result).toContain('Paragraph one.');
     expect(result).toContain('Paragraph two.');
-    // Output: <p>Paragraph one.</p><p>Paragraph two.</p> — 2 </p> tags
-    expect(result.match(/<\/p>/g).length).toBe(2);
   });
 
-  it('formatDeployPlan handles empty input', () => {
-    expect(formatDeployPlan('')).toBe('<p>No plan content available.</p>');
-    expect(formatDeployPlan(null)).toBe('<p>No plan content available.</p>');
-    expect(formatDeployPlan(undefined)).toBe('<p>No plan content available.</p>');
+  it('formatDeployPlan shows the empty message for blank input', () => {
+    // renderMarkdown trims then returns the emptyText paragraph; the emptyText
+    // comes from t('common.empty'), which falls back to the key when no dict.
+    const out = formatDeployPlan('');
+    expect(out).toMatch(/^<p>/);
+    expect(out).toMatch(/<\/p>$/);
   });
 
-  it('formatDeployPlan handles complex markdown', () => {
-    const md = '# Deploy Plan\n\n## Prerequisites\n- Node.js **v18** or later\n- `npm` installed\n\n## Steps\n1. Run `npm install`\n2. Configure env\n\nMore info here.';
-    const result = formatDeployPlan(md);
-    expect(result).toContain('<h2>Deploy Plan</h2>');
-    expect(result).toContain('<h3>Prerequisites</h3>');
-    expect(result).toContain('<strong>v18</strong>');
-    expect(result).toContain('<code>npm install</code>');
-    expect(result).toContain('<li>Node.js');
-    expect(result).toContain('<li>Run');
+  it('formatDeployPlan neutralizes raw HTML (untrusted input)', () => {
+    // This is the whole point of routing through renderMarkdown: scraped/LLM
+    // markdown must not survive as executable markup.
+    const result = formatDeployPlan('<script>alert(1)</script>');
+    expect(result).not.toContain('<script>');
   });
 });
