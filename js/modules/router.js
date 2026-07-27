@@ -119,8 +119,28 @@ class PageRouter {
     for (const cb of this.beforeRouteCallbacks) {
       if (await cb(path, params) === false) return;
     }
-    renderFn(params);
+    const rendered = renderFn(params);
+    // Move keyboard focus into the freshly rendered page and update the page
+    // title / screen-reader announcement. Done after the render so the new
+    // heading is in the DOM before focus lands on its container, and after the
+    // guards so a cancelled navigation does not steal focus or rewrite the title.
+    this._moveFocusToMain();
     this.afterRouteCallbacks.forEach(cb => cb(path, params));
+    return rendered;
+  }
+
+  /**
+   * Focus #pageContent after each render. The container has tabindex="-1", so
+   * it is programmatically focusable but kept out of the tab order. A short
+   * rAF lets the new DOM paint before we move focus, otherwise screen readers
+   * can read the outgoing page's heading on slow paints.
+   */
+  _moveFocusToMain() {
+    if (typeof document === 'undefined') return;
+    requestAnimationFrame(() => {
+      const main = document.getElementById('pageContent');
+      if (main) main.focus({ preventScroll: true });
+    });
   }
   _findCurrentRenderFn() {
     const path = this.currentRoute || window.location.pathname;
@@ -156,6 +176,9 @@ class PageRouter {
       if (await cb(found.path, found.params) === false) return;
     }
     found.renderFn(found.params);
+    // Re-focus + re-announce on language-change rerenders too, so the title
+    // and live region reflect the new language.
+    this._moveFocusToMain();
     this.afterRouteCallbacks.forEach(cb => cb(found.path, found.params));
   }
 

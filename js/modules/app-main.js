@@ -314,6 +314,76 @@ export async function initApp() {
     setTimeout(() => { bar.style.width = '100%'; setTimeout(() => { bar.style.opacity = '0'; bar.style.width = '0'; }, 200); }, 600);
   });
 
+  // ─── Per-route document.title + screen-reader announcement ────────────
+  // Before this, every one of the ~37 routes shared a single title set once
+  // at boot, so the browser tab, history entries and bookmarks all read the
+  // tagline regardless of page. Map each path to the i18n key it already uses
+  // in the nav, falling back to the tagline. Detail (regex) routes reuse the
+  // same label as their index page — good enough and stays in sync on edits.
+  const ROUTE_TITLES = {
+    '/': 'nav.news',
+    '/news': 'nav.news',
+    '/for-you': 'nav.foryou',
+    '/digest': 'nav.digest',
+    '/sources': 'nav.sources',
+    '/research': 'nav.sources',
+    '/topics': 'nav.topics',
+    '/signals': 'nav.signals',
+    '/papers': 'nav.papers',
+    '/physical-ai': 'nav.physical_ai',
+    '/intelligence': 'nav.intelligence',
+    '/industry-metrics': 'nav.industry',
+    '/tools': 'nav.tools',
+    '/skills': 'nav.skills',
+    '/tags': 'nav.tags',
+    '/trajectory': 'nav.tags',
+    '/settings': 'nav.settings',
+    '/saved': 'footer.saved',
+    '/stories': 'nav.stories',
+    '/watchlist': 'nav.watchlist',
+    '/lens': 'nav.lens',
+    '/year': 'nav.year',
+    '/compare': 'nav.compare',
+    '/compare-entities': 'nav.compare',
+    '/search': 'nav.search',
+    '/help': 'footer.about',
+    '/reports': 'title.reports',
+    '/discover': 'nav.discover',
+    '/es-search': 'nav.es_search',
+    '/kg3d': 'nav.kg3d',
+    '/login': 'auth.signin',
+    '/register': 'auth.register',
+  };
+
+  /**
+   * Resolve a human label + document.title for a path. Detail pages (e.g.
+   * /sources/foo) match by their longest static prefix. Returns the resolved
+   * i18n string, never a bare key — t() falls back to the key only on miss.
+   */
+  function resolveRouteTitle(path) {
+    if (ROUTE_TITLES[path]) return t(ROUTE_TITLES[path]);
+    // Longest-prefix match for detail routes (e.g. /sources/x -> 'nav.sources').
+    let best = '';
+    for (const key of Object.keys(ROUTE_TITLES)) {
+      if (path.startsWith(key + '/') && key.length > best.length) best = key;
+    }
+    return best ? t(ROUTE_TITLES[best]) : t('brand.tagline');
+  }
+
+  router.afterEach((path) => {
+    const label = resolveRouteTitle(path);
+    document.title = `${label} — Eagleye`;
+    // aria-live region: announce the new page so screen-reader users hear the
+    // navigation even when focus move is suppressed or the heading is off-screen.
+    const live = document.getElementById('srStatus');
+    if (live) {
+      live.textContent = '';
+      // Re-set on next tick so the empty-then-fill re-triggers the announcement
+      // for back-to-back navigations to routes with the same label.
+      setTimeout(() => { if (live) live.textContent = label; }, 50);
+    }
+  });
+
   // Expose for logout button
   (/** @type {any} */ (window)).__logout = async () => {
     await API.logout();
