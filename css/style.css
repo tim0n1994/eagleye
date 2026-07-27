@@ -14,7 +14,9 @@
   --bg-elevated: #1c1c26;
   --fg: #e4e4e7;
   --fg-dim: #a1a1aa;
-  --fg-mute: #71717a;
+  /* was #71717a: 3.49-4.09:1 on the surfaces it is used against, below the
+     4.5:1 AA minimum, and it carries 9-11px text in ~190 places. */
+  --fg-mute: #8b8b96;
   --accent: #f97316;
   --accent-hover: #fb923c;
   --accent-dim: rgba(249, 115, 22, 0.10);
@@ -47,8 +49,10 @@
   --fg: #18181b;
   --fg-dim: #3f3f46;
   --fg-mute: #71717a;
-  --accent: #ea580c;
-  --accent-hover: #f97316;
+  /* was #ea580c / #f97316: 3.41 and 2.80:1 on white. a:hover sets colour to
+     --accent globally, so every link hover dropped below AA in this theme. */
+  --accent: #c2410c;
+  --accent-hover: #9a3412;
   --accent-dim: rgba(234, 88, 12, 0.08);
   --accent-glow: rgba(234, 88, 12, 0.15);
   --rule: #e4e4e7;
@@ -6128,3 +6132,68 @@ body.auth-page #mainFooter { display: none !important; }
 .user-mgmt-badge.disabled { background: rgba(255,100,100,0.1); color: #ff6b6b; }
 .user-mgmt-action { background: none; border: 1px solid var(--rule); color: var(--fg-dim); padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; }
 .user-mgmt-action:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ─── Accessibility baseline ─────────────────────────────────────────────
+   Appended last so these win over the 15 `outline: none` rules scattered
+   above, which left several controls with no visible focus at all. */
+
+/* A visible focus ring for anything keyboard-focused. :focus-visible keeps it
+   off mouse clicks, which is why the rules above dropped the outline in the
+   first place. .tool-textarea and .tool-range had no focus indicator at all —
+   the textarea's only cue was a background shift measuring 1.10:1. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Screen-reader-only text: visually hidden, still announced and focusable. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip link: the header holds ~20 tab stops before the content starts, and the
+   SPA re-renders under it on every navigation. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 2000;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  border-radius: 0 0 4px 0;
+  font-size: 14px;
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+/* The page container receives focus after each route change; it should not
+   show a ring for that programmatic move. */
+#pageContent:focus {
+  outline: none;
+}
+
+/* Respect the OS "reduce motion" setting. There are five keyframe animations
+   here, four of them infinite (two pulses, a spinner, a blink). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
