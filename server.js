@@ -17,6 +17,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const zlib = require('zlib');
 
 // --- Boot: Database & Migrations ---
 const { getDB } = require('./server/db/connection');
@@ -57,7 +58,49 @@ function isPublicAsset(p) {
   return PUBLIC_FILES.has(p) || PUBLIC_DIRS.some((dir) => p.startsWith(dir));
 }
 
-function serveStatic(res, reqPath) {
+// Text assets are worth compressing; the image formats already are.
+const COMPRESSIBLE = new Set(['.js', '.css', '.html', '.json', '.svg', '.xml']);
+
+// Compressing ~3MB of assets on every request would cost more than it saves, so
+// each (file, mtime, encoding) is compressed once and kept. Entries are keyed by
+// mtime, so editing a file supersedes its entry rather than serving stale bytes.
+const _assetCache = new Map();
+const MAX_CACHED_ASSETS = 200;
+
+function negotiateEncoding(accept) {
+  const a = String(accept || '');
+  if (/(^|,)\s*br\b/.test(a)) return 'br';
+  if (/(^|,)\s*gzip\b/.test(a)) return 'gzip';
+  return null;
+}
+
+function compressAsset(buf, encoding, cb) {
+  if (encoding === 'br') {
+    // Quality 5 rather than the default 11: ~10x faster to compress for a few
+    // percent more bytes, and this runs on the request path the first time.
+    zlib.brotliCompress(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } }, cb);
+  } else {
+    zlib.gzip(buf, { level: 6 }, cb);
+  }
+}
+
+/**
+ * Cache policy by path. Module files are imported by bare specifier
+ * (`import './pages.js'`) with no version query, so they have no cache-busting
+ * mechanism and must be revalidated — `no-cache` means "store it, but check
+ * before reuse", which still saves the body via a 304. Vendored libraries and
+ * icons carry their version in the filename and change rarely, so they get a
+ * bounded max-age instead of `immutable`: with no build step to rename them, a
+ * year-long pin would make a bad deploy stick.
+ */
+function cacheControlFor(safePath) {
+  if (safePath.startsWith('/js/lib/') || safePath.startsWith('/icons/')) {
+    return 'public, max-age=604800';
+  }
+  return 'no-cache';
+}
+
+function serveStatic(res, reqPath, req) {
   const safePath = path.normalize(reqPath).replace(/^(\.\.(\/|\\|$))+/g, '');
   const filePath = path.join(ROOT, safePath);
 
@@ -70,25 +113,63 @@ function serveStatic(res, reqPath) {
     return sendError(res, 404, 'Not Found');
   }
 
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      if (err.code === 'ENOENT') {
-        sendError(res, 404, 'Not Found');
-      } else {
-        sendError(res, 500, 'Server Error');
-      }
-      return;
+  fs.stat(filePath, (statErr, st) => {
+    if (statErr || !st.isFile()) {
+      return sendError(res, statErr && statErr.code !== 'ENOENT' ? 500 : 404,
+        statErr && statErr.code !== 'ENOENT' ? 'Server Error' : 'Not Found');
     }
 
     const ext = path.extname(filePath).toLowerCase();
-    const headers = { 'Content-Type': mimeType(ext) };
-    if (ext === '.js' || ext === '.css') {
-      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-      headers['Pragma'] = 'no-cache';
-      headers['Expires'] = '0';
+    const etag = `"${st.size.toString(16)}-${st.mtimeMs.toString(16)}"`;
+    const base = {
+      'Content-Type': mimeType(ext),
+      'Cache-Control': cacheControlFor(safePath),
+      ETag: etag,
+    };
+
+    // Unchanged since the client last fetched it: skip the body entirely.
+    if (req && req.headers['if-none-match'] === etag) {
+      res.writeHead(304, base);
+      return res.end();
     }
-    res.writeHead(200, headers);
-    res.end(data);
+
+    const encoding = COMPRESSIBLE.has(ext) ? negotiateEncoding(req && req.headers['accept-encoding']) : null;
+    if (encoding) base.Vary = 'Accept-Encoding';
+
+    const key = `${filePath}|${st.mtimeMs}|${encoding || 'raw'}`;
+    const hit = _assetCache.get(key);
+    if (hit) {
+      if (encoding) base['Content-Encoding'] = encoding;
+      res.writeHead(200, base);
+      return res.end(hit);
+    }
+
+    fs.readFile(filePath, (err, data) => {
+      if (err) return sendError(res, err.code === 'ENOENT' ? 404 : 500, err.code === 'ENOENT' ? 'Not Found' : 'Server Error');
+
+      const store = (body) => {
+        if (_assetCache.size >= MAX_CACHED_ASSETS) _assetCache.clear();
+        _assetCache.set(key, body);
+      };
+
+      if (!encoding) {
+        store(data);
+        res.writeHead(200, base);
+        return res.end(data);
+      }
+
+      compressAsset(data, encoding, (zErr, out) => {
+        // Compression is an optimisation; if it fails, serve the original.
+        if (zErr) {
+          res.writeHead(200, base);
+          return res.end(data);
+        }
+        store(out);
+        base['Content-Encoding'] = encoding;
+        res.writeHead(200, base);
+        res.end(out);
+      });
+    });
   });
 }
 
@@ -510,9 +591,9 @@ async function handleRequest(req, res) {
 
     // --- Serve HTML pages for SPA routing ---
     if (pathname === '/' || !path.extname(pathname)) {
-      serveStatic(res, '/index.html');
+      serveStatic(res, '/index.html', req);
     } else {
-      serveStatic(res, pathname);
+      serveStatic(res, pathname, req);
     }
   } catch (err) {
     console.error('SERVER ERROR:', err);
