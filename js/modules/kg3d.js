@@ -12,6 +12,7 @@ import { API } from './api.js';
 // the loaders, and the barrel would pull in every page module behind them.
 import { showLoader, showError } from './pages/shared.js';
 import { t } from './i18n.js';
+import { LIBS } from './lazy-lib.js';
 
 const COLORS = {
   domain:   0xe65100,
@@ -32,12 +33,18 @@ export async function renderKG3D(_params) {
   const container = $('#pageContent');
   if (!container) return;
 
+  showLoader(container, t('common.loading'));
+
+  // three + 3d-force-graph are 1.9MB and only this route needs them, so they
+  // load here rather than from <head>. The guard below still covers a failure.
+  try {
+    await LIBS.forceGraph3D();
+  } catch { /* fall through to the guard */ }
+
   if (typeof window.ForceGraph3D !== 'function') {
     container.innerHTML = '<section class="page-section"><p class="error">3D graph library failed to load. Check network.</p></section>';
     return;
   }
-
-  showLoader(container, t('common.loading'));
 
   try {
     _data = await API.fetchGraph3D();
