@@ -6,7 +6,6 @@
  * <script> the shell re-evaluates. Split out of tools.js; unchanged otherwise.
  */
 
-import { escapeHtml } from '../utils.js';
 import { toolShell } from './shell.js';
 
 
@@ -234,7 +233,13 @@ Type **Markdown** here to see the preview.
       });
 
       window.__mdSample = function() {
-        document.getElementById('mdInput').value = '# Sample\n\n## Features\n- **Live** preview\n- *Simple* formatting\n- \\\`inline code\\\`\n\n> This is a blockquote\n\n[Link to Eagleye](/)';
+        // Newlines here must be double-escaped. This string sits inside the
+        // module's template literal, so a single escape is consumed there and
+        // emits a real line break, leaving an unterminated string literal in
+        // the inline script — which killed the whole script, so live preview,
+        // copy and clear never got defined. Same reason the regexes below are
+        // double-escaped. Note this applies to comments too, not just code.
+        document.getElementById('mdInput').value = '# Sample\\n\\n## Features\\n- **Live** preview\\n- *Simple* formatting\\n- \\\`inline code\\\`\\n\\n> This is a blockquote\\n\\n[Link to Eagleye](/)';
         __mdRender();
       };
       window.__mdClear = function() {
@@ -387,12 +392,7 @@ export function renderJSONDiff() {
 }
 
 export function renderLatexPreview() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>📐 LaTeX Preview</h2>
-        <p class="tool-desc">Render LaTeX math equations live. Type LaTeX, see the rendered output. Uses KaTeX (fast, no server).</p>
-      </div>
+  return toolShell('latex-preview', 'LaTeX Preview', `
       <div class="tool-row">
         <label>LaTeX Input</label>
         <textarea id="latexInput" class="tool-textarea" rows="4" placeholder="\\frac{1}{1+e^{-x}} = \\sigma(x)" spellcheck="false">\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}</textarea>
@@ -417,7 +417,6 @@ export function renderLatexPreview() {
           <code>\\begin{matrix}a&b\\\\c&d\\end{matrix}</code> — matrix
         </div>
       </details>
-    </div>
     <script>
       window.__latexRender = function() {
         const input = document.getElementById('latexInput')?.value || '';
@@ -446,5 +445,5 @@ export function renderLatexPreview() {
       // Auto-render on load
       setTimeout(window.__latexRender, 100);
     </script>
-  `;
+  `);
 }

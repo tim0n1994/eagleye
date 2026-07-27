@@ -906,3 +906,93 @@ npm uninstall @vitalets/google-translate-api google-translate-api-x
 ```
 
 跑完 CI 三个 job 即全绿。
+
+---
+
+## B70 前端审查 + 收尾修复（2026-07-27）
+
+三份并行审查（性能 / 可访问性 / 代码质量）+ 我自己的复核。审查结论我逐条验证过才采信，
+下面只记**已修**的部分；未修的建议见文末。
+
+### 🔴 Markdown Preview 工具一直是坏的（既有 bug）
+
+系统性扫描 35 个工具的内联脚本时发现：`markdown-preview` 的脚本**根本无法解析**，
+`__mdRender`/`__mdSample`/`__mdClear` 一个都没定义——即工具渲染出来但**完全没有功能**。
+`git stash` 对照 HEAD 确认是既有问题，非本轮引入。
+
+根因在 `tools/text.js` 的示例文本：
+
+```js
+document.getElementById('mdInput').value = '# Sample\n\n## Features\n- ...';
+```
+
+这行本身在**模块的模板字面量里**，`\n` 被模板字面量消耗掉、产出真实换行 →
+内联脚本里出现未闭合的单引号字符串 → 整段脚本语法错误。
+（同一函数第 44-51 行的正则都正确写了 `\\*`、`\\d`，作者知道要双重转义，只漏了这一处。）
+
+**修复过程本身还踩了同一个坑**：我加的解释性注释里写了 `\n`，同样被模板字面量转成真换行，
+把注释劈成两行、第二行以 `:` 开头 → 又一个语法错误。已改成不含反斜杠的措辞，
+并在注释里注明"这条对注释同样适用"。
+
+修复后实测：脚本解析通过、3 个 handler 注册、Sample 按钮载入正确的多行 Markdown、
+预览渲染出真实 HTML、控制台 0 error。**扫描确认其余 34 个工具的内联脚本均正常**。
+
+### 16 个工具绕过共享外壳，线上是"半成品"
+
+`toolShell()` 提供页面外壳 + "← All Tools" 返回链接 + `LOCAL`/`NO UPLOAD`/`NO LOGIN` 隐私徽章。
+但 35 个工具里有 **16 个**自己拼 `<div class="tool-container">`，而 `css/style.css` 里
+`.tool-container`/`.tool-header` **各有 0 条规则**——浏览器实测 padding 0px、背景透明，
+即无样式、无返回链接、无徽章。
+
+最讽刺的是 Voice Recorder 和 Audio Extractor：它们是真正处理用户本地音视频文件的工具，
+**最需要隐私徽章的地方反而没有**。
+
+16 个全部改为走 `toolShell()`。实测 35/35 现在外壳、返回链接、3 个徽章齐全，
+内联脚本与控件全部保留。
+
+### 本轮拆分造成的两处回归（我的）
+
+1. **覆盖率统计对拆分后的目录失明**：`vitest.config.js` 的 `coverage.include` 是
+   `js/modules/*.js`（非递归）。我把 6047 行页面代码 + 2203 行工具代码搬进子目录后，
+   它们**直接从覆盖率统计里消失了**。改为 `js/modules/**/*.js`，真实覆盖率是
+   **8.25%**（此前显示的数字只统计了直属文件）。
+   同时把阈值从形同虚设的 3-4% 提到刚好低于实测值（8/4.5/10/8.5），变成**防退化的棘轮**。
+2. **拆分遗留的死 import**：12 个文件、15 个未使用绑定（`settings.js` 一个文件就有 4 个）。
+   已按 eslint 报告清除。**只删 import，不碰函数内的未使用局部变量**——后者可能是漏挂的
+   渲染点（见下）。
+
+### 验收
+
+| 项 | 结果 |
+|---|---|
+| 工具 | 35/35 外壳一致、内联脚本全部可解析、控制台 0 error |
+| 测试 | 210/210 |
+| eslint | 0 error |
+| 覆盖率 | 8.25%（配置修正后的真实值），阈值已设为棘轮 |
+| 路由 | 112 |
+| 安全面 | 无回归 |
+
+### 三份审查里**尚未处理**的高价值项
+
+**性能**（数字均已复测）：
+- `index.html` 的 `<head>` 同步阻塞 **2.86 MB** vendor 库，而 90% 路由用不到
+  （3d-force-graph 1.25MB + three 670KB 只服务 `/kg3d`；pdf-lib 525KB 只服务一个工具）
+- **完全没有 gzip**：带 `Accept-Encoding` 请求也无 `Content-Encoding`，本地实测可压掉 71.9%
+- 所有 JS/CSS 都是 `no-store`，而 `index.html` 引用时明明带了 `?v=` 版本号
+- `style.css` 在 index.html 里引了两次（第 17、189 行）
+- `settings-handlers.js:543` 的 `setInterval` 无 `clearInterval` → 每访问一次设置页多一个 5 秒轮询器
+- router 无卸载钩子 → 5 处 window/document 监听器逐次导航叠加；`kg3d.js` 的 WebGL 实例从不释放
+  （浏览器 WebGL context 上限 8-16，超限会功能性失败）
+
+**可访问性（3.5/10）**：骨架意外地好（59 个 onclick 全在真 `<button>` 上、零 tabindex 滥用、
+`<html lang>` 同步正确、landmark 完整），垮在装配层——9438 行前端仅 5 个 ARIA 属性，
+`aria-live` 为 0，路由切换后焦点不动、37 条路由共用一个 `document.title`，
+`.tool-textarea` 聚焦对比度 1.10:1，102 个表单控件只有 8 个有 `for=`。
+
+**代码质量**：`app-main.test.js` 仍在测手抄的代码副本（`formatDeployPlan` 生产代码已改为
+调用 `renderMarkdown`，测试里那份正则版本和线上行为已完全脱节），`app-main.js` 实测 **0% 覆盖**
+却挂着 20 个"通过"的测试；`fetchJSON` 有三份实现且重试语义不一致；
+i18n 内联三元拆分后 **179 处**（不降反升）。
+
+**待确认**：`pages/personal.js:126,173,181` 算出了 `crossValPct`/`diversity`（含真实的香农熵计算）
+却从未插入模板——像是漏挂的渲染点而非废弃代码，需要原作者判断，我没有删。
