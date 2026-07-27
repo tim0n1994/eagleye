@@ -7,7 +7,6 @@
 
 import { $, escapeAttr, escapeHtml, localDateStr } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
-import { API } from '../api.js';
 import { API_BASE, fetchJSON, markItemSeen, showError, showLoader } from './shared.js';
 
 

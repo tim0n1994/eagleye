@@ -6,7 +6,6 @@
  * <script> the shell re-evaluates. Split out of tools.js; unchanged otherwise.
  */
 
-import { escapeHtml } from '../utils.js';
 import { toolShell } from './shell.js';
 
 
@@ -233,14 +232,8 @@ export function renderIPLookup() {
 }
 
 export function renderAppStats() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>📊 App Stats</h2>
-        <p class="tool-desc">Eagleye system statistics — items, sources, signals, enrichment coverage.</p>
-      </div>
+  return toolShell('app-stats', 'App Stats', `
       <div id="appStatsResult" class="tool-result"><p class="subtle">Loading stats...</p></div>
-    </div>
     <script>
       fetch('/api/metrics/industry').then(r=>r.json()).then(data => {
         const c = data.corpus || {};
@@ -268,16 +261,11 @@ export function renderAppStats() {
         document.getElementById('appStatsResult').innerHTML = '<p class="tool-status error">Failed to load: ' + err.message + '</p>';
       });
     </script>
-  `;
+  `);
 }
 
 export function renderUTMGenerator() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>🔗 UTM Generator</h2>
-        <p class="tool-desc">Build UTM tracking URLs for campaigns. No upload, fully local.</p>
-      </div>
+  return toolShell('utm-generator', 'UTM Generator', `
       <div class="tool-row">
         <label>Website URL *</label>
         <input type="url" id="utmUrl" class="tool-input" placeholder="https://example.com/page" />
@@ -309,7 +297,6 @@ export function renderUTMGenerator() {
       <button onclick="window.__utmGen()" class="tool-btn">Generate UTM URL</button>
       <textarea id="utmResult" class="tool-textarea" readonly placeholder="Generated URL will appear here..."></textarea>
       <div id="utmStatus" class="tool-status"></div>
-    </div>
     <script>
       window.__utmGen = function() {
         const url = document.getElementById('utmUrl')?.value.trim();
@@ -345,23 +332,17 @@ export function renderUTMGenerator() {
         });
       };
     </script>
-  `;
+  `);
 }
 
 export function renderPeepbo() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>🦅 Peepbo</h2>
-        <p class="tool-desc">A random high-alpha signal from the Eagleye radar. Click for another.</p>
-      </div>
+  return toolShell('peepbo', 'Peepbo', `
       <div id="peepboCard" style="background:var(--bg-card);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:var(--radius);padding:24px;margin:16px 0;min-height:120px">
         <p class="subtle">Loading a random signal...</p>
       </div>
       <button onclick="window.__peepbo()" class="tool-btn">🔄 Another signal</button>
       <button onclick="window.__peepboCopy()" class="tool-btn tool-btn-secondary">📋 Copy</button>
       <button onclick="window.__peepboShare()" class="tool-btn tool-btn-secondary">📤 Share</button>
-    </div>
     <script>
       window.__peepboData = null;
       window.__peepbo = function() {
@@ -403,5 +384,5 @@ export function renderPeepbo() {
       };
       setTimeout(window.__peepbo, 200);
     </script>
-  `;
+  `);
 }
