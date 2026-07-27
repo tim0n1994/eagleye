@@ -97,6 +97,50 @@ describe('PageRouter', () => {
     expect(order).toEqual(['before', 'render', 'after']);
   });
 
+  // ─── Focus management ──────────────────────────────────
+  // After each render the router moves keyboard focus into #pageContent so a
+  // screen-reader/keyboard user hears the new page instead of the header link
+  // they just activated. The move is scheduled via rAF, so tests flush it.
+
+  it('focuses #pageContent after a successful route render', async () => {
+    const main = document.createElement('div');
+    main.id = 'pageContent';
+    const focusSpy = vi.fn();
+    main.focus = focusSpy;
+    document.body.appendChild(main);
+    // _moveFocusToMain schedules via requestAnimationFrame; make it synchronous
+    // so the assertion does not depend on jsdom's rAF timing.
+    const origRAF = window.requestAnimationFrame;
+    window.requestAnimationFrame = (cb) => { cb(0); return 0; };
+
+    await testRouter._executeRoute('/x', () => {}, {});
+
+    expect(focusSpy).toHaveBeenCalled();
+    window.requestAnimationFrame = origRAF;
+    main.remove();
+  });
+
+  it('does not move focus when a guard cancels navigation', async () => {
+    const main = document.createElement('div');
+    main.id = 'pageContent';
+    const focusSpy = vi.fn();
+    main.focus = focusSpy;
+    document.body.appendChild(main);
+    const origRAF = window.requestAnimationFrame;
+    let rafCalled = false;
+    window.requestAnimationFrame = () => { rafCalled = true; return 0; };
+
+    testRouter.beforeEach(async () => false); // guard cancels
+    const renderFn = vi.fn();
+    await testRouter._executeRoute('/cancelled', renderFn, {});
+
+    expect(renderFn).not.toHaveBeenCalled();
+    expect(focusSpy).not.toHaveBeenCalled();
+    expect(rafCalled).toBe(false);
+    window.requestAnimationFrame = origRAF;
+    main.remove();
+  });
+
   // Guards are awaited, so an async guard resolving false must stop the render
   // rather than losing the race against it.
   // ─── onCleanup ──────────────────────────────────────────
