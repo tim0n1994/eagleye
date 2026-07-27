@@ -418,7 +418,10 @@ export function renderLatexPreview() {
         </div>
       </details>
     <script>
-      window.__latexRender = function() {
+      window.__latexRender = async function() {
+        // katex is 277KB and only this tool uses it, so it loads on first use
+        // instead of from <head>. The guard below still covers a failed load.
+        try { await window.__LIBS.katex(); } catch (e) { /* guard handles it */ }
         const input = document.getElementById('latexInput')?.value || '';
         const output = document.getElementById('latexOutput');
         const status = document.getElementById('latexStatus');

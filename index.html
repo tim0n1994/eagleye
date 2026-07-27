@@ -20,11 +20,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="/js/lib/katex.min.js"></script>
-  <script src="/js/lib/pdf-lib.min.js"></script>
+  <!-- d3 stays eager: KnowledgeGraph is constructed synchronously from 7
+       call sites, so deferring it means making each of them async. -->
   <script src="/js/lib/d3.v7.min.js"></script>
-  <script src="/js/lib/three.min.js"></script>
-  <script src="/js/lib/3d-force-graph.min.js"></script>
 </head>
 <body>
   <script>

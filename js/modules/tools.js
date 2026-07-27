@@ -10,6 +10,9 @@
  */
 
 import { escapeHtml } from './utils.js';
+// Publishes window.__LIBS, which the tools' inline <script> strings call to
+// pull katex / pdf-lib on first use.
+import './lazy-lib.js';
 
 // ─── Tool Registry ──────────────────────────────────────────
 
