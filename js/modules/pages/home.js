@@ -8,6 +8,7 @@
 import { $, escapeAttr, escapeHtml, localDateStr } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
 import { progressiveDateFeed } from '../progressive.js';
+import { router } from '../router.js';
 import { API_BASE, fetchJSON, orderedSourceEntries, pickZh, renderItemMiniCard, showError, showLoader , setSourcesCache } from './shared.js';
 
 
@@ -259,7 +260,7 @@ try {
     const sections = container.querySelectorAll('.source-section');
     const nav = container.querySelector('#sectionNav');
     if (nav && sections.length > 0) {
-      window.addEventListener('scroll', () => {
+      const onScroll = () => {
         let current = '';
         sections.forEach(sec => {
           const top = sec.getBoundingClientRect().top;
@@ -268,7 +269,11 @@ try {
         nav.querySelectorAll('.anchor-link').forEach(a => {
           a.classList.toggle('active', a.getAttribute('href') === `#${current}`);
         });
-      }, { passive: true });
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      // The listener outlives the DOM it updates, so without this it stacks up
+      // one live copy per visit to the home page.
+      router.onCleanup(() => window.removeEventListener('scroll', onScroll));
     }
 
     /** @type {any} */ (window).__changeDate = (delta) => {

@@ -99,6 +99,47 @@ describe('PageRouter', () => {
 
   // Guards are awaited, so an async guard resolving false must stop the render
   // rather than losing the race against it.
+  // ─── onCleanup ──────────────────────────────────────────
+  // Pages attach listeners and timers to window/document that outlive the DOM
+  // they were rendered into; without teardown they stack one copy per visit.
+
+  it('runs registered cleanups before the next render', async () => {
+    const order = [];
+    testRouter.onCleanup(() => order.push('cleanup'));
+    await testRouter._executeRoute('/next', () => order.push('render'), {});
+
+    expect(order).toEqual(['cleanup', 'render']);
+  });
+
+  it('runs each cleanup only once', async () => {
+    const fn = vi.fn();
+    testRouter.onCleanup(fn);
+    await testRouter._executeRoute('/a', vi.fn(), {});
+    await testRouter._executeRoute('/b', vi.fn(), {});
+
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a throwing cleanup block the render or the others', async () => {
+    const after = vi.fn();
+    const renderFn = vi.fn();
+    testRouter.onCleanup(() => { throw new Error('boom'); });
+    testRouter.onCleanup(after);
+    await testRouter._executeRoute('/x', renderFn, {});
+
+    expect(after).toHaveBeenCalled();
+    expect(renderFn).toHaveBeenCalled();
+  });
+
+  it('ignores non-function registrations', async () => {
+    const renderFn = vi.fn();
+    testRouter.onCleanup(null);
+    testRouter.onCleanup(undefined);
+    await testRouter._executeRoute('/y', renderFn, {});
+
+    expect(renderFn).toHaveBeenCalled();
+  });
+
   it('cancels the render when a guard returns false', async () => {
     const renderFn = vi.fn();
     testRouter.beforeEach(async () => false);

@@ -8,6 +8,7 @@
 import { escapeAttr, escapeHtml } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
 import { SAMPLE_PASTE, refreshLLMStatus } from './settings-panels.js';
+import { router } from '../router.js';
 
 let _lastParsedConfig = null;
 
@@ -539,7 +540,10 @@ export function wireSettingsHandlers() {
   loadXConfig();
 
   refreshOpJobs();
-  // Poll jobs panel every 5s
-  setInterval(refreshOpJobs, 5000);
+  // Poll jobs panel every 5s. Registered for teardown: wireSettingsHandlers runs
+  // on every render of the settings page, so without this each visit left
+  // another live poller behind.
+  const opJobsTimer = setInterval(refreshOpJobs, 5000);
+  router.onCleanup(() => clearInterval(opJobsTimer));
 }
 

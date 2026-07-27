@@ -13,6 +13,7 @@ import { API } from './api.js';
 import { showLoader, showError } from './pages/shared.js';
 import { t } from './i18n.js';
 import { LIBS } from './lazy-lib.js';
+import { router } from './router.js';
 
 const COLORS = {
   domain:   0xe65100,
@@ -89,13 +90,15 @@ export async function renderKG3D(_params) {
           }).catch(() => {});
         }
       });
-      document.addEventListener('fullscreenchange', () => {
+      const onFullscreenChange = () => {
         const layout = document.getElementById('kg3dLayout');
         if (!document.fullscreenElement && layout) {
           fsBtn.textContent = '⛶ Fullscreen';
           layout.classList.remove('kg3d-fullscreen-active');
         }
-      });
+      };
+      document.addEventListener('fullscreenchange', onFullscreenChange);
+      router.onCleanup(() => document.removeEventListener('fullscreenchange', onFullscreenChange));
     }
 
     if (!_data.nodes.length) {
@@ -179,11 +182,22 @@ function init3DGraph() {
 
   _graph = graph;
 
-  window.addEventListener('resize', () => {
+  const onResize = () => {
     if (graphEl && graphEl.clientWidth > 0) {
       graph.width(graphEl.clientWidth);
       graph.height(graphEl.clientHeight);
     }
+  };
+  window.addEventListener('resize', onResize);
+
+  router.onCleanup(() => {
+    window.removeEventListener('resize', onResize);
+    // Removing the canvas from the DOM does not stop 3d-force-graph's internal
+    // requestAnimationFrame loop or free its WebGL context. Browsers cap live
+    // contexts (commonly 8-16), so leaving one behind per visit eventually
+    // makes the graph fail to render at all, not merely run slow.
+    try { graph._destructor?.(); } catch { /* older builds lack it */ }
+    if (_graph === graph) _graph = null;
   });
 }
 
