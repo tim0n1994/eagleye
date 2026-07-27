@@ -6,6 +6,7 @@
  */
 
 export const en = {
+  'a11y.skip': 'Skip to main content',
   // ── Brand / chrome ──
   'brand.subtitle': 'INTELLIGENCE RADAR',
   'brand.tagline': 'AI-Driven Technology Intelligence',
