@@ -6,6 +6,7 @@
  */
 
 export const zh = {
+  'a11y.skip': '跳到主内容',
   'brand.subtitle': '情报雷达',
   'brand.tagline': 'AI 驱动的科技情报',
   'lang.toggle': 'EN / 中文',

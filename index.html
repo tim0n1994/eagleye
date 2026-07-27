@@ -25,6 +25,9 @@
   <script src="/js/lib/d3.v7.min.js"></script>
 </head>
 <body>
+  <!-- First tab stop: the header has ~20 focusable elements before the
+       content starts, and the SPA re-renders under it on every route. -->
+  <a href="#pageContent" class="skip-link" data-i18n="a11y.skip">Skip to main content</a>
   <script>
     (function() {
       // Theme: use stored pref, or auto-detect from system preference (prefers-color-scheme).
@@ -112,7 +115,7 @@
     </div>
 
     <!-- Page Content (SPA pages render here) -->
-    <div class="page-content" id="pageContent" style="display:block;">
+    <div class="page-content" id="pageContent" tabindex="-1" style="display:block;">
       <!-- Rendered by router -->
     </div>
   </main>
