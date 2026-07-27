@@ -170,7 +170,7 @@ export async function renderTagDetail(params) {
     try {
       if (graphNodes.length > 1 && graphEdges.length > 0) {
         const detailGraph = new KnowledgeGraph('tagDetailGraph');
-        detailGraph.init({ nodes: graphNodes, edges: graphEdges });
+        await detailGraph.init({ nodes: graphNodes, edges: graphEdges });
       } else {
         const graphEl = document.getElementById('tagDetailGraph');
         if (graphEl) graphEl.innerHTML = `<p class="graph-placeholder">${t('common.graph_void')}</p>`;

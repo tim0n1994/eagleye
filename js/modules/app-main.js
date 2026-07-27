@@ -692,7 +692,7 @@ async function renderGraph(data) {
       const fullData = await fetch('/api/graph/full').then(r => r.json());
       if (fullData.nodes && fullData.nodes.length > 0) {
         fullGraphInstance = new KnowledgeGraph('graphCanvas');
-        fullGraphInstance.init(fullData);
+        await fullGraphInstance.init(fullData);
 
         fullGraphInstance.setOnNodeClick((node) => {
           if (node.type === 'topic' && node.slug) {
@@ -710,7 +710,7 @@ async function renderGraph(data) {
   }
 
   fullGraphInstance = new KnowledgeGraph('graphCanvas');
-  fullGraphInstance.init(data);
+  await fullGraphInstance.init(data);
 
   fullGraphInstance.setOnNodeClick((node) => {
     if (node.type === 'topic' && node.slug) {
