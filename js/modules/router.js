@@ -12,6 +12,33 @@ class PageRouter {
     this.currentRoute = null;
     this.beforeRouteCallbacks = [];
     this.afterRouteCallbacks = [];
+    // Teardown registered by the page currently on screen. Rendering a page
+    // installs listeners and timers on window/document that outlive the DOM the
+    // page wrote, so they have to be undone explicitly on the way out.
+    this._cleanups = [];
+  }
+
+  /**
+   * Register teardown for the page being rendered. Runs once, just before the
+   * next route renders. Call this whenever a render function attaches
+   * something outside its own container: a window/document listener, an
+   * interval, or a library instance holding a WebGL context.
+   */
+  onCleanup(fn) {
+    if (typeof fn === 'function') this._cleanups.push(fn);
+  }
+
+  _runCleanups() {
+    const fns = this._cleanups;
+    this._cleanups = [];
+    for (const fn of fns) {
+      try {
+        fn();
+      } catch (err) {
+        // One bad teardown must not block the rest or the next render.
+        console.warn('[router] cleanup failed:', err && err.message);
+      }
+    }
   }
 
   /**
@@ -81,6 +108,8 @@ class PageRouter {
   }
 
   async _executeRoute(path, renderFn, params) {
+    // Tear down the outgoing page before the incoming one renders.
+    this._runCleanups();
     this.currentRoute = path;
     this._currentParams = params;
     // A guard returning false cancels navigation. This used to be a forEach,
@@ -121,6 +150,7 @@ class PageRouter {
   async rerenderCurrentRoute() {
     const found = this._findCurrentRenderFn();
     if (!found) return;
+    this._runCleanups();
     this._currentParams = found.params;
     for (const cb of this.beforeRouteCallbacks) {
       if (await cb(found.path, found.params) === false) return;

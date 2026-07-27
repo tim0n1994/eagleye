@@ -395,11 +395,9 @@ export async function renderForYou(_params) {
         const s = elapsed % 60;
         timerEl.textContent = '⏱ ' + m + ':' + String(s).padStart(2, '0');
       }, 1000);
-      // Clear timer when navigating away (the router will replace the DOM).
-      const observer = new MutationObserver(() => {
-        if (!document.body.contains(timerEl)) { clearInterval(timer); observer.disconnect(); }
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
+      // Was a MutationObserver watching the whole body for the element to
+      // disappear; the router now hands out teardown directly.
+      router.onCleanup(() => clearInterval(timer));
     }
 
     // Wire mark-all-seen: batch POST all item IDs.
