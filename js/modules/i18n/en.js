@@ -7,6 +7,7 @@
 
 export const en = {
   'a11y.skip': 'Skip to main content',
+  'a11y.status': 'Page status',
   // ── Brand / chrome ──
   'brand.subtitle': 'INTELLIGENCE RADAR',
   'brand.tagline': 'AI-Driven Technology Intelligence',
@@ -26,6 +27,7 @@ export const en = {
   'nav.intelligence': 'Intelligence',
   'nav.industry': 'Industry Metrics',
   'nav.settings': 'Settings',
+  'title.reports': 'Reports',
   'auth.signin': 'Sign In',
   'auth.register': 'Register',
   'auth.logout': 'Sign Out',

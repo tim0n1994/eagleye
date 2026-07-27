@@ -28,6 +28,11 @@
   <!-- First tab stop: the header has ~20 focusable elements before the
        content starts, and the SPA re-renders under it on every route. -->
   <a href="#pageContent" class="skip-link" data-i18n="a11y.skip">Skip to main content</a>
+  <!-- aria-live region: announced on every route change (see router afterEach)
+       so screen-reader users hear the new page even when the focus move is
+       suppressed. role="status" is assertive enough to interrupt, polite
+       enough not to crowd out other speech. -->
+  <div id="srStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-i18n-attr="aria-label|a11y.status"></div>
   <script>
     (function() {
       // Theme: use stored pref, or auto-detect from system preference (prefers-color-scheme).
@@ -43,10 +48,10 @@
   </script>
 
   <!-- Header / SiteNav -->
-  <header class="header">
+  <header class="header" role="banner">
     <div class="header-inner">
       <div class="header-brand">
-        <span class="header-logo">🦅</span>
+        <span class="header-logo" aria-hidden="true">🦅</span>
         <div class="header-title-group">
           <a href="/" class="header-title-link">
             <h1 class="header-title">Eagleye</h1>
@@ -54,7 +59,7 @@
           <span class="header-subtitle" data-i18n="brand.subtitle">INTELLIGENCE RADAR</span>
         </div>
       </div>
-      <nav class="site-nav" id="mainNav">
+      <nav class="site-nav" id="mainNav" aria-label="Main navigation">
         <!-- Rendered by JS -->
       </nav>
       <div class="header-actions">
@@ -94,7 +99,7 @@
   </header>
 
   <!-- Main Content -->
-  <main class="main-layout">
+  <main class="main-layout" id="mainContent" role="main" aria-label="Main content">
     <!-- Status Bar (shown only on legacy home) -->
     <div class="status-bar" id="statusBar" style="display:none;">
       <div class="status-left">
@@ -126,7 +131,7 @@
       <polyline points="15 18 9 12 15 6"/>
     </svg>
   </button>
-  <aside class="right-sidebar" id="rightSidebar">
+  <aside class="right-sidebar" id="rightSidebar" role="complementary" aria-label="Agent activity and message log">
     <div class="sidebar-header">
       <button class="sidebar-close" id="sidebarClose" title="Close sidebar" data-i18n-attr="title|header.close_sidebar_attr">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -183,10 +188,9 @@
   </div>
 
   <!-- Footer -->
-  <footer class="footer" id="mainFooter">
+  <footer class="footer" id="mainFooter" role="contentinfo">
     <!-- Rendered by JS -->
   </footer>
   <script type="module" src="/js/app.js?v1780775161"></script>
-  <link rel="stylesheet" href="/css/style.css?v1780775161">
 </body>
 </html>

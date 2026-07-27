@@ -7,6 +7,7 @@
 
 export const zh = {
   'a11y.skip': '跳到主内容',
+  'a11y.status': '页面状态',
   'brand.subtitle': '情报雷达',
   'brand.tagline': 'AI 驱动的科技情报',
   'lang.toggle': 'EN / 中文',
@@ -25,6 +26,7 @@ export const zh = {
   'nav.intelligence': '情报分析',
   'nav.industry': '行业指标',
   'nav.settings': '设置',
+  'title.reports': '报告',
   'auth.signin': '登录',
   'auth.register': '注册',
   'auth.logout': '退出',
