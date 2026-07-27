@@ -14,6 +14,8 @@
  * - Size-coded by importance (growth_score, edge count)
  */
 
+import { LIBS } from './lazy-lib.js';
+
 export class KnowledgeGraph {
   /** @returns {any} */
   static get _d3() { return /** @type {any} */ (window).d3; }
@@ -32,8 +34,13 @@ export class KnowledgeGraph {
   /**
    * Initialize the graph with data from the API.
    * @param {Object} data - { nodes: [...], edges: [...] }
+   * @returns {Promise<void>} resolves once the graph is rendered
    */
-  init(data) {
+  async init(data) {
+    // d3 is loaded on demand: it is ~280KB minified and only the routes that
+    // render a graph need it. Await before the first _d3 access below so the
+    // global is present. loadLib memoises, so repeat calls resolve immediately.
+    await LIBS.d3();
     const container = document.getElementById(this.containerId);
     if (!container) return;
 
@@ -223,11 +230,11 @@ export class KnowledgeGraph {
   /**
    * Update the graph with new data.
    */
-  update(data) {
+  async update(data) {
     if (this.simulation) {
       this.simulation.stop();
     }
-    this.init(data);
+    await this.init(data);
   }
 
   /**

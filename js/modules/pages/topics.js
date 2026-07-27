@@ -105,7 +105,7 @@ export async function renderTopics(_params) {
     // Load full graph data
     try {
       const graphData = await fetchJSON('/api/graph/full');
-      graph.init(graphData);
+      await graph.init(graphData);
     } catch (err) {
       graphContainer.innerHTML = `<p class="graph-placeholder">Graph data unavailable: ${err.message}</p>`;
     }
@@ -133,7 +133,7 @@ export async function renderTopics(_params) {
           try {
             const neighborhood = await fetchJSON(`/api/topics/${slug}/graph`);
             if (neighborhood.nodes && neighborhood.nodes.length > 0) {
-              graph.update(neighborhood);
+              await graph.update(neighborhood);
             }
           } catch (err) {
             console.warn('Topic graph neighborhood unavailable:', err.message);
@@ -300,7 +300,7 @@ export async function renderTopicDetailPage(params) {
       const neighborhood = await fetchJSON(`/api/topics/${slug}/graph`);
       if (neighborhood.nodes && neighborhood.nodes.length > 0) {
         const detailGraph = new KnowledgeGraph('topicDetailGraph');
-        detailGraph.init(neighborhood);
+        await detailGraph.init(neighborhood);
       }
     } catch (err) {
       console.warn('Topic detail graph unavailable:', err.message);

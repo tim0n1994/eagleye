@@ -233,7 +233,7 @@ export async function renderIntelligence(_params) {
     }).catch(() => {});
 
     // Async: fetch entity co-occurrence pairs for the intelligence page.
-    fetchJSON(`${API_BASE}/entities/cooccurrence?limit=15`).then(coData => {
+    fetchJSON(`${API_BASE}/entities/cooccurrence?limit=15`).then(async coData => {
       const coBody = document.getElementById('coOccurrenceBody');
       if (!coBody) return;
       const pairs = coData.pairs || [];
@@ -267,7 +267,7 @@ export async function renderIntelligence(_params) {
         const edges = pairs.slice(0, 15).map(p => ({ source: p.slug_a, target: p.slug_b, weight: p.co_count }));
         try {
           const g = new KnowledgeGraph('entityNetworkGraph');
-          g.init({ nodes, edges });
+          await g.init({ nodes, edges });
           g.setOnNodeClick((node) => {
             if (node.id) (/** @type {any} */ (window)).__router?.navigate(`/trajectory/${node.id}`);
           });

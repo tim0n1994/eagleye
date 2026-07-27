@@ -261,12 +261,12 @@ export async function renderPapers(_params) {
             const nodes = [...nodeMap.values()];
             if (nodes.length < 2 || edges.length === 0) return `<p class="empty-state">Not enough co-author data for a network.</p>`;
             // Render as a D3 KnowledgeGraph (reuse the existing class).
-            setTimeout(() => {
+            setTimeout(async () => {
               const el = document.getElementById('papersNetworkGraph');
               if (el && typeof KnowledgeGraph !== 'undefined') {
                 try {
                   const g = new KnowledgeGraph('papersNetworkGraph');
-                  g.init({ nodes, edges: edges.map(e => ({ ...e, source: e.source, target: e.target })) });
+                  await g.init({ nodes, edges: edges.map(e => ({ ...e, source: e.source, target: e.target })) });
                 } catch { el.innerHTML = '<p class="subtle">Graph render failed.</p>'; }
               }
             }, 100);

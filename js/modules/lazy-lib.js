@@ -1,10 +1,10 @@
 /**
  * Eagleye — On-demand loader for the vendored global libraries
  *
- * three, 3d-force-graph, katex and pdf-lib are classic scripts that assign a
+ * three, 3d-force-graph, katex, pdf-lib and d3 are classic scripts that assign a
  * global rather than ES modules, so they cannot simply be imported. Loading
- * them from <head> meant every route paid for them: 2.72MB uncompressed that
- * only /kg3d and two tool pages ever use.
+ * them from <head> meant every route paid for them: ~2.8MB uncompressed that
+ * only /kg3d, two tool pages and the graph-bearing routes ever use.
  *
  * loadLib() injects the script the first time something asks for it and
  * memoises the promise, so concurrent callers share one network request and a
@@ -60,6 +60,11 @@ export const LIBS = {
   },
   katex: () => loadLib('/js/lib/katex.min.js', 'katex'),
   pdfLib: () => loadLib('/js/lib/pdf-lib.min.js', 'PDFLib'),
+  // d3 powers the force-directed KnowledgeGraph on /topics, /papers,
+  // /intelligence, /tags and the graph overlay. KnowledgeGraph.init() awaits
+  // this before touching window.d3, so the lib only travels to routes that
+  // actually render a graph.
+  d3: () => loadLib('/js/lib/d3.v7.min.js', 'd3'),
 };
 
 // The tool pages run their behaviour from inline <script> strings, which have
