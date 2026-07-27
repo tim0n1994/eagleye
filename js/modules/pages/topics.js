@@ -7,6 +7,7 @@
 
 import { $, escapeAttr, escapeHtml } from '../utils.js';
 import { KnowledgeGraph } from '../graph-viz.js';
+import { router } from '../router.js';
 import { getLanguage, t } from '../i18n.js';
 import { API_BASE, fetchJSON, getItemDisplayTitle, pickZh, renderItemCard, showError, showLoader } from './shared.js';
 
@@ -150,6 +151,7 @@ export async function renderTopics(_params) {
       }
     };
     window.addEventListener('resize', resizeHandler);
+    router.onCleanup(() => window.removeEventListener('resize', resizeHandler));
 
   } catch (err) {
     showError(container, err.message);
