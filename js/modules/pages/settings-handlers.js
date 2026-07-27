@@ -5,7 +5,7 @@
  * page shell purely for size; behaviour is unchanged.
  */
 
-import { $, escapeAttr, escapeHtml } from '../utils.js';
+import { escapeAttr, escapeHtml } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
 import { SAMPLE_PASTE, refreshLLMStatus } from './settings-panels.js';
 

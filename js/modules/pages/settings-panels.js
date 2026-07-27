@@ -6,7 +6,7 @@
  * section element and exposes the window.__ handlers its markup references.
  */
 
-import { $, escapeAttr, escapeHtml } from '../utils.js';
+import { escapeAttr, escapeHtml } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
 import { API } from '../api.js';
 import { API_BASE, fetchJSON } from './shared.js';

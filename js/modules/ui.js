@@ -1,5 +1,5 @@
 import { $, escapeHtml, escapeAttr, timeAgo } from './utils.js';
-import { t, onLanguageChange } from './i18n.js';
+import { t } from './i18n.js';
 
 function pad(n) {
   return String(n).padStart(2, '0');

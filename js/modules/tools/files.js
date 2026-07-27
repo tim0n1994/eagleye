@@ -6,7 +6,6 @@
  * <script> the shell re-evaluates. Split out of tools.js; unchanged otherwise.
  */
 
-import { escapeHtml } from '../utils.js';
 import { toolShell } from './shell.js';
 
 
@@ -53,19 +52,13 @@ export function renderZIPCreator() {
 }
 
 export function renderPDFCompressor() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>📄 PDF Optimizer</h2>
-        <p class="tool-desc">Reduce PDF file size by stripping metadata and re-saving with optimized object streams. No upload — runs in your browser via pdf-lib.</p>
-      </div>
+  return toolShell('pdf-compressor', 'PDF Compressor', `
       <div class="tool-row">
         <label>Select PDF</label>
         <input type="file" id="pdfFile" accept="application/pdf" class="tool-input" />
       </div>
       <button onclick="window.__pdfCompress()" class="tool-btn" id="pdfCompressBtn" style="display:none">Optimize & Download</button>
       <div id="pdfResult" class="tool-result"></div>
-    </div>
     <script>
       document.getElementById('pdfFile')?.addEventListener('change', function(e) {
         const hasFile = !!e.target.files[0];
@@ -116,5 +109,5 @@ export function renderPDFCompressor() {
         }
       };
     </script>
-  `;
+  `);
 }

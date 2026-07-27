@@ -5,10 +5,8 @@
  * Split out of pages.js; render functions are unchanged.
  */
 
-import { $, escapeAttr, escapeHtml } from '../utils.js';
+import { $, escapeAttr } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
-import { API } from '../api.js';
-import { API_BASE, fetchJSON } from './shared.js';
 
 
 // ─── Settings (LLM endpoint + runtime config) ───────────────────────

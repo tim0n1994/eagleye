@@ -8,7 +8,6 @@
 import { $, escapeAttr, escapeHtml } from '../utils.js';
 import { renderToolBySlug } from '../tools.js';
 import { getLanguage, t } from '../i18n.js';
-import { API } from '../api.js';
 import { showError, showLoader } from './shared.js';
 
 

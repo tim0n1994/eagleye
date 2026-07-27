@@ -6,39 +6,43 @@
  * <script> the shell re-evaluates. Split out of tools.js; unchanged otherwise.
  */
 
+import { toolShell } from './shell.js';
+
 
 
 
 export function renderVideoCompressor() {
-  return `<div class="tool-container"><div class="tool-header"><h2>🎬 Video Compressor</h2></div><p>Browser-based video encoding is too resource-intensive for a local tool. We recommend:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>HandBrake</strong> — free, open-source video transcoder (handbrake.fr)</li><li><strong>ffmpeg</strong> — <code>ffmpeg -i input.mp4 -crf 28 output.mp4</code></li></ul></div>`
+  return toolShell('video-compressor', 'Video Compressor', `
+<p>Browser-based video encoding is too resource-intensive for a local tool. We recommend:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>HandBrake</strong> — free, open-source video transcoder (handbrake.fr)</li><li><strong>ffmpeg</strong> — <code>ffmpeg -i input.mp4 -crf 28 output.mp4</code></li></ul>
+  `);
 }
 
 export function renderVideoToGIF() {
-  return `<div class="tool-container"><div class="tool-header"><h2>🎞️ Video to GIF</h2></div><p>Convert video to GIF with ffmpeg or an online tool:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>ffmpeg</strong> — <code>ffmpeg -i input.mp4 -vf "fps=10,scale=320:-1" output.gif</code></li><li><strong>ezgif.com</strong> — browser-based, no install</li></ul></div>`
+  return toolShell('video-to-gif', 'Video to GIF', `
+<p>Convert video to GIF with ffmpeg or an online tool:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>ffmpeg</strong> — <code>ffmpeg -i input.mp4 -vf "fps=10,scale=320:-1" output.gif</code></li><li><strong>ezgif.com</strong> — browser-based, no install</li></ul>
+  `);
 }
 
 export function renderAudioCompressor() {
-  return `<div class="tool-container"><div class="tool-header"><h2>🎵 Audio Compressor</h2></div><p>Compress audio with ffmpeg or Audacity:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>ffmpeg</strong> — <code>ffmpeg -i input.wav -b:a 128k output.mp3</code></li><li><strong>Audacity</strong> — free, open-source audio editor</li></ul></div>`
+  return toolShell('audio-compressor', 'Audio Compressor', `
+<p>Compress audio with ffmpeg or Audacity:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>ffmpeg</strong> — <code>ffmpeg -i input.wav -b:a 128k output.mp3</code></li><li><strong>Audacity</strong> — free, open-source audio editor</li></ul>
+  `);
 }
 
 export function renderMediaConverter() {
-  return `<div class="tool-container"><div class="tool-header"><h2>🔀 Media Converter</h2></div><p>For format conversion across media types:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>ffmpeg</strong> — handles video/audio/image conversion</li><li><strong>CloudConvert</strong> — browser-based, 200+ formats</li></ul><p class="subtle">Image-only conversion? Use our <a href="/tools/image-converter">Image Converter</a> tool (runs locally in browser).</p></div>`
+  return toolShell('media-converter', 'Media Converter', `
+<p>For format conversion across media types:</p><ul style="margin:12px 0;padding-left:20px;line-height:2"><li><strong>ffmpeg</strong> — handles video/audio/image conversion</li><li><strong>CloudConvert</strong> — browser-based, 200+ formats</li></ul><p class="subtle">Image-only conversion? Use our <a href="/tools/image-converter">Image Converter</a> tool (runs locally in browser).</p>
+  `);
 }
 
 export function renderAudioExtractor() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>🎵 Audio Extractor</h2>
-        <p class="tool-desc">Extract the audio track from a video file. No upload — uses the Web Audio API + MediaRecorder. Outputs WebM audio.</p>
-      </div>
+  return toolShell('audio-extractor', 'Audio Extractor', `
       <div class="tool-row">
         <label>Select Video</label>
         <input type="file" id="audioExtractFile" accept="video/*" class="tool-input" />
       </div>
       <button onclick="window.__extractAudio()" class="tool-btn" id="audioExtractBtn" style="display:none">Extract Audio</button>
       <div id="audioExtractResult" class="tool-result"></div>
-    </div>
     <script>
       document.getElementById('audioExtractFile')?.addEventListener('change', function(e) {
         const hasFile = !!e.target.files[0];
@@ -89,16 +93,11 @@ export function renderAudioExtractor() {
         }
       };
     </script>
-  `;
+  `);
 }
 
 export function renderVoiceRecorder() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>🎙️ Voice Recorder</h2>
-        <p class="tool-desc">Record audio from your microphone. Everything stays local — no upload. Downloads as WebM.</p>
-      </div>
+  return toolShell('voice-recorder', 'Voice Recorder', `
       <div class="tool-recorder-area">
         <div id="recStatus" class="rec-status">Ready</div>
         <div id="recTimer" class="rec-timer">00:00</div>
@@ -109,7 +108,6 @@ export function renderVoiceRecorder() {
       </div>
       <div id="recResult" class="rec-result"></div>
       <audio id="recPlayer" controls style="display:none; width:100%; margin-top:12px;"></audio>
-    </div>
     <script>
       window.__recState = { mediaRecorder: null, chunks: [], startTime: 0, timer: null, stream: null };
       window.__recStart = async function() {
@@ -165,5 +163,5 @@ export function renderVoiceRecorder() {
         document.getElementById('recStop').disabled = true;
       };
     </script>
-  `;
+  `);
 }

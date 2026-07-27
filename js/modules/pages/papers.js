@@ -8,7 +8,6 @@
 import { $, escapeAttr, escapeHtml, timeAgo } from '../utils.js';
 import { KnowledgeGraph } from '../graph-viz.js';
 import { getLanguage, t } from '../i18n.js';
-import { API } from '../api.js';
 import { API_BASE, fetchJSON, pickZh, showError, showLoader, tagHref } from './shared.js';
 
 

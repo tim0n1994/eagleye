@@ -309,12 +309,7 @@ export function renderLeverageCalc() {
 }
 
 export function renderTimezoneConverter() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>🌍 Timezone Converter</h2>
-        <p class="tool-desc">Convert a time across timezones. Enter a time, pick source + target zones.</p>
-      </div>
+  return toolShell('timezone-converter', 'Timezone Converter', `
       <div class="tool-row">
         <label>Time</label>
         <input type="datetime-local" id="tzInput" class="tool-input" />
@@ -333,7 +328,6 @@ export function renderTimezoneConverter() {
       </div>
       <button onclick="window.__tzConvert()" class="tool-btn">Convert</button>
       <div id="tzResult" class="tool-result"></div>
-    </div>
     <script>
       window.__tzConvert = function() {
         const input = document.getElementById('tzInput')?.value;
@@ -365,5 +359,5 @@ export function renderTimezoneConverter() {
         }
       };
     </script>
-  `;
+  `);
 }

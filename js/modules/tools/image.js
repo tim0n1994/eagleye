@@ -294,12 +294,7 @@ export function renderScreenshotBeautify() {
 // ─── Placeholder functions for missing tools ──────────────────────────────────
 
 export function renderImageResizer() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>📐 Image Resizer</h2>
-        <p class="tool-desc">Resize images in your browser. No upload — uses Canvas API. Supports PNG/JPEG/WebP.</p>
-      </div>
+  return toolShell('image-resizer', 'Image Resizer', `
       <div class="tool-row">
         <label>Select Image</label>
         <input type="file" id="resizeFile" accept="image/*" class="tool-input" />
@@ -325,7 +320,6 @@ export function renderImageResizer() {
       </div>
       <button onclick="window.__resizeImage()" class="tool-btn" id="resizeBtn" style="display:none">Resize & Download</button>
       <div id="resizePreview" class="resize-preview"></div>
-    </div>
     <script>
       window.__resizeOrig = null;
       document.getElementById('resizeFile')?.addEventListener('change', function(e) {
@@ -368,16 +362,11 @@ export function renderImageResizer() {
         }, fmt, q);
       };
     </script>
-  `;
+  `);
 }
 
 export function renderImageConverter() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>🔄 Image Converter</h2>
-        <p class="tool-desc">Convert images between PNG, JPEG, and WebP. No upload — uses Canvas API.</p>
-      </div>
+  return toolShell('image-converter', 'Image Converter', `
       <div class="tool-row">
         <label>Select Image</label>
         <input type="file" id="convFile" accept="image/*" class="tool-input" />
@@ -393,7 +382,6 @@ export function renderImageConverter() {
       </div>
       <button onclick="window.__convImage()" class="tool-btn" id="convBtn" style="display:none">Convert & Download</button>
       <div id="convResult" class="tool-result"></div>
-    </div>
     <script>
       window.__convOrig = null;
       window.__convName = '';
@@ -436,16 +424,11 @@ export function renderImageConverter() {
         }, fmt, q);
       };
     </script>
-  `;
+  `);
 }
 
 export function renderHEICToJPG() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>📱 HEIC to JPG</h2>
-        <p class="tool-desc">Convert HEIC/HEIF images (from iPhones) to JPG. No upload — uses the browser's native image decoder. Note: HEIC support depends on your browser/OS (Safari on macOS works best).</p>
-      </div>
+  return toolShell('heic-to-jpg', 'HEIC to JPG', `
       <div class="tool-row">
         <label>Select HEIC Image</label>
         <input type="file" id="heicFile" accept=".heic,.heif,image/heic,image/heif,image/*" class="tool-input" />
@@ -455,7 +438,6 @@ export function renderHEICToJPG() {
       </div>
       <button onclick="window.__heicConvert()" class="tool-btn" id="heicBtn" style="display:none">Convert to JPG</button>
       <div id="heicResult" class="tool-result"></div>
-    </div>
     <script>
       document.getElementById('heicFile')?.addEventListener('change', function(e) {
         const hasFile = !!e.target.files[0];
@@ -498,16 +480,11 @@ export function renderHEICToJPG() {
         reader.readAsDataURL(file);
       };
     </script>
-  `;
+  `);
 }
 
 export function renderImageCropper() {
-  return `
-    <div class="tool-container">
-      <div class="tool-header">
-        <h2>✂️ Image Cropper</h2>
-        <p class="tool-desc">Crop images by specifying the region. Enter top-left X/Y and width/height. No upload — uses Canvas API.</p>
-      </div>
+  return toolShell('image-cropper', 'Image Cropper', `
       <div class="tool-row">
         <label>Select Image</label>
         <input type="file" id="cropFile" accept="image/*" class="tool-input" />
@@ -520,7 +497,6 @@ export function renderImageCropper() {
       </div>
       <button onclick="window.__cropImage()" class="tool-btn" id="cropBtn" style="display:none">Crop & Download</button>
       <div id="cropResult" class="tool-result"></div>
-    </div>
     <script>
       window.__cropOrig = null;
       window.__cropName = '';
@@ -567,5 +543,5 @@ export function renderImageCropper() {
         }, 'image/png');
       };
     </script>
-  `;
+  `);
 }

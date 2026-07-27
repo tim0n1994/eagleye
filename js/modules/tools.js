@@ -13,7 +13,6 @@ import { escapeHtml } from './utils.js';
 
 // ─── Tool Registry ──────────────────────────────────────────
 
-import { toolShell } from './tools/shell.js';
 import { renderBase64, renderCodeMinifier, renderJSONDiff, renderJSONFormatter, renderLatexPreview, renderMarkdownPreview } from './tools/text.js';
 import { renderColorPicker, renderHEICToJPG, renderImageCompressor, renderImageConverter, renderImageCropper, renderImageResizer, renderQRGenerator, renderScreenshotBeautify } from './tools/image.js';
 import { renderAudioCompressor, renderAudioExtractor, renderMediaConverter, renderVideoCompressor, renderVideoToGIF, renderVoiceRecorder } from './tools/media.js';

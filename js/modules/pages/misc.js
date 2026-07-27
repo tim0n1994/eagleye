@@ -6,7 +6,7 @@
  */
 
 import { $, escapeHtml } from '../utils.js';
-import { getLanguage, t } from '../i18n.js';
+import { getLanguage } from '../i18n.js';
 import { API } from '../api.js';
 
 
