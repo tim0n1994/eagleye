@@ -69,6 +69,8 @@ export function renderPDFCompressor() {
         }
       });
       window.__pdfCompress = async function() {
+        // pdf-lib is 525KB and only this tool uses it — load on first use.
+        try { await window.__LIBS.pdfLib(); } catch (e) { /* guard handles it */ }
         const file = document.getElementById('pdfFile')?.files[0];
         if (!file) return;
         if (typeof PDFLib === 'undefined') {
