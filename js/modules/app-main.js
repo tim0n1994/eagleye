@@ -675,7 +675,7 @@ function wireLegacyInteractions() {
 
 // Deploy plans are LLM output built from scraped repo content, so they go
 // through the shared sanitizing renderer rather than a raw regex pass.
-function formatDeployPlan(md) {
+export function formatDeployPlan(md) {
   return renderMarkdown(md, t('common.empty'));
 }
 
