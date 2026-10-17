@@ -71,3 +71,10 @@ export function localDateStr(date) {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}${m}${day}`;
 }
+
+export function normalizeDateStr(value) {
+  if (typeof value === 'string' && /^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  }
+  return value;
+}

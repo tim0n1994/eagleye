@@ -12,6 +12,7 @@
 
 const { getDB } = require('../db/connection');
 const { getProvider, extractJSON } = require('./llm-provider');
+const { taskContext, abortableDelay } = require('./llm-shared');
 const crypto = require('crypto');
 
 const DEFAULT_MAX_TAGS = Math.max(30, parseInt(process.env.TAG_HIERARCHY_MAX_TAGS || '240', 10));
@@ -208,27 +209,36 @@ function scoreTagCandidate(tag) {
   return score;
 }
 
-async function runRound1(provider, chunkTags, chunkIndex) {
+async function runRound1(provider, chunkTags, chunkIndex, task) {
   const tagList = chunkTags.map(t => t.name).join('\n');
   const r1Prompt = ROUND1_PROMPT.replace('{{tag_list}}', tagList);
 
-  for (let attempt = 1; attempt <= 5; attempt++) {
+  const maxAttempts = provider.isPool ? 1 : 5;
+  const validate = parsed => {
+    const groups = parseSubTopics(parsed);
+    return Array.isArray(groups) && groups.length > 0 && groups.every(group =>
+      group && typeof (group.name_zh || group.name) === 'string' && (group.name_zh || group.name).trim()
+      && Array.isArray(group.tags) && group.tags.some(tag => chunkTags.some(allowed => allowed.name === (typeof tag === 'string' ? tag : tag?.name || tag?.tag))));
+  };
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const text = await provider.call(r1Prompt, { temperature: 0.1, maxTokens: ROUND1_MAX_TOKENS });
+      task.check();
+      const text = await provider.call(r1Prompt, { task: 'graph', json: true, validate, temperature: 0.1, maxTokens: ROUND1_MAX_TOKENS, signal: task.signal });
+      task.check();
       if (!text) throw new Error('LLM returned empty response');
-      console.log(`  📝 R1 chunk ${chunkIndex} attempt ${attempt} raw response (first 200 chars): ${text.slice(0, 200)}`);
 
       const parsed = extractJSON(text);
+      if (!validate(parsed)) throw new Error('Round 1 returned invalid sub-topic assignments');
       const subTopics = parseSubTopics(parsed);
       if (subTopics && subTopics.length > 0) {
         return normalizeSubTopics(subTopics, chunkTags, chunkIndex);
       }
-      console.log(`  ⚠ R1 chunk ${chunkIndex} attempt ${attempt}: parsed type=${typeof parsed}, keys=${JSON.stringify(Object.keys(parsed || {}).slice(0, 5))}`);
     } catch (err) {
+      task.check();
+      if (attempt >= maxAttempts) throw new Error(`Round 1 chunk ${chunkIndex} failed: ${err.message}`, { cause: err });
       const delayMs = Math.min(30000, 2000 * Math.pow(2, attempt));
       console.log(`  ❌ R1 chunk ${chunkIndex} attempt ${attempt} error: ${err.message} — retrying in ${Math.round(delayMs/1000)}s`);
-      await new Promise(r => setTimeout(r, delayMs));
-      if (attempt >= 5) throw new Error(`Round 1 chunk ${chunkIndex} failed: ${err.message}`, { cause: err });
+      await abortableDelay(delayMs, task.signal);
     }
   }
 
@@ -330,7 +340,9 @@ function normalizeHierarchyOutput(hierarchy) {
   return { ...hierarchy, domains, topics };
 }
 
-async function buildTagHierarchy() {
+async function buildTagHierarchy(opts = {}) {
+  const task = taskContext(opts);
+  task.check();
   const db = getDB();
   if (!db) throw new Error('Database not available');
 
@@ -365,7 +377,7 @@ async function buildTagHierarchy() {
   const chunks = chunkArray(tags, ROUND1_CHUNK_SIZE);
   const subTopics = [];
   for (let i = 0; i < chunks.length; i++) {
-    const chunkSubTopics = await runRound1(provider, chunks[i], i + 1);
+    const chunkSubTopics = await runRound1(provider, chunks[i], i + 1, task);
     subTopics.push(...chunkSubTopics);
   }
   const mergedSubTopics = mergeSubTopicsByName(subTopics);
@@ -377,20 +389,30 @@ async function buildTagHierarchy() {
   const r2Prompt = ROUND2_PROMPT.replace('{{sub_topics_json}}', JSON.stringify(mergedSubTopics, null, 2));
 
   let hierarchy;
-  for (let attempt = 1; attempt <= 5; attempt++) {
+  const maxAttempts = provider.isPool ? 1 : 5;
+  const validate = parsed => Boolean(parsed && Array.isArray(parsed.domains) && parsed.domains.length > 0
+    && Array.isArray(parsed.topics) && parsed.topics.length > 0
+    && parsed.domains.every(domain => typeof domain?.name_zh === 'string' && domain.name_zh.trim() && Array.isArray(domain.topics))
+    && parsed.topics.every(topic => typeof topic?.name_zh === 'string' && topic.name_zh.trim()
+      && typeof topic.domain === 'string' && topic.domain.trim() && Array.isArray(topic.sub_topics)));
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const text = await provider.call(r2Prompt, { temperature: 0.1, maxTokens: ROUND2_MAX_TOKENS });
+      task.check();
+      const text = await provider.call(r2Prompt, { task: 'graph', json: true, validate, temperature: 0.1, maxTokens: ROUND2_MAX_TOKENS, signal: task.signal });
+      task.check();
       if (!text) throw new Error('LLM returned empty response');
       const parsed = extractJSON(text);
+      if (!validate(parsed)) throw new Error('Round 2 returned invalid domains/topics');
       if (parsed && parsed.domains && parsed.topics) {
         hierarchy = normalizeHierarchyOutput(ensureHierarchyCoverage(parsed, mergedSubTopics));
         break;
       }
     } catch (err) {
+      task.check();
+      if (attempt >= maxAttempts) throw new Error(`Round 2 failed: ${err.message}`, { cause: err });
       console.log(`  ❌ R2 attempt ${attempt} error: ${err.message}`);
       const delayMs = Math.min(15000, 1000 * Math.pow(2, attempt));
-      if (attempt < 5) await new Promise(r => setTimeout(r, delayMs));
-      if (attempt >= 5) throw new Error(`Round 2 failed: ${err.message}`, { cause: err });
+      await abortableDelay(delayMs, task.signal);
     }
   }
 
@@ -402,6 +424,7 @@ async function buildTagHierarchy() {
   // ── Write to DB ──
   const writeDb = db;
   const writeTransaction = writeDb.transaction(() => {
+    task.check();
     // Clear existing hierarchy
     writeDb.prepare('DELETE FROM tag_hierarchy').run();
     writeDb.prepare('DELETE FROM knowledge_domains').run();

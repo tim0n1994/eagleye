@@ -11,11 +11,14 @@ import { getLanguage, t } from '../i18n.js';
 
 // ─── Settings (LLM endpoint + runtime config) ───────────────────────
 
-import { SAMPLE_PASTE, refreshApiKeys, refreshLLMStatus, refreshSchedulerPanel, refreshSystemHealth, refreshUserManagement } from './settings-panels.js';
+import { SAMPLE_PASTE, refreshApiKeys, refreshLLMStatus, refreshMcpServerPanel, refreshSchedulerPanel, refreshSystemHealth, refreshUserManagement } from './settings-panels.js';
 import { wireSettingsHandlers } from './settings-handlers.js';
+import { renderLLMPoolPanel } from './settings-llm-pool.js';
 
 export async function renderSettings(_params) {
   const container = $('#pageContent');
+  const currentUser = window.__currentUser?.();
+  const isAdmin = currentUser?.role === 'admin';
   const sampleText = SAMPLE_PASTE;
   const directSubtitle = getLanguage() === 'zh' ? '适用于 OpenAI 兼容接口' : 'For OpenAI-compatible endpoints';
   const pasteSubtitle = getLanguage() === 'zh' ? '自动识别 key/value、JSON、curl 三种格式' : 'Auto-detects key/value, JSON, and curl';
@@ -24,21 +27,24 @@ export async function renderSettings(_params) {
     : '<option value="openai">openai (OpenAI Chat Completions compatible)</option><option value="gemini">gemini</option><option value="claude">claude</option>';
   const step1 = getLanguage() === 'zh' ? '点击上方的' : 'Hit';
   const step1b = getLanguage() === 'zh' ? '以确认接口正常。' : ' above to confirm the API answers.';
-  const step2 = getLanguage() === 'zh' ? '打开首页 — 当日信号将自动 enrichment。' : "Open the homepage — today's signals will start to enrich.";
-  const step3 = getLanguage() === 'zh' ? '或手动批量运行：' : 'Or run a batch manually:';
-  const step4 = getLanguage() === 'zh' ? '然后触发每日简报：' : 'Then trigger a daily digest:';
+  const step2 = getLanguage() === 'zh' ? '在下方选择有限批量，启动 AI 摘要；重试耗尽项可单独恢复。' : 'Choose a bounded batch below to start AI summaries; exhausted items can be retried explicitly.';
+  const step3 = getLanguage() === 'zh' ? '查看任务状态，确认成功和失败数量。' : 'Check job status and confirm successful and failed counts.';
+  const step4 = getLanguage() === 'zh' ? '需要自动更新时，明确启用下方定时调度并确认时区。' : 'For automatic updates, enable the scheduler below and confirm its timezone.';
 
   container.innerHTML = `
     <section class="page-section">
       <div class="page-header">
         <h2 class="page-title">${t('settings.title')}</h2>
-        <p class="page-description">${t('settings.subtitle')}</p>
+        <p class="page-description">${isAdmin ? t('settings.subtitle') : getLanguage() === 'zh' ? '账户设置与系统访问；系统配置由管理员维护。' : 'Account settings and system access. System configuration is managed by administrators.'}</p>
+        ${currentUser ? `<button class="action-btn" id="settingsSignOut" type="button">${getLanguage() === 'zh' ? '退出登录' : 'Sign out'}</button><p id="settingsSignOutError" class="subtle" role="status" aria-live="polite"></p>` : ''}
       </div>
 
+      ${isAdmin ? `<div class="settings-card settings-card-wide" id="llmPoolPanel"></div>
       <div class="settings-grid">
         <div class="settings-card">
+        <div class="settings-card" id="mcpServerPanel"></div>
           <div class="settings-card-header">
-            <span class="settings-card-title">${t('settings.current')}</span>
+            <span class="settings-card-title">${getLanguage() === 'zh' ? '单端点兼容配置' : 'Single-endpoint compatibility'}</span>
             <span class="settings-card-badge" id="llmStatusBadge">…</span>
           </div>
           <div class="settings-card-body" id="llmCurrent">
@@ -108,12 +114,8 @@ export async function renderSettings(_params) {
             <ol class="settings-steps">
               <li>${step1} <code>${t('settings.test')}</code> ${step1b}</li>
               <li>${step2}</li>
-              <li>${step3}
-                <pre class="settings-code">curl -X POST 'http://127.0.0.1:3001/api/enrich?batch=1600&amp;background=true'</pre>
-              </li>
-              <li>${step4}
-                <pre class="settings-code">curl -X POST 'http://127.0.0.1:3001/api/digest/build?background=true'</pre>
-              </li>
+              <li>${step3}</li>
+              <li>${step4}</li>
             </ol>
           </div>
         </div>
@@ -139,10 +141,13 @@ export async function renderSettings(_params) {
               <div class="op-row" data-op-row="enrich">
                 <div class="op-info">
                   <div class="op-name"><span class="op-name-zh">AI 摘要批量</span><span class="op-name-sep">·</span><span class="op-name-en">ENRICH ITEMS</span></div>
-                  <div class="op-desc">${t('ops.enrich_desc')}</div>
+                  <div class="op-desc">${getLanguage() === 'zh' ? '在下方批量上限内，为缺少知识卡片的条目生成摘要。只有勾选时才重试耗尽项；子批次与请求并发受运行配置及端点池全局上限约束。' : 'Generate missing summaries within the batch limit below. Exhausted items are retried only when selected; model sub-batches and request concurrency follow runtime settings and the pool’s global limit.'}</div>
                   <div class="op-stream" data-op-stream="enrich" hidden></div>
                 </div>
                 <div class="op-actions">
+                  <label for="enrichBatch">${getLanguage() === 'zh' ? '批量上限' : 'Batch limit'}</label>
+                  <input class="form-input" id="enrichBatch" type="number" min="1" max="100" step="1" value="20" style="width:85px">
+                  <label><input type="checkbox" id="enrichRetryExhausted">${getLanguage() === 'zh' ? '重试耗尽项' : 'Retry exhausted items'}</label>
                   <button class="action-btn primary" data-op="enrich">▶ ${t('ops.enrich')}</button>
                   <button class="action-btn danger op-stop" data-op-stop="enrich" hidden>${t('ops.stop')}</button>
                 </div>
@@ -214,7 +219,7 @@ export async function renderSettings(_params) {
       <div class="settings-card">
         <h3 class="settings-card-title">📊 ${getLanguage() === 'zh' ? '系统健康' : 'System Health'}</h3>
         <div id="systemHealthPanel"><p class="subtle">${getLanguage() === 'zh' ? '加载中…' : 'Loading...'}</p></div>
-      </div>
+      </div>` : `<p class="subtle">${getLanguage() === 'zh' ? '模型配置、调度与系统操作由管理员管理。' : 'Model configuration, scheduling and system operations are managed by administrators.'}</p>`}
 
       <div class="settings-card">
         <h3 class="settings-card-title">🔗 ${getLanguage() === 'zh' ? '快捷链接' : 'Quick Links'}</h3>
@@ -228,14 +233,31 @@ export async function renderSettings(_params) {
         </div>
       </div>
     </section>
-    <section class="metrics-block" id="userMgmtPanel" style="margin-top:16px"></section>
-    <section class="metrics-block" id="apiKeysPanel" style="margin-top:16px"></section>
+    ${isAdmin ? `<section class="metrics-block" id="userMgmtPanel" style="margin-top:16px"></section>
+    <section class="metrics-block" id="apiKeysPanel" style="margin-top:16px"></section>` : ''}
   `;
 
-  await refreshLLMStatus();
-  wireSettingsHandlers();
-  refreshSchedulerPanel();
-  refreshSystemHealth();
-  refreshUserManagement();
-  refreshApiKeys();
+  const signOut = container.querySelector('#settingsSignOut');
+  const signOutError = container.querySelector('#settingsSignOutError');
+  signOut?.addEventListener('click', async () => {
+    if (signOut.disabled) return;
+    signOut.disabled = true;
+    signOutError.textContent = '';
+    try {
+      if (typeof window.__logout !== 'function') throw new Error('Logout unavailable');
+      await window.__logout();
+    } catch {
+      signOutError.textContent = getLanguage() === 'zh' ? '退出登录未完成，请稍后重试。' : 'Sign out could not be completed. Please try again.';
+      signOut.disabled = false;
+    }
+  });
+
+  if (isAdmin) {
+    wireSettingsHandlers();
+    await Promise.allSettled([
+      renderLLMPoolPanel(container.querySelector('#llmPoolPanel')),
+      refreshMcpServerPanel(),
+      refreshLLMStatus(), refreshSchedulerPanel(), refreshSystemHealth(), refreshUserManagement(), refreshApiKeys(),
+    ]);
+  }
 }

@@ -1,0 +1,2803 @@
+{
+  "database": "/Users/chillbit/.codex/tmp/eagleye-1.1-acceptance.sqlite",
+  "captured_at": "2026-09-09T04:08:49.743294+00:00",
+  "trace_id": "ebc86058-4840-4f75-a2ec-1a2f7e2461d0",
+  "item_ids": [
+    "63b5b8eb-19e1-40c6-aeee-187912db160f",
+    "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+    "98677b4a-b353-4bed-a8e1-d43c16f45e9b"
+  ],
+  "tables": {
+    "information_items": [
+      {
+        "id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "source_id": "s001",
+        "canonical_url": "https://gpu-lexer.vercel.app/",
+        "external_id": "",
+        "title": "27.5KB language-agnostic WebGPU syntax highlighter",
+        "original_summary": "",
+        "content_text": "",
+        "language": "en",
+        "author": "bpierre",
+        "published_at": "2026-09-09T01:14:50.000Z",
+        "fetched_at": "2026-09-09 03:52:28",
+        "digest_date": "20260909",
+        "source_payload": "{\"hnId\":49619464,\"hnUrl\":\"https://news.ycombinator.com/item?id=49619464\",\"points\":31,\"comments\":8,\"domain\":\"gpu-lexer.vercel.app\",\"by\":\"bpierre\",\"type\":\"story\"}",
+        "normalized_payload": "{}",
+        "score": 31.0,
+        "popularity": "{\"points\":31,\"comments\":8}",
+        "content_hash": "c0a9acf446c24a0f14f90cce219a9a30",
+        "duplicate_group_id": null,
+        "created_at": "2026-09-09 03:52:28",
+        "updated_at": "2026-09-09 03:52:28",
+        "title_zh": "体积仅27.5KB且跨语言通用的WebGPU代码语法高亮工具开源",
+        "title_zh_status": "translated",
+        "enrichment_attempts": 2,
+        "last_enrich_attempt": "2026-09-09 03:57:04"
+      },
+      {
+        "id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "source_id": "s001",
+        "canonical_url": "https://twitter.com/hilbertspaess/status/2097476196791709843",
+        "external_id": "",
+        "title": "AI Responsibility – OpenAI and Anthropic",
+        "original_summary": "",
+        "content_text": "",
+        "language": "en",
+        "author": "getatme32",
+        "published_at": "2026-09-09T01:32:49.000Z",
+        "fetched_at": "2026-09-09 03:52:34",
+        "digest_date": "20260909",
+        "source_payload": "{\"hnId\":49619639,\"hnUrl\":\"https://news.ycombinator.com/item?id=49619639\",\"points\":64,\"comments\":14,\"domain\":\"twitter.com\",\"by\":\"getatme32\",\"type\":\"story\"}",
+        "normalized_payload": "{}",
+        "score": 64.0,
+        "popularity": "{\"points\":64,\"comments\":14}",
+        "content_hash": "9031075df10d2b3718758319c2a85d4c",
+        "duplicate_group_id": null,
+        "created_at": "2026-09-09 03:52:34",
+        "updated_at": "2026-09-09 03:52:34",
+        "title_zh": "关于OpenAI与Anthropic在人工智能责任治理与安全路径的讨论",
+        "title_zh_status": "translated",
+        "enrichment_attempts": 2,
+        "last_enrich_attempt": "2026-09-09 03:57:04"
+      },
+      {
+        "id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "source_id": "s001",
+        "canonical_url": "https://current.fas.harvard.edu/stories/harvard-study-predicts-most-suicide-attempts-week-advance",
+        "external_id": "",
+        "title": "Harvard study predicts most suicide attempts a week in advance",
+        "original_summary": "",
+        "content_text": "",
+        "language": "en",
+        "author": "jodacola",
+        "published_at": "2026-09-09T02:07:13.000Z",
+        "fetched_at": "2026-09-09 03:52:38",
+        "digest_date": "20260909",
+        "source_payload": "{\"hnId\":49619906,\"hnUrl\":\"https://news.ycombinator.com/item?id=49619906\",\"points\":94,\"comments\":46,\"domain\":\"current.fas.harvard.edu\",\"by\":\"jodacola\",\"type\":\"story\"}",
+        "normalized_payload": "{}",
+        "score": 94.0,
+        "popularity": "{\"points\":94,\"comments\":46}",
+        "content_hash": "9ff2aa7e7eb0bf9cb7389e4f35d6ddae",
+        "duplicate_group_id": null,
+        "created_at": "2026-09-09 03:52:38",
+        "updated_at": "2026-09-09 03:52:38",
+        "title_zh": "哈佛大学最新研究：多数自杀企图可提前一周被算法有效预测",
+        "title_zh_status": "translated",
+        "enrichment_attempts": 2,
+        "last_enrich_attempt": "2026-09-09 03:57:04"
+      }
+    ],
+    "ai_summaries": [
+      {
+        "id": "a1f124f7-19a3-4fe7-98c5-15579ce1bef2",
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "model_provider": "claude",
+        "model_name": "google-antigravity/gemini-3.8-flash-high",
+        "prompt_version": "v3.1-knowledge-card-graph-zh",
+        "ai_title": "27.5KB language-agnostic WebGPU syntax highlighter",
+        "one_liner": "一款仅 27.5KB 的轻量级跨语言语法高亮器，利用 WebGPU 实现高效前端代码渲染。",
+        "short_summary": "开发者推出仅 27.5KB 的跨语言语法高亮器，借助 WebGPU 提供轻量高效的前端代码着色。",
+        "deep_summary": null,
+        "key_points": "[\"打包体积仅 27.5KB，具备极高的轻量化优势与加载速度。\",\"基于 WebGPU 构建底层能力，支持跨语言语法词法分析与着色。\",\"为前端高性能代码展示和轻量级网页编辑器提供了新的技术方案。\"]",
+        "why_it_matters": "展示了 WebGPU 在图形渲染之外用于文本与词法分析的轻量化创新实践，显著减少前端打包体积。",
+        "audience": "[]",
+        "risks": "[]",
+        "opportunities": "[]",
+        "action_items": "[]",
+        "confidence": 0.92,
+        "source_grounding": "{\"item_id\":\"63b5b8eb-19e1-40c6-aeee-187912db160f\",\"source_label\":\"Hacker News\",\"canonical_url\":\"https://gpu-lexer.vercel.app/\",\"prompt_version\":\"v3.1-knowledge-card-graph-zh\"}",
+        "created_at": "2026-09-09 03:57:13",
+        "ai_title_zh": "体积仅27.5KB且跨语言通用的WebGPU代码语法高亮工具开源",
+        "one_liner_zh": "一款仅 27.5KB 的轻量级跨语言语法高亮器，利用 WebGPU 实现高效前端代码渲染。",
+        "short_summary_zh": "开发者推出仅 27.5KB 的跨语言语法高亮器，借助 WebGPU 提供轻量高效的前端代码着色。",
+        "key_points_zh": "[\"打包体积仅 27.5KB，具备极高的轻量化优势与加载速度。\",\"基于 WebGPU 构建底层能力，支持跨语言语法词法分析与着色。\",\"为前端高性能代码展示和轻量级网页编辑器提供了新的技术方案。\"]",
+        "why_it_matters_zh": "展示了 WebGPU 在图形渲染之外用于文本与词法分析的轻量化创新实践，显著减少前端打包体积。",
+        "translation_status": "translated",
+        "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-2\",\"protocol\":\"anthropic\",\"requested_model\":\"google-antigravity/gemini-3.8-flash-high\",\"model\":\"google-antigravity/gemini-3.8-flash-high\",\"latency_ms\":9089,\"usage\":{\"input_tokens\":1648,\"output_tokens\":953},\"attempts\":1,\"trace_id\":\"ebc86058-4840-4f75-a2ec-1a2f7e2461d0\"}"
+      },
+      {
+        "id": "2614c515-ec70-46b3-b38d-72a4837f04e6",
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "model_provider": "claude",
+        "model_name": "google-antigravity/gemini-3.8-flash-high",
+        "prompt_version": "v3.1-knowledge-card-graph-zh",
+        "ai_title": "AI Responsibility – OpenAI and Anthropic",
+        "one_liner": "社区就头部大模型公司 OpenAI 与 Anthropic 在人工智能责任与对齐规范上的实践展开讨论。",
+        "short_summary": "社区围绕 OpenAI 与 Anthropic 两大头部机构的人工智能责任和治理理念展开对比与反思。",
+        "deep_summary": null,
+        "key_points": "[\"聚焦头部头部厂商 OpenAI 与 Anthropic 在人工智能责任（AI Responsibility）上的治理举措。\",\"讨论涵盖大模型伦理、安全规范以及两者在技术开发责任路径上的异同。\",\"反映出社区对生成式 AI 发展过程中安全对齐与企业责任担当的持续关注。\"]",
+        "why_it_matters": "作为领跑全球的大模型机构，两家公司的责任伦理与安全路线直接影响整个人工智能产业的监管与技术走向。",
+        "audience": "[]",
+        "risks": "[]",
+        "opportunities": "[]",
+        "action_items": "[]",
+        "confidence": 0.85,
+        "source_grounding": "{\"item_id\":\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\",\"source_label\":\"Hacker News\",\"canonical_url\":\"https://twitter.com/hilbertspaess/status/2097476196791709843\",\"prompt_version\":\"v3.1-knowledge-card-graph-zh\"}",
+        "created_at": "2026-09-09 03:57:13",
+        "ai_title_zh": "关于OpenAI与Anthropic在人工智能责任治理与安全路径的讨论",
+        "one_liner_zh": "社区就头部大模型公司 OpenAI 与 Anthropic 在人工智能责任与对齐规范上的实践展开讨论。",
+        "short_summary_zh": "社区围绕 OpenAI 与 Anthropic 两大头部机构的人工智能责任和治理理念展开对比与反思。",
+        "key_points_zh": "[\"聚焦头部头部厂商 OpenAI 与 Anthropic 在人工智能责任（AI Responsibility）上的治理举措。\",\"讨论涵盖大模型伦理、安全规范以及两者在技术开发责任路径上的异同。\",\"反映出社区对生成式 AI 发展过程中安全对齐与企业责任担当的持续关注。\"]",
+        "why_it_matters_zh": "作为领跑全球的大模型机构，两家公司的责任伦理与安全路线直接影响整个人工智能产业的监管与技术走向。",
+        "translation_status": "translated",
+        "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-2\",\"protocol\":\"anthropic\",\"requested_model\":\"google-antigravity/gemini-3.8-flash-high\",\"model\":\"google-antigravity/gemini-3.8-flash-high\",\"latency_ms\":9089,\"usage\":{\"input_tokens\":1648,\"output_tokens\":953},\"attempts\":1,\"trace_id\":\"ebc86058-4840-4f75-a2ec-1a2f7e2461d0\"}"
+      },
+      {
+        "id": "72683dd6-8a91-4fbf-863a-1ce7dfa2f3f3",
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "model_provider": "claude",
+        "model_name": "google-antigravity/gemini-3.8-flash-high",
+        "prompt_version": "v3.1-knowledge-card-graph-zh",
+        "ai_title": "Harvard study predicts most suicide attempts a week in advance",
+        "one_liner": "哈佛大学最新科研成果显示，模型可提前一周有效识别并预测绝大多数自杀企图风险。",
+        "short_summary": "哈佛大学研究表明，通过预测模型可在自杀企图发生前一周实现高精度风险预警。",
+        "deep_summary": null,
+        "key_points": "[\"哈佛大学最新研究能够提前一周预测绝大多数自杀企图。\",\"该成果为精神健康临床干预和高危人群预警提供了时间窗口。\",\"技术展示了预测算法在公共卫生和心理健康监测领域的落地潜力。\"]",
+        "why_it_matters": "为心理健康与危机干预提供了宝贵的提前预警时间窗口，体现了数据科学赋能医疗健康的重要价值。",
+        "audience": "[]",
+        "risks": "[]",
+        "opportunities": "[]",
+        "action_items": "[]",
+        "confidence": 0.88,
+        "source_grounding": "{\"item_id\":\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\",\"source_label\":\"Hacker News\",\"canonical_url\":\"https://current.fas.harvard.edu/stories/harvard-study-predicts-most-suicide-attempts-week-advance\",\"prompt_version\":\"v3.1-knowledge-card-graph-zh\"}",
+        "created_at": "2026-09-09 03:57:13",
+        "ai_title_zh": "哈佛大学最新研究：多数自杀企图可提前一周被算法有效预测",
+        "one_liner_zh": "哈佛大学最新科研成果显示，模型可提前一周有效识别并预测绝大多数自杀企图风险。",
+        "short_summary_zh": "哈佛大学研究表明，通过预测模型可在自杀企图发生前一周实现高精度风险预警。",
+        "key_points_zh": "[\"哈佛大学最新研究能够提前一周预测绝大多数自杀企图。\",\"该成果为精神健康临床干预和高危人群预警提供了时间窗口。\",\"技术展示了预测算法在公共卫生和心理健康监测领域的落地潜力。\"]",
+        "why_it_matters_zh": "为心理健康与危机干预提供了宝贵的提前预警时间窗口，体现了数据科学赋能医疗健康的重要价值。",
+        "translation_status": "translated",
+        "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-2\",\"protocol\":\"anthropic\",\"requested_model\":\"google-antigravity/gemini-3.8-flash-high\",\"model\":\"google-antigravity/gemini-3.8-flash-high\",\"latency_ms\":9089,\"usage\":{\"input_tokens\":1648,\"output_tokens\":953},\"attempts\":1,\"trace_id\":\"ebc86058-4840-4f75-a2ec-1a2f7e2461d0\"}"
+      }
+    ],
+    "item_tags": [
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "9894cef0-6d7c-4b16-9e23-26b434e3ac7d",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "9edd13d1-88cb-4716-a2af-85de3a23e037",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "ca4d4273-e0ab-45e5-b3a2-e6650f07d283",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "d1b40e8b-b0b6-4882-b802-8c90c7f730d5",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "e36204a8-7d35-440a-b68a-a886f3c59b90",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "tag_id": "2be36485-89ad-4bc8-b0cd-e0e4a5252a53",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "tag_id": "32322d2b-432c-4fc6-aaaf-579b8e5968b4",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "tag_id": "8be16678-f381-4008-b96b-ebf3595c0c17",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "tag_id": "dffd8b5b-cefb-4885-8f6e-621c0f87d5a0",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "tag_id": "ede7af7e-2873-4451-b994-0c6d628f3c7a",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "3f2a675c-25ce-4eb6-8cdb-6d153e9fce16",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "5eaf37fe-c302-4bde-8c30-da6bb78e2ead",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "94cded62-ec09-4dc2-9927-ecc09df25eca",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "c0663650-3f60-401b-9ea7-c5d844204ae9",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "e1cca5fe-df5a-4669-a8d7-3fc3aa73ed62",
+        "confidence": 0.8,
+        "created_at": "2026-09-09 03:57:13"
+      }
+    ],
+    "item_topics": [
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "topic_id": "t005",
+        "relevance": 0.95,
+        "reason": null,
+        "assigned_by": "llm",
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "topic_id": "t001",
+        "relevance": 0.95,
+        "reason": null,
+        "assigned_by": "llm",
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "topic_id": "t004",
+        "relevance": 0.95,
+        "reason": null,
+        "assigned_by": "llm",
+        "created_at": "2026-09-09 03:57:13"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "topic_id": "t002",
+        "relevance": 0.95,
+        "reason": null,
+        "assigned_by": "llm",
+        "created_at": "2026-09-09 03:57:13"
+      }
+    ],
+    "signal_scores": [
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "signal_type": "new_repo",
+        "novelty_score": 0.9962595679012346,
+        "velocity_score": 0.01639194975899705,
+        "cross_source_score": 0.0,
+        "source_quality_score": 0.5205479452054794,
+        "thesis_match_score": 0.5,
+        "actionability_score": 0.75,
+        "alpha_score": 0.5404459030766946,
+        "consensus_penalty": 0.0,
+        "evidence_summary": "跨源覆盖 same_resource_v1：0 个其他来源；窗口 20260903–20260909；同资源 无可用资源标识；证据 无；按其他来源数/10计分，上限1；仅表示同资源覆盖，不证明来源独立或内容真实；Alpha 为启发式排序分。",
+        "scored_at": "2026-09-09 03:57:18"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "signal_type": "narrative_shift",
+        "novelty_score": 0.9962603396347737,
+        "velocity_score": 0.01639194975899705,
+        "cross_source_score": 0.0,
+        "source_quality_score": 0.5205479452054794,
+        "thesis_match_score": 0.5,
+        "actionability_score": 1.0,
+        "alpha_score": 0.5779460574234024,
+        "consensus_penalty": 0.0,
+        "evidence_summary": "跨源覆盖 same_resource_v1：0 个其他来源；窗口 20260903–20260909；同资源 twitter.com/hilbertspaess/status/2097476196791709843；证据 无；按其他来源数/10计分，上限1；仅表示同资源覆盖，不证明来源独立或内容真实；Alpha 为启发式排序分。",
+        "scored_at": "2026-09-09 03:57:18"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "signal_type": "new_paper",
+        "novelty_score": 0.9962608581532921,
+        "velocity_score": 0.01639194975899705,
+        "cross_source_score": 0.0,
+        "source_quality_score": 0.5205479452054794,
+        "thesis_match_score": 0.5,
+        "actionability_score": 0.75,
+        "alpha_score": 0.5404461611271061,
+        "consensus_penalty": 0.0,
+        "evidence_summary": "跨源覆盖 same_resource_v1：0 个其他来源；窗口 20260903–20260909；同资源 current.fas.harvard.edu/stories/harvard-study-predicts-most-suicide-attempts-week-advance；证据 无；按其他来源数/10计分，上限1；仅表示同资源覆盖，不证明来源独立或内容真实；Alpha 为启发式排序分。",
+        "scored_at": "2026-09-09 03:57:18"
+      }
+    ],
+    "item_features": [
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "source_slug": "hacker-news",
+        "domain": "gpu-lexer.vercel.app",
+        "author_norm": "bpierre",
+        "language_detected": "en",
+        "content_hash": "1e8b15f5fde8ea2fa8934c96395d37d34906cfb8ca1f9d13149beea80dfeeabc",
+        "title_tokens": "[\"language-agnostic\", \"WebGPU\", \"syntax\", \"highlighter\"]",
+        "keyword_candidates": "[\"language-agnostic\", \"WebGPU\", \"syntax\", \"highlighter\"]",
+        "source_features": "{\"source_slug\": \"hacker-news\", \"points\": 31, \"comments\": 8, \"domain\": \"gpu-lexer.vercel.app\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "quality_score": 0.64,
+        "updated_at": "2026-09-09 03:59:06"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "source_slug": "hacker-news",
+        "domain": "twitter.com",
+        "author_norm": "getatme32",
+        "language_detected": "en",
+        "content_hash": "a43d4f04b6958fbf6134522d14a0b6e1629990c693c2cdb041116a8ca8fb00de",
+        "title_tokens": "[\"Responsibility\", \"OpenAI\", \"Anthropic\"]",
+        "keyword_candidates": "[\"Responsibility\", \"OpenAI\", \"Anthropic\"]",
+        "source_features": "{\"source_slug\": \"hacker-news\", \"points\": 64, \"comments\": 14, \"domain\": \"twitter.com\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "quality_score": 0.63,
+        "updated_at": "2026-09-09 03:59:05"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "source_slug": "hacker-news",
+        "domain": "current.fas.harvard.edu",
+        "author_norm": "jodacola",
+        "language_detected": "en",
+        "content_hash": "cb6760f6e5862bfa200433fe4653111f3f504f59f8f539a795cdf728e69b65f0",
+        "title_tokens": "[\"Harvard\", \"study\", \"predicts\", \"most\", \"suicide\", \"attempts\", \"week\", \"advance\"]",
+        "keyword_candidates": "[\"Harvard\", \"study\", \"predicts\", \"most\", \"suicide\", \"attempts\", \"week\", \"advance\"]",
+        "source_features": "{\"source_slug\": \"hacker-news\", \"points\": 94, \"comments\": 46, \"domain\": \"current.fas.harvard.edu\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "quality_score": 0.68,
+        "updated_at": "2026-09-09 03:59:04"
+      }
+    ],
+    "item_tag_assignments": [
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "kgt_30e8d2d7e8fae77401517076",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"highlighter\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:06"
+      },
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "kgt_36a63a105e0eca5b784ea146",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"language-agnostic\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:06"
+      },
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "kgt_8ce89197b59ae293f9d8656f",
+        "confidence": 1.0,
+        "assigned_by": "source-rule",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"source:hacker-news\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:06"
+      },
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "kgt_acd5df7b8d7f093ec9fb4325",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"syntax\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:06"
+      },
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "kgt_ddb362a072c581c3dda94afb",
+        "confidence": 0.85,
+        "assigned_by": "source-rule",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"domain:gpu-lexer.vercel.app\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:06"
+      },
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "tag_id": "kgt_fe6682fe38f3b590537b7e26",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"WebGPU\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:06"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "tag_id": "kgt_266f4ee2e65583850995c997",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"label\": \"Responsibility\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:05"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "tag_id": "kgt_750800c373111dc33560d5e2",
+        "confidence": 0.85,
+        "assigned_by": "source-rule",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"label\": \"domain:twitter.com\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:05"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "tag_id": "kgt_8ce89197b59ae293f9d8656f",
+        "confidence": 1.0,
+        "assigned_by": "source-rule",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"label\": \"source:hacker-news\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:05"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "tag_id": "kgt_974165d6242daa1f4e079908",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"label\": \"Anthropic\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:05"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "tag_id": "kgt_f701c9d301d02b0eacf4fff3",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"label\": \"OpenAI\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:05"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "kgt_14405b2801f88a884e4eb20d",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"attempts\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "kgt_8aa4fa11f61c26312a06510f",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"advance\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "kgt_8ce89197b59ae293f9d8656f",
+        "confidence": 1.0,
+        "assigned_by": "source-rule",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"source:hacker-news\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "kgt_923f56dbbb9f704ee4fe95c1",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"week\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "kgt_a4c58014692697f2d4330132",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"predicts\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "kgt_aa2b5cc6ea20e4fc609a6f6b",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"suicide\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "kgt_bca59dde499b996efd1d2eef",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"study\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "kgt_c6f4fddebd514bade2007b1e",
+        "confidence": 0.85,
+        "assigned_by": "source-rule",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"domain:current.fas.harvard.edu\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "kgt_de0fec87f1447eef244d6ac1",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"Harvard\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "tag_id": "kgt_fb70cae66df034587ac129f0",
+        "confidence": 0.55,
+        "assigned_by": "keyword",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"most\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      }
+    ],
+    "item_topic_assignments": [
+      {
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "topic_kind": "taxonomy",
+        "topic_id": "kt999",
+        "relevance": 0.2,
+        "assigned_by": "deterministic",
+        "reason": "no taxonomy seed matched",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:06"
+      },
+      {
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "topic_kind": "taxonomy",
+        "topic_id": "kt999",
+        "relevance": 0.2,
+        "assigned_by": "deterministic",
+        "reason": "no taxonomy seed matched",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:05"
+      },
+      {
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "topic_kind": "taxonomy",
+        "topic_id": "kt999",
+        "relevance": 0.2,
+        "assigned_by": "deterministic",
+        "reason": "no taxonomy seed matched",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      }
+    ],
+    "entity_mentions": [
+      {
+        "id": "kgm_1d2d79a46211878329fff190",
+        "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "mention_text": "gpu-lexer.vercel.app",
+        "normalized_text": "gpu-lexer-vercel-app",
+        "entity_type": "domain",
+        "start_char": null,
+        "end_char": null,
+        "extractor": "deterministic",
+        "confidence": 0.8,
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:06"
+      },
+      {
+        "id": "kgm_8b4c8060c22fca9e1e88da02",
+        "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "mention_text": "twitter.com",
+        "normalized_text": "twitter-com",
+        "entity_type": "domain",
+        "start_char": null,
+        "end_char": null,
+        "extractor": "deterministic",
+        "confidence": 0.8,
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:05"
+      },
+      {
+        "id": "kgm_714c9d6d97628459cc683ece",
+        "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "mention_text": "current.fas.harvard.edu",
+        "normalized_text": "current-fas-harvard-edu",
+        "entity_type": "domain",
+        "start_char": null,
+        "end_char": null,
+        "extractor": "deterministic",
+        "confidence": 0.8,
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "created_at": "2026-09-09 03:59:04"
+      }
+    ],
+    "item_vectors": [],
+    "vector_index_refs": [],
+    "graph_edges": [
+      {
+        "id": "8c6ce63e-d9bf-4dd1-a70e-7f87c3ffa92c",
+        "from_type": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_type": "topic",
+        "to_id": "t005",
+        "edge_type": "item_belongs_topic",
+        "weight": 0.95,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "5beb061b-be21-48f6-99a9-fa3b29966c9e",
+        "from_type": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_type": "tag",
+        "to_id": "d1b40e8b-b0b6-4882-b802-8c90c7f730d5",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "4e049bb6-4214-4afa-b681-1fa7080713c4",
+        "from_type": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_type": "tag",
+        "to_id": "e36204a8-7d35-440a-b68a-a886f3c59b90",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "7d632c5d-55b2-482e-9c17-2a8cb2edce58",
+        "from_type": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_type": "tag",
+        "to_id": "9894cef0-6d7c-4b16-9e23-26b434e3ac7d",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "5dbf09dc-29cc-4769-9c5b-751b3940dc2f",
+        "from_type": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_type": "tag",
+        "to_id": "9edd13d1-88cb-4716-a2af-85de3a23e037",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "ec38d388-d481-46ba-8a2d-54a8cf6b01b4",
+        "from_type": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_type": "tag",
+        "to_id": "ca4d4273-e0ab-45e5-b3a2-e6650f07d283",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "db85f461-47e9-401f-bd0d-abb427ffd17e",
+        "from_type": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_type": "entity",
+        "to_id": "7148.0",
+        "edge_type": "item_mentions_entity",
+        "weight": 0.85,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "29fde851-9c8f-4697-a3c6-abdd81887e44",
+        "from_type": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_type": "topic",
+        "to_id": "t001",
+        "edge_type": "item_belongs_topic",
+        "weight": 0.95,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "3fa3c471-2c12-4cf4-bc4a-f387f9d9d119",
+        "from_type": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_type": "topic",
+        "to_id": "t004",
+        "edge_type": "item_belongs_topic",
+        "weight": 0.95,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "2f64bc37-e5f9-4b70-8886-bebe94d17aa5",
+        "from_type": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_type": "tag",
+        "to_id": "dffd8b5b-cefb-4885-8f6e-621c0f87d5a0",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "a438c0ca-f674-4daa-9296-e16af3cda975",
+        "from_type": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_type": "tag",
+        "to_id": "2be36485-89ad-4bc8-b0cd-e0e4a5252a53",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "77a7070b-f81d-4cb0-bb54-24d7fdce6228",
+        "from_type": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_type": "tag",
+        "to_id": "32322d2b-432c-4fc6-aaaf-579b8e5968b4",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "f66e24e8-e51d-4267-b37b-1f47ff61169e",
+        "from_type": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_type": "tag",
+        "to_id": "ede7af7e-2873-4451-b994-0c6d628f3c7a",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "c509111b-ceac-4143-82ba-cc7464f8dc94",
+        "from_type": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_type": "tag",
+        "to_id": "8be16678-f381-4008-b96b-ebf3595c0c17",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "d2513a70-87bd-490f-b1bd-9082a065436c",
+        "from_type": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_type": "entity",
+        "to_id": "102.0",
+        "edge_type": "item_mentions_entity",
+        "weight": 0.85,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "6002523d-185a-4c7e-9ece-4da2e43c2eca",
+        "from_type": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_type": "entity",
+        "to_id": "6.0",
+        "edge_type": "item_mentions_entity",
+        "weight": 0.85,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "fb2960ae-84f1-4722-9fe6-bdab755a394a",
+        "from_type": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_type": "topic",
+        "to_id": "t002",
+        "edge_type": "item_belongs_topic",
+        "weight": 0.95,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "d1472f21-65f6-4a19-b59f-9da15518cd06",
+        "from_type": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_type": "tag",
+        "to_id": "e1cca5fe-df5a-4669-a8d7-3fc3aa73ed62",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "a7006df9-4caf-4de0-941e-a41677249f00",
+        "from_type": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_type": "tag",
+        "to_id": "3f2a675c-25ce-4eb6-8cdb-6d153e9fce16",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "1a28cdb8-f999-4d66-a0a1-59f3e893ba44",
+        "from_type": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_type": "tag",
+        "to_id": "5eaf37fe-c302-4bde-8c30-da6bb78e2ead",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "a10bd22b-04f9-4e9a-9c93-2728c5088a8b",
+        "from_type": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_type": "tag",
+        "to_id": "c0663650-3f60-401b-9ea7-c5d844204ae9",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "9f828efd-c91b-4137-98c4-fdd892776fdf",
+        "from_type": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_type": "tag",
+        "to_id": "94cded62-ec09-4dc2-9927-ecc09df25eca",
+        "edge_type": "item_has_tag",
+        "weight": 0.75,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      },
+      {
+        "id": "2d2e03d5-e04b-40de-90a3-688765074213",
+        "from_type": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_type": "entity",
+        "to_id": "5807.0",
+        "edge_type": "item_mentions_entity",
+        "weight": 0.85,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "first_seen_at": "2026-09-09 03:57:13",
+        "last_seen_at": "2026-09-09 03:57:13",
+        "created_at": "2026-09-09 03:57:13",
+        "updated_at": "2026-09-09 03:57:13"
+      }
+    ],
+    "kg_edges": [
+      {
+        "id": "kge_7509f57235043e125cfe0b1b",
+        "from_kind": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_kind": "tag",
+        "to_id": "kgt_8ce89197b59ae293f9d8656f",
+        "edge_type": "item_has_tag",
+        "weight": 1.0,
+        "confidence": 1.0,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"source:hacker-news\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "source-rule",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:06",
+        "last_seen_at": "2026-09-09 03:59:06",
+        "created_at": "2026-09-09 03:59:06",
+        "updated_at": "2026-09-09 03:59:06"
+      },
+      {
+        "id": "kge_388d97086929c2a3b3f1f386",
+        "from_kind": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_kind": "tag",
+        "to_id": "kgt_ddb362a072c581c3dda94afb",
+        "edge_type": "item_has_tag",
+        "weight": 0.85,
+        "confidence": 0.85,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"domain:gpu-lexer.vercel.app\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "source-rule",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:06",
+        "last_seen_at": "2026-09-09 03:59:06",
+        "created_at": "2026-09-09 03:59:06",
+        "updated_at": "2026-09-09 03:59:06"
+      },
+      {
+        "id": "kge_b681c69664e94091fb63df2a",
+        "from_kind": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_kind": "tag",
+        "to_id": "kgt_36a63a105e0eca5b784ea146",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"language-agnostic\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:06",
+        "last_seen_at": "2026-09-09 03:59:06",
+        "created_at": "2026-09-09 03:59:06",
+        "updated_at": "2026-09-09 03:59:06"
+      },
+      {
+        "id": "kge_f92c68473ec39284acdd8b16",
+        "from_kind": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_kind": "tag",
+        "to_id": "kgt_fe6682fe38f3b590537b7e26",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"WebGPU\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:06",
+        "last_seen_at": "2026-09-09 03:59:06",
+        "created_at": "2026-09-09 03:59:06",
+        "updated_at": "2026-09-09 03:59:06"
+      },
+      {
+        "id": "kge_e866462ab54a9c591d2ec087",
+        "from_kind": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_kind": "tag",
+        "to_id": "kgt_acd5df7b8d7f093ec9fb4325",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"syntax\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:06",
+        "last_seen_at": "2026-09-09 03:59:06",
+        "created_at": "2026-09-09 03:59:06",
+        "updated_at": "2026-09-09 03:59:06"
+      },
+      {
+        "id": "kge_704a98c8dedb833b287774ca",
+        "from_kind": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_kind": "tag",
+        "to_id": "kgt_30e8d2d7e8fae77401517076",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"label\": \"highlighter\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:06",
+        "last_seen_at": "2026-09-09 03:59:06",
+        "created_at": "2026-09-09 03:59:06",
+        "updated_at": "2026-09-09 03:59:06"
+      },
+      {
+        "id": "kge_76bab2a88d80c4ee64e7740e",
+        "from_kind": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_kind": "taxonomy_topic",
+        "to_id": "kt999",
+        "edge_type": "item_belongs_taxonomy_topic",
+        "weight": 0.2,
+        "confidence": 0.2,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"reason\": \"no taxonomy seed matched\"}",
+        "extractor": "deterministic",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:06",
+        "last_seen_at": "2026-09-09 03:59:06",
+        "created_at": "2026-09-09 03:59:06",
+        "updated_at": "2026-09-09 03:59:06"
+      },
+      {
+        "id": "kge_119d71a32e48a56ad7893759",
+        "from_kind": "item",
+        "from_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+        "to_kind": "entity",
+        "to_id": "kgec_0667229572975f74d51a5a3a",
+        "edge_type": "item_mentions_entity",
+        "weight": 0.8,
+        "confidence": 0.8,
+        "evidence_item_ids": "[\"63b5b8eb-19e1-40c6-aeee-187912db160f\"]",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"mention_id\": \"kgm_1d2d79a46211878329fff190\", \"mention_text\": \"gpu-lexer.vercel.app\", \"source_rule\": \"canonical-domain\"}",
+        "extractor": "deterministic",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:06",
+        "last_seen_at": "2026-09-09 03:59:06",
+        "created_at": "2026-09-09 03:59:06",
+        "updated_at": "2026-09-09 03:59:06"
+      },
+      {
+        "id": "kge_43772051d10c75d0da8668bf",
+        "from_kind": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_kind": "tag",
+        "to_id": "kgt_8ce89197b59ae293f9d8656f",
+        "edge_type": "item_has_tag",
+        "weight": 1.0,
+        "confidence": 1.0,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"label\": \"source:hacker-news\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "source-rule",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:05",
+        "last_seen_at": "2026-09-09 03:59:05",
+        "created_at": "2026-09-09 03:59:05",
+        "updated_at": "2026-09-09 03:59:05"
+      },
+      {
+        "id": "kge_653e361a5e11a9ea3f9d6c16",
+        "from_kind": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_kind": "tag",
+        "to_id": "kgt_750800c373111dc33560d5e2",
+        "edge_type": "item_has_tag",
+        "weight": 0.85,
+        "confidence": 0.85,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"label\": \"domain:twitter.com\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "source-rule",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:05",
+        "last_seen_at": "2026-09-09 03:59:05",
+        "created_at": "2026-09-09 03:59:05",
+        "updated_at": "2026-09-09 03:59:05"
+      },
+      {
+        "id": "kge_a9bbcd5e2c292685937c021c",
+        "from_kind": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_kind": "tag",
+        "to_id": "kgt_266f4ee2e65583850995c997",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"label\": \"Responsibility\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:05",
+        "last_seen_at": "2026-09-09 03:59:05",
+        "created_at": "2026-09-09 03:59:05",
+        "updated_at": "2026-09-09 03:59:05"
+      },
+      {
+        "id": "kge_3746c5e4a34b570453554484",
+        "from_kind": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_kind": "tag",
+        "to_id": "kgt_f701c9d301d02b0eacf4fff3",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"label\": \"OpenAI\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:05",
+        "last_seen_at": "2026-09-09 03:59:05",
+        "created_at": "2026-09-09 03:59:05",
+        "updated_at": "2026-09-09 03:59:05"
+      },
+      {
+        "id": "kge_a389ae6dc9f865107dacf593",
+        "from_kind": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_kind": "tag",
+        "to_id": "kgt_974165d6242daa1f4e079908",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"label\": \"Anthropic\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:05",
+        "last_seen_at": "2026-09-09 03:59:05",
+        "created_at": "2026-09-09 03:59:05",
+        "updated_at": "2026-09-09 03:59:05"
+      },
+      {
+        "id": "kge_e9cd6fdce27062e5db90ebb7",
+        "from_kind": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_kind": "taxonomy_topic",
+        "to_id": "kt999",
+        "edge_type": "item_belongs_taxonomy_topic",
+        "weight": 0.2,
+        "confidence": 0.2,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"reason\": \"no taxonomy seed matched\"}",
+        "extractor": "deterministic",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:05",
+        "last_seen_at": "2026-09-09 03:59:05",
+        "created_at": "2026-09-09 03:59:05",
+        "updated_at": "2026-09-09 03:59:05"
+      },
+      {
+        "id": "kge_62e549976d0d9b0169f490bf",
+        "from_kind": "item",
+        "from_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+        "to_kind": "entity",
+        "to_id": "kgec_73ef8f2dc5bdb3222671eecb",
+        "edge_type": "item_mentions_entity",
+        "weight": 0.8,
+        "confidence": 0.8,
+        "evidence_item_ids": "[\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\"]",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"mention_id\": \"kgm_8b4c8060c22fca9e1e88da02\", \"mention_text\": \"twitter.com\", \"source_rule\": \"canonical-domain\"}",
+        "extractor": "deterministic",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:05",
+        "last_seen_at": "2026-09-09 03:59:05",
+        "created_at": "2026-09-09 03:59:05",
+        "updated_at": "2026-09-09 03:59:05"
+      },
+      {
+        "id": "kge_57d227a4b266e29559daeadc",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "tag",
+        "to_id": "kgt_8ce89197b59ae293f9d8656f",
+        "edge_type": "item_has_tag",
+        "weight": 1.0,
+        "confidence": 1.0,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"source:hacker-news\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "source-rule",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_1b4c5a438e02b0bbf71073b8",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "tag",
+        "to_id": "kgt_c6f4fddebd514bade2007b1e",
+        "edge_type": "item_has_tag",
+        "weight": 0.85,
+        "confidence": 0.85,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"domain:current.fas.harvard.edu\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "source-rule",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_6e5815cb047f23b79feac855",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "tag",
+        "to_id": "kgt_de0fec87f1447eef244d6ac1",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"Harvard\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_9c55821d38882f7c71b09bd9",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "tag",
+        "to_id": "kgt_bca59dde499b996efd1d2eef",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"study\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_8fee75c4ee1377fbafda12b9",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "tag",
+        "to_id": "kgt_a4c58014692697f2d4330132",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"predicts\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_14d957a1139fe088788bb3c9",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "tag",
+        "to_id": "kgt_fb70cae66df034587ac129f0",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"most\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_626caf64f8688b6cfd2466d7",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "tag",
+        "to_id": "kgt_aa2b5cc6ea20e4fc609a6f6b",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"suicide\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_2b6e5b8ae30f17964b77278a",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "tag",
+        "to_id": "kgt_14405b2801f88a884e4eb20d",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"attempts\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_f74c6b0245b9a3fd2a5bc98d",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "tag",
+        "to_id": "kgt_923f56dbbb9f704ee4fe95c1",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"week\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_6391c9f5ac3b0a8ab2a5bd3e",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "tag",
+        "to_id": "kgt_8aa4fa11f61c26312a06510f",
+        "edge_type": "item_has_tag",
+        "weight": 0.55,
+        "confidence": 0.55,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"label\": \"advance\", \"extractor_version\": \"kg-v2-deterministic-0.1\"}",
+        "extractor": "keyword",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_c6c5ccd4e21e4d1ee11940a0",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "taxonomy_topic",
+        "to_id": "kt999",
+        "edge_type": "item_belongs_taxonomy_topic",
+        "weight": 0.2,
+        "confidence": 0.2,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"reason\": \"no taxonomy seed matched\"}",
+        "extractor": "deterministic",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      },
+      {
+        "id": "kge_e6a0cfc85a9bde4173484d53",
+        "from_kind": "item",
+        "from_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+        "to_kind": "entity",
+        "to_id": "kgec_dd549bb069ffe8cf9be3572c",
+        "edge_type": "item_mentions_entity",
+        "weight": 0.8,
+        "confidence": 0.8,
+        "evidence_item_ids": "[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\"]",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"mention_id\": \"kgm_714c9d6d97628459cc683ece\", \"mention_text\": \"current.fas.harvard.edu\", \"source_rule\": \"canonical-domain\"}",
+        "extractor": "deterministic",
+        "extractor_version": "kg-v2-deterministic-0.1",
+        "run_id": "kgr_b534b00e44e6979c6de67725",
+        "first_seen_at": "2026-09-09 03:59:04",
+        "last_seen_at": "2026-09-09 03:59:04",
+        "created_at": "2026-09-09 03:59:04",
+        "updated_at": "2026-09-09 03:59:04"
+      }
+    ],
+    "entity_links": [
+      {
+        "mention_id": "kgm_1d2d79a46211878329fff190",
+        "entity_id": "kgec_0667229572975f74d51a5a3a",
+        "link_confidence": 0.8,
+        "linker": "deterministic",
+        "evidence": "{\"item_id\": \"63b5b8eb-19e1-40c6-aeee-187912db160f\", \"source_rule\": \"canonical-domain\", \"external_refs\": {\"domain\": \"gpu-lexer.vercel.app\"}}",
+        "created_at": "2026-09-09 03:59:06"
+      },
+      {
+        "mention_id": "kgm_714c9d6d97628459cc683ece",
+        "entity_id": "kgec_dd549bb069ffe8cf9be3572c",
+        "link_confidence": 0.8,
+        "linker": "deterministic",
+        "evidence": "{\"item_id\": \"98677b4a-b353-4bed-a8e1-d43c16f45e9b\", \"source_rule\": \"canonical-domain\", \"external_refs\": {\"domain\": \"current.fas.harvard.edu\"}}",
+        "created_at": "2026-09-09 03:59:04"
+      },
+      {
+        "mention_id": "kgm_8b4c8060c22fca9e1e88da02",
+        "entity_id": "kgec_73ef8f2dc5bdb3222671eecb",
+        "link_confidence": 0.8,
+        "linker": "deterministic",
+        "evidence": "{\"item_id\": \"7f7a5e29-5310-4f7d-a523-6b934b1e349f\", \"source_rule\": \"canonical-domain\", \"external_refs\": {\"domain\": \"twitter.com\"}}",
+        "created_at": "2026-09-09 03:59:05"
+      }
+    ]
+  },
+  "schema": {
+    "information_items": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "source_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "canonical_url",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "external_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "title",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "original_summary",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "content_text",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "language",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'en'",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "author",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "published_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "fetched_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "digest_date",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "source_payload",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'{}'",
+        "pk": 0
+      },
+      {
+        "cid": 13,
+        "name": "normalized_payload",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'{}'",
+        "pk": 0
+      },
+      {
+        "cid": 14,
+        "name": "score",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 15,
+        "name": "popularity",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'{}'",
+        "pk": 0
+      },
+      {
+        "cid": 16,
+        "name": "content_hash",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 17,
+        "name": "duplicate_group_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 18,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      },
+      {
+        "cid": 19,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      },
+      {
+        "cid": 20,
+        "name": "title_zh",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 21,
+        "name": "title_zh_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'pending'",
+        "pk": 0
+      },
+      {
+        "cid": 22,
+        "name": "enrichment_attempts",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 23,
+        "name": "last_enrich_attempt",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "ai_summaries": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "model_provider",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "model_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "prompt_version",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "ai_title",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "one_liner",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "short_summary",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "deep_summary",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "key_points",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "why_it_matters",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "audience",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "risks",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 13,
+        "name": "opportunities",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 14,
+        "name": "action_items",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 15,
+        "name": "confidence",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 16,
+        "name": "source_grounding",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'{}'",
+        "pk": 0
+      },
+      {
+        "cid": 17,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      },
+      {
+        "cid": 18,
+        "name": "ai_title_zh",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 19,
+        "name": "one_liner_zh",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 20,
+        "name": "short_summary_zh",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 21,
+        "name": "key_points_zh",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 22,
+        "name": "why_it_matters_zh",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 23,
+        "name": "translation_status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'pending'",
+        "pk": 0
+      },
+      {
+        "cid": 24,
+        "name": "llm_metadata",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'{}'",
+        "pk": 0
+      }
+    ],
+    "item_tags": [
+      {
+        "cid": 0,
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "tag_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "confidence",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "item_topics": [
+      {
+        "cid": 0,
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "topic_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "relevance",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "reason",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "assigned_by",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'auto'",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "signal_scores": [
+      {
+        "cid": 0,
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "signal_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "novelty_score",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "velocity_score",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "cross_source_score",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "source_quality_score",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "thesis_match_score",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "actionability_score",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "alpha_score",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "consensus_penalty",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "evidence_summary",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "scored_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "item_features": [
+      {
+        "cid": 0,
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "source_slug",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "domain",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "author_norm",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "language_detected",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "content_hash",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "title_tokens",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "keyword_candidates",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "source_features",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'{}'",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "quality_score",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "item_tag_assignments": [
+      {
+        "cid": 0,
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "tag_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "confidence",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "assigned_by",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 3
+      },
+      {
+        "cid": 4,
+        "name": "evidence",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'{}'",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "run_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "item_topic_assignments": [
+      {
+        "cid": 0,
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "topic_kind",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "topic_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 3
+      },
+      {
+        "cid": 3,
+        "name": "relevance",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "assigned_by",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 4
+      },
+      {
+        "cid": 5,
+        "name": "reason",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "run_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "entity_mentions": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "mention_text",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "normalized_text",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "entity_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "start_char",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "end_char",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "extractor",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "confidence",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "run_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "item_vectors": [
+      {
+        "cid": 0,
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "vector_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "model_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 3
+      },
+      {
+        "cid": 3,
+        "name": "dimension",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "vector_json",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "content_hash",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "vector_index_refs": [
+      {
+        "cid": 0,
+        "name": "item_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "vector_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "backend",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 3
+      },
+      {
+        "cid": 3,
+        "name": "collection_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "point_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "model_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "graph_edges": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "from_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "from_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "to_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "to_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "edge_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "weight",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt_value": "1",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "evidence_item_ids",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "first_seen_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "last_seen_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "kg_edges": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "from_kind",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "from_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "to_kind",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "to_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "edge_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "weight",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt_value": "1",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "confidence",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "evidence_item_ids",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "evidence",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'{}'",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "extractor",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "extractor_version",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "run_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 13,
+        "name": "first_seen_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 14,
+        "name": "last_seen_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 15,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      },
+      {
+        "cid": 16,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "entity_links": [
+      {
+        "cid": 0,
+        "name": "mention_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "entity_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "link_confidence",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "linker",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "evidence",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'{}'",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ]
+  }
+}

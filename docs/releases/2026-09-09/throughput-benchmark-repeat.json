@@ -1,0 +1,622 @@
+{
+  "observed_at": "2026-09-09T04:03:11.998Z",
+  "scope": "10 synthetic grounded facts, one paired run, non-streaming, 2048 max tokens",
+  "single": {
+    "label": "fastest-initial-probe-lane-5",
+    "global_concurrency": 1,
+    "wall_ms": 118287,
+    "successful": 10,
+    "total": 10,
+    "results": [
+      {
+        "id": "sample-0",
+        "ok": true,
+        "elapsed_ms": 5954,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 5953,
+          "usage": {
+            "input_tokens": 71,
+            "output_tokens": 49,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "e323cd40-53aa-4184-ac20-474ef3b7915c"
+        },
+        "output": {
+          "id": "sample-0",
+          "category": "research",
+          "summary": "ExampleProject0 published a paper describing a new sorting algorithm, but no independent replication was supplied.",
+          "unknowns": [
+            "independent replication",
+            "performance benchmarks",
+            "peer review status"
+          ]
+        }
+      },
+      {
+        "id": "sample-1",
+        "ok": true,
+        "elapsed_ms": 46082,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 46081,
+          "usage": {
+            "input_tokens": 73,
+            "output_tokens": 55,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "1017eb94-3d54-4ee6-854d-0a05f930988c"
+        },
+        "output": {
+          "id": "sample-1",
+          "category": "new_tool",
+          "summary": "ExampleProject1 released an MIT-licensed Python JSON-validation library with tests, but no benchmark was supplied.",
+          "unknowns": [
+            "benchmark performance",
+            "user adoption metrics",
+            "funding details"
+          ]
+        }
+      },
+      {
+        "id": "sample-2",
+        "ok": true,
+        "elapsed_ms": 53048,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 53047,
+          "usage": {
+            "input_tokens": 70,
+            "output_tokens": 46,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "65d3116d-98af-4fda-9cb8-f262c5fd0e0b"
+        },
+        "output": {
+          "id": "sample-2",
+          "category": "funding",
+          "summary": "ExampleProject2 announced a seed funding round, but the amount and investors were not disclosed.",
+          "unknowns": [
+            "funding amount",
+            "investors"
+          ]
+        }
+      },
+      {
+        "id": "sample-3",
+        "ok": true,
+        "elapsed_ms": 72444,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 72443,
+          "usage": {
+            "input_tokens": 71,
+            "output_tokens": 48,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "3df9110b-27f7-4e0f-b62f-6a8d3d73fd83"
+        },
+        "output": {
+          "id": "sample-3",
+          "category": "research",
+          "summary": "ExampleProject3 published a paper describing a new sorting algorithm, but no independent replication was supplied.",
+          "unknowns": [
+            "independent replication",
+            "performance benchmarks",
+            "external validation"
+          ]
+        }
+      },
+      {
+        "id": "sample-4",
+        "ok": true,
+        "elapsed_ms": 90069,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 90067,
+          "usage": {
+            "input_tokens": 73,
+            "output_tokens": 61,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "82a15e42-e0e9-4aca-8511-bfadb33b5c8a"
+        },
+        "output": {
+          "id": "sample-4",
+          "category": "new_tool",
+          "summary": "ExampleProject4 released an MIT-licensed Python JSON-validation library with tests, but no benchmark was supplied.",
+          "unknowns": [
+            "No benchmark data was provided",
+            "No performance metrics are available",
+            "No funding information is available"
+          ]
+        }
+      },
+      {
+        "id": "sample-5",
+        "ok": true,
+        "elapsed_ms": 93223,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 93223,
+          "usage": {
+            "input_tokens": 70,
+            "output_tokens": 47,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "142dcaae-6bf9-4e6e-9bbd-3f56e309f806"
+        },
+        "output": {
+          "id": "sample-5",
+          "category": "funding",
+          "summary": "ExampleProject5 announced a seed funding round, but the amount and investors were not disclosed.",
+          "unknowns": [
+            "funding amount",
+            "investor names"
+          ]
+        }
+      },
+      {
+        "id": "sample-6",
+        "ok": true,
+        "elapsed_ms": 96045,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 96044,
+          "usage": {
+            "input_tokens": 71,
+            "output_tokens": 52,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "18a80078-a086-466f-93c3-9edae38a7998"
+        },
+        "output": {
+          "id": "sample-6",
+          "category": "research",
+          "summary": "ExampleProject6 published a paper describing a new sorting algorithm, but no independent replication was supplied.",
+          "unknowns": [
+            "independent replication",
+            "performance benchmarks",
+            "peer review status",
+            "external validation"
+          ]
+        }
+      },
+      {
+        "id": "sample-7",
+        "ok": true,
+        "elapsed_ms": 111764,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 111762,
+          "usage": {
+            "input_tokens": 73,
+            "output_tokens": 61,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "7ca2c5a3-26ad-4343-a20f-7c7640a27a1b"
+        },
+        "output": {
+          "id": "sample-7",
+          "category": "new_tool",
+          "summary": "ExampleProject7 released an MIT-licensed Python JSON-validation library with tests, but no benchmark was supplied.",
+          "unknowns": [
+            "benchmark results",
+            "performance metrics",
+            "user adoption",
+            "funding status",
+            "investor information"
+          ]
+        }
+      },
+      {
+        "id": "sample-8",
+        "ok": true,
+        "elapsed_ms": 115344,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 115344,
+          "usage": {
+            "input_tokens": 70,
+            "output_tokens": 46,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "a5a7f591-052b-46fd-905a-295c360be4fa"
+        },
+        "output": {
+          "id": "sample-8",
+          "category": "funding",
+          "summary": "ExampleProject8 announced a seed funding round, but the amount and investors were not disclosed.",
+          "unknowns": [
+            "funding amount",
+            "investors"
+          ]
+        }
+      },
+      {
+        "id": "sample-9",
+        "ok": true,
+        "elapsed_ms": 118282,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 118281,
+          "usage": {
+            "input_tokens": 71,
+            "output_tokens": 52,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "57f6de25-643e-408f-957b-6baee5f78390"
+        },
+        "output": {
+          "id": "sample-9",
+          "category": "research",
+          "summary": "ExampleProject9 published a paper describing a new sorting algorithm, but no independent replication was supplied.",
+          "unknowns": [
+            "independent replication",
+            "performance benchmarks",
+            "implementation details",
+            "peer review status"
+          ]
+        }
+      }
+    ]
+  },
+  "pool": {
+    "label": "five-route-pool",
+    "global_concurrency": 5,
+    "wall_ms": 16162,
+    "successful": 10,
+    "total": 10,
+    "results": [
+      {
+        "id": "sample-0",
+        "ok": true,
+        "elapsed_ms": 12010,
+        "metadata": {
+          "endpoint_id": "lane-1",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "glm-5.3-flash",
+          "model": "glm-5.3-flash",
+          "latency_ms": 12010,
+          "usage": {
+            "input_tokens": 79,
+            "output_tokens": 479,
+            "cache_read_input_tokens": 0,
+            "server_tool_use": {
+              "web_search_requests": 0
+            },
+            "service_tier": "standard"
+          },
+          "attempts": 1,
+          "trace_id": "f1fd3f22-39dc-4291-9879-8b32fca8f922"
+        },
+        "output": {
+          "id": "sample-0",
+          "category": "research",
+          "summary": "ExampleProject0 published a paper describing a new sorting algorithm, but no independent replication of the work was supplied.",
+          "unknowns": [
+            "Independent replication of the algorithm's results",
+            "Peer review status of the paper",
+            "Comparative performance against existing sorting algorithms",
+            "Availability of an implementation or codebase",
+            "Adoption or use by other researchers or projects"
+          ]
+        }
+      },
+      {
+        "id": "sample-1",
+        "ok": true,
+        "elapsed_ms": 4707,
+        "metadata": {
+          "endpoint_id": "lane-2",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "google-antigravity/gemini-3.8-flash-high",
+          "model": "google-antigravity/gemini-3.8-flash-high",
+          "latency_ms": 4706,
+          "usage": {
+            "input_tokens": 284,
+            "output_tokens": 72
+          },
+          "attempts": 1,
+          "trace_id": "d9d2d496-13af-42ad-8866-f7b35ce4474a"
+        },
+        "output": {
+          "id": "sample-1",
+          "category": "new_tool",
+          "summary": "ExampleProject1 released an MIT-licensed Python library for JSON validation that includes tests.",
+          "unknowns": [
+            "benchmark or performance data",
+            "funding or investor information"
+          ]
+        }
+      },
+      {
+        "id": "sample-2",
+        "ok": true,
+        "elapsed_ms": 3779,
+        "metadata": {
+          "endpoint_id": "lane-3",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "gpt-5.6-luna",
+          "model": "gpt-5.6-luna",
+          "latency_ms": 3779,
+          "usage": {
+            "input_tokens": 72,
+            "output_tokens": 70
+          },
+          "attempts": 1,
+          "trace_id": "88db97cc-2b87-4fe2-bf56-00e946705641"
+        },
+        "output": {
+          "id": "sample-2",
+          "category": "funding",
+          "summary": "ExampleProject2 announced a seed funding round.",
+          "unknowns": [
+            "Funding amount",
+            "Investors"
+          ]
+        }
+      },
+      {
+        "id": "sample-3",
+        "ok": true,
+        "elapsed_ms": 3614,
+        "metadata": {
+          "endpoint_id": "lane-4",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "commandcode/gpt-5.6-luna",
+          "model": "commandcode/gpt-5.6-luna",
+          "latency_ms": 3612,
+          "usage": {
+            "input_tokens": 7423,
+            "output_tokens": 40
+          },
+          "attempts": 1,
+          "trace_id": "bed3bc85-e5b3-4a03-97a3-5677308ea722"
+        },
+        "output": {
+          "id": "sample-3",
+          "category": "research",
+          "summary": "ExampleProject3 published a paper describing a new sorting algorithm.",
+          "unknowns": [
+            "No independent replication was supplied."
+          ]
+        }
+      },
+      {
+        "id": "sample-4",
+        "ok": true,
+        "elapsed_ms": 16161,
+        "metadata": {
+          "endpoint_id": "lane-5",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "DeepSeek-V4-Flash-Vision-Exp",
+          "model": "self-dploy/DeepSeek-V4-Flash-Vision-Exp",
+          "latency_ms": 16161,
+          "usage": {
+            "input_tokens": 73,
+            "output_tokens": 61,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+          },
+          "attempts": 1,
+          "trace_id": "44a3b9d7-7b65-433c-a6e2-60bd27c39c02"
+        },
+        "output": {
+          "id": "sample-4",
+          "category": "new_tool",
+          "summary": "ExampleProject4 released an MIT-licensed Python JSON-validation library with tests, but no benchmark was supplied.",
+          "unknowns": [
+            "No benchmark data was provided",
+            "No performance metrics are available",
+            "No funding information is available"
+          ]
+        }
+      },
+      {
+        "id": "sample-5",
+        "ok": true,
+        "elapsed_ms": 5384,
+        "metadata": {
+          "endpoint_id": "lane-4",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "commandcode/gpt-5.6-luna",
+          "model": "commandcode/gpt-5.6-luna",
+          "latency_ms": 5383,
+          "usage": {
+            "input_tokens": 7422,
+            "output_tokens": 37
+          },
+          "attempts": 1,
+          "trace_id": "6ef888be-46c1-4559-9512-ce0256ff3fc5"
+        },
+        "output": {
+          "id": "sample-5",
+          "category": "funding",
+          "summary": "ExampleProject5 announced a seed funding round.",
+          "unknowns": [
+            "Funding amount",
+            "Investors"
+          ]
+        }
+      },
+      {
+        "id": "sample-6",
+        "ok": true,
+        "elapsed_ms": 9924,
+        "metadata": {
+          "endpoint_id": "lane-3",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "gpt-5.6-luna",
+          "model": "gpt-5.6-luna",
+          "latency_ms": 9924,
+          "usage": {
+            "input_tokens": 73,
+            "output_tokens": 102
+          },
+          "attempts": 1,
+          "trace_id": "e9a1a47e-dc97-46c1-bfb1-c078328b6fd0"
+        },
+        "output": {
+          "id": "sample-6",
+          "category": "research",
+          "summary": "ExampleProject6 published a paper describing a new sorting algorithm, but no independent replication was supplied.",
+          "unknowns": [
+            "Independent replication"
+          ]
+        }
+      },
+      {
+        "id": "sample-7",
+        "ok": true,
+        "elapsed_ms": 8172,
+        "metadata": {
+          "endpoint_id": "lane-2",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "google-antigravity/gemini-3.8-flash-high",
+          "model": "google-antigravity/gemini-3.8-flash-high",
+          "latency_ms": 8172,
+          "usage": {
+            "input_tokens": 284,
+            "output_tokens": 60
+          },
+          "attempts": 1,
+          "trace_id": "c5e2a334-e65d-46c2-a0fe-31e708ea9ecf"
+        },
+        "output": {
+          "id": "sample-7",
+          "category": "new_tool",
+          "summary": "ExampleProject7 released an MIT-licensed Python JSON-validation library with tests.",
+          "unknowns": [
+            "benchmark"
+          ]
+        }
+      },
+      {
+        "id": "sample-8",
+        "ok": true,
+        "elapsed_ms": 7330,
+        "metadata": {
+          "endpoint_id": "lane-4",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "commandcode/gpt-5.6-luna",
+          "model": "commandcode/gpt-5.6-luna",
+          "latency_ms": 7330,
+          "usage": {
+            "input_tokens": 7422,
+            "output_tokens": 37
+          },
+          "attempts": 1,
+          "trace_id": "9e9a9218-6a1b-4715-9673-e54a28c7291b"
+        },
+        "output": {
+          "id": "sample-8",
+          "category": "funding",
+          "summary": "ExampleProject8 announced a seed funding round.",
+          "unknowns": [
+            "Funding amount",
+            "Investors"
+          ]
+        }
+      },
+      {
+        "id": "sample-9",
+        "ok": true,
+        "elapsed_ms": 9247,
+        "metadata": {
+          "endpoint_id": "lane-4",
+          "protocol": "anthropic",
+          "provider": "claude",
+          "requested_model": "commandcode/gpt-5.6-luna",
+          "model": "commandcode/gpt-5.6-luna",
+          "latency_ms": 9247,
+          "usage": {
+            "input_tokens": 7423,
+            "output_tokens": 40
+          },
+          "attempts": 1,
+          "trace_id": "3a45185d-c6f9-44c5-abeb-ecb7e7609b96"
+        },
+        "output": {
+          "id": "sample-9",
+          "category": "research",
+          "summary": "ExampleProject9 published a paper describing a new sorting algorithm.",
+          "unknowns": [
+            "No independent replication was supplied."
+          ]
+        }
+      }
+    ]
+  },
+  "speedup": 7.318834302685311,
+  "passed": true
+}

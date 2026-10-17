@@ -1,0 +1,82 @@
+[
+  {
+    "role": "anonymous",
+    "method": "GET",
+    "path": "/api/settings/llm/pool",
+    "status": 401,
+    "expected": 401,
+    "pass": true
+  },
+  {
+    "role": "user",
+    "method": "GET",
+    "path": "/api/settings/llm/pool",
+    "status": 403,
+    "expected": 403,
+    "pass": true
+  },
+  {
+    "role": "user",
+    "method": "POST",
+    "path": "/api/enrich?batch=1",
+    "status": 403,
+    "expected": 403,
+    "pass": true
+  },
+  {
+    "role": "user",
+    "method": "POST",
+    "path": "/api/pipeline",
+    "status": 403,
+    "expected": 403,
+    "pass": true
+  },
+  {
+    "role": "user",
+    "method": "POST",
+    "path": "/api/signals/rescore?limit=1",
+    "status": 403,
+    "expected": 403,
+    "pass": true
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "path": "/api/enrich",
+    "status": 405,
+    "expected": 405,
+    "pass": true
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "path": "/api/enrich?batch=0",
+    "status": 400,
+    "expected": 400,
+    "pass": true
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "path": "/api/enrich/reenrich",
+    "status": 410,
+    "expected": 410,
+    "pass": true
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "path": "/api/settings/llm/pool/test",
+    "status": 405,
+    "expected": 405,
+    "pass": true
+  },
+  {
+    "role": "user",
+    "method": "GET",
+    "path": "/api/research?url=https%3A%2F%2Fexample.invalid",
+    "status": 404,
+    "expected": 404,
+    "pass": true
+  }
+]

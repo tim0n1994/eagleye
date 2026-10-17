@@ -13,6 +13,7 @@ import { router } from '../router.js';
 let _lastParsedConfig = null;
 
 export function wireSettingsHandlers() {
+  if (window.__currentUser?.()?.role !== 'admin') return;
   const $ = (id) => document.getElementById(id);
 
   $('llmLoadSampleBtn')?.addEventListener('click', () => {
@@ -82,8 +83,11 @@ export function wireSettingsHandlers() {
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || (getLanguage() === 'zh' ? '保存失败' : 'Save failed'));
-      const savedMsg = getLanguage() === 'zh' ? '✓ 已保存并启用。' : '✓ Saved & activated.';
+      const savedMsg = getLanguage() === 'zh' ? '✓ 单端点兼容配置已保存；启用池时由端点池路由。' : '✓ Single-endpoint settings saved; an enabled pool controls routing.';
       out.textContent = savedMsg;
+      $('llmPaste').value = '';
+      _lastParsedConfig = null;
+      $('llmSaveBtn').disabled = true;
       await refreshLLMStatus();
     } catch (err) {
       out.textContent = '⚠ ' + err.message;
@@ -107,8 +111,9 @@ export function wireSettingsHandlers() {
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || (getLanguage() === 'zh' ? '保存失败' : 'Save failed'));
-      const savedMsg = getLanguage() === 'zh' ? '✓ 已保存并启用。' : '✓ Saved & activated.';
+      const savedMsg = getLanguage() === 'zh' ? '✓ 单端点兼容配置已保存；启用池时由端点池路由。' : '✓ Single-endpoint settings saved; an enabled pool controls routing.';
       out.textContent = savedMsg;
+      $('llmApiKey').value = '';
       await refreshLLMStatus();
     } catch (err) {
       out.textContent = '⚠ ' + err.message;
@@ -121,8 +126,8 @@ export function wireSettingsHandlers() {
     try {
       const res = await fetch('/api/settings/llm/test', { method: 'POST' });
       const data = await res.json();
-      if (data.ok) {
-        out.textContent = `✓ ${data.latent_ms || data.latency_ms}ms — "${(data.sample || '').slice(0, 40)}"`;
+      if (res.ok && data.ok) {
+        out.textContent = `✓ ${getLanguage() === 'zh' ? '接口已响应，业务质量未验证' : 'Endpoint responded; business quality unverified'} · ${data.latent_ms || data.latency_ms} ms`;
       } else {
         out.textContent = '⚠ ' + (data.message || (getLanguage() === 'zh' ? '测试失败' : 'Test failed'));
       }
@@ -256,14 +261,14 @@ export function wireSettingsHandlers() {
         const bPaper = paperSources.has(b.source) ? -1 : 0;
         return aPaper - bPaper || (b.items || 0) - (a.items || 0);
       });
-      return `<span class="job-mini-result-list">${sorted.map(r => `<span class="source-line ${(r.items||0)>0?'has-items':''}">${escapeHtml(r.source || 'unknown')}: ${r.items || 0}</span>`).join('<br>')}</span>`;
+      return `<span class="job-mini-result-list">${sorted.map(r => `<span class="source-line ${(r.items||0)>0?'has-items':''}">${escapeHtml(r.source || 'unknown')}: ${r.error ? `error: ${escapeHtml(r.error)}` : r.items || 0}</span>`).join('<br>')}</span>`;
     }
     if (result.enriched !== undefined) return `enriched ${result.enriched}/${result.total || 0} · failed ${result.failed || 0}`;
-    if (result.translated !== undefined) return `translated ${result.translated}/${result.total || 0} · remaining ${result.remaining ?? '—'}`;
+    if (result.translated !== undefined) return `translated ${result.translated}/${result.total || 0} · failed ${result.failed || 0} · remaining ${result.remaining ?? '—'}`;
     if (result.nodes !== undefined || result.edges !== undefined) return `nodes ${result.nodes || 0} · edges ${result.edges || 0}`;
     if (result.domains !== undefined) return `${result.domains} 领域 · ${result.topics || 0} 方向 · ${result.uniqueTags || result.tags || 0} 标签`;
     if (result.extract || result.embed || result.topics) {
-      return `extract ${result.extract?.total || 0} · embed ${result.embed?.embedded || 0} · topics ${result.topics?.topics_discovered || 0}`;
+      return `extract ${result.extract?.total || 0} · embed ${result.embed?.vectors || 0} · topics ${result.topics?.dynamic_topics || 0}`;
     }
     if (result.generated !== undefined) return result.generated ? '已生成' : '无摘要';
     if (result.edges_updated !== undefined) return `edges ${result.edges_updated} · scores ${result.scores_updated}`;
@@ -277,7 +282,7 @@ export function wireSettingsHandlers() {
     const current = parsed.current_stage || '';
     const rows = stages.map(stage => {
       const status = stage.status || 'pending';
-      const detail = summarizeStagePayload(stage.detail) || summarizeStageResult(stage.result);
+      const detail = [summarizeStagePayload(stage.detail), summarizeStageResult(stage.result)].filter(Boolean).join('<br>');
       const label = getLanguage() === 'zh' ? (stage.label_zh || stage.label || stage.key) : (stage.label || stage.key);
       const elapsed = stage.started_at && status === 'running'
         ? `${Math.max(0, Math.round((Date.now() - new Date(stage.started_at).getTime()) / 1000))}s`
@@ -368,7 +373,7 @@ export function wireSettingsHandlers() {
           return true;
         }
         if (status === 'failed') {
-          showStream(op, `${t('ops.stream_failed', { elapsed })}<br><span class="job-mini-error">${escapeHtml(job.error || '—')}</span>`, true);
+          showStream(op, `${t('ops.stream_failed', { elapsed })}<br><span class="job-mini-error">${escapeHtml(job.error || '—')}</span><br><span class="job-mini-result">${result}</span>`, true);
           setOpRunning(op, false);
           opJobMap[op] = null;
           refreshOpJobs();
@@ -397,7 +402,11 @@ export function wireSettingsHandlers() {
       if (op === 'sync') {
         res = await fetch('/api/sync', { method: 'POST' });
       } else if (op === 'enrich') {
-        res = await fetch('/api/enrich?background=true', { method: 'POST' });
+        const batch = Number($('enrichBatch')?.value);
+        if (!Number.isInteger(batch) || batch < 1 || batch > 100) throw new Error(getLanguage() === 'zh' ? '批量必须为 1–100 的整数' : 'Batch must be an integer from 1 to 100');
+        const query = new URLSearchParams({ batch: String(batch), background: 'true' });
+        if ($('enrichRetryExhausted')?.checked) query.set('reset_attempts', 'true');
+        res = await fetch(`/api/enrich?${query}`, { method: 'POST' });
       } else if (op === 'digest') {
         res = await fetch('/api/digest/build?background=true', { method: 'POST' });
       } else if (op === 'pipeline') {
@@ -546,4 +555,3 @@ export function wireSettingsHandlers() {
   const opJobsTimer = setInterval(refreshOpJobs, 5000);
   router.onCleanup(() => clearInterval(opJobsTimer));
 }
-

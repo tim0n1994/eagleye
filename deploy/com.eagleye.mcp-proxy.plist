@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Eagleye MCP ChatGPT proxy (127.0.0.1:3021 -> 3020) — LaunchAgent artifact.
+  Requires repo config/mcp-token to exist (the proxy reads it at startup and
+  exits if missing). NOT loaded by the R0-09 work.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.eagleye.mcp-proxy</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/chillbit/.local/bin/node</string>
+    <string>/Users/chillbit/Proj/eagleye/mcp/chatgpt-proxy.js</string>
+    <string>3021</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/chillbit/Proj/eagleye</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/chillbit/Proj/eagleye/logs/com.eagleye.mcp-proxy.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/chillbit/Proj/eagleye/logs/com.eagleye.mcp-proxy.err.log</string>
+</dict>
+</plist>

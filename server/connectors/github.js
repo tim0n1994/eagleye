@@ -10,15 +10,17 @@ class GitHubConnector extends BaseConnector {
     super('github-trending');
   }
 
-  async fetch(date) {
-    const dateObj = date ? new Date(
-      date.slice(0, 4), parseInt(date.slice(4, 6)) - 1, date.slice(6, 8)
-    ) : new Date();
-
-    const sevenDaysAgo = new Date(dateObj.getTime() - 7 * 24 * 60 * 60 * 1000);
+  async fetch(date, options = {}) {
+    // Accept canonical (YYYY-MM-DD) and compact (YYYYMMDD) day strings; the
+    // old positional slice produced NaN day parts for canonical input and
+    // crashed toISOString() with Invalid time value.
+    const m = typeof date === 'string' ? date.match(/(\d{4})\D?(\d{2})\D?(\d{2})/) : null;
+    const dateObj = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date();
+    const baseMs = Number.isFinite(dateObj.getTime()) ? dateObj.getTime() : Date.now();
+    const sevenDaysAgo = new Date(baseMs - 7 * 24 * 60 * 60 * 1000);
     const dateStr = sevenDaysAgo.toISOString().split('T')[0];
     
-    const searchUrl = `https://api.github.com/search/repositories?q=created:>${dateStr}+stars:>50&sort=stars&order=desc&per_page=25`;
+const searchUrl = `https://api.github.com/search/repositories?q=created:>${dateStr}+stars:>50&sort=stars&order=desc&per_page=25`;
     
     try {
       const body = await fetchURL(searchUrl);
@@ -60,6 +62,7 @@ class GitHubConnector extends BaseConnector {
         };
       });
     } catch (err) {
+      if (options.limit !== undefined) throw err;
       console.error('GitHub fetch error:', err.message);
       return [];
     }

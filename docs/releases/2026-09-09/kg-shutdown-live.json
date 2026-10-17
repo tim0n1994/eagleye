@@ -1,0 +1,10 @@
+{
+  "stopped": {
+    "stopped": 1,
+    "errors": []
+  },
+  "outcome": {
+    "status": "stopped",
+    "error": "KG worker exit null: "
+  }
+}

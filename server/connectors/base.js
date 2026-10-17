@@ -6,6 +6,17 @@
 
 const { getDB } = require('../db/connection');
 const { generateId, contentHash } = require('../services/utils');
+const { parsePublishedDate, normalizeDigestDate, todayDigestDate } = require('../services/date-contract');
+
+function parseItemLimit(value) {
+  if (value === undefined) return undefined;
+  const limit = typeof value === 'number' ? value
+    : typeof value === 'string' && /^[1-9]\d*$/.test(value) ? Number(value) : NaN;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new RangeError('limit must be an integer from 1 to 100');
+  }
+  return limit;
+}
 
 class BaseConnector {
   constructor(slug) {
@@ -27,6 +38,8 @@ class BaseConnector {
    * Override if needed.
    */
   normalize(raw) {
+    const publishedCandidate = raw.publishedAt || raw.date || raw.pubDate || '';
+    const published = parsePublishedDate(publishedCandidate);
     return {
       id: generateId(),
       source_id: this.getSourceId(),
@@ -37,8 +50,11 @@ class BaseConnector {
       content_text: raw.content || raw.text || '',
       language: raw.language || 'en',
       author: raw.author || '',
-      published_at: raw.publishedAt || raw.date || raw.pubDate || new Date().toISOString(),
-      digest_date: raw.digestDate || new Date().toISOString().slice(0, 10).replace(/-/g, ''),
+      published_at: published.iso,
+      published_raw: published.status === 'missing' ? null : String(publishedCandidate),
+      published_precision: published.precision,
+      published_parse_status: published.status,
+      digest_date: normalizeDigestDate(raw.digestDate) || todayDigestDate(),
       source_payload: JSON.stringify(raw.sourcePayload || raw.metadata || {}),
       normalized_payload: JSON.stringify({}),
       score: raw.score || 0,
@@ -58,32 +74,62 @@ class BaseConnector {
   /**
    * Save normalized items to the database.
    */
-  saveItems(items) {
+  saveItems(items, opts = {}) {
     const db = getDB();
-    if (!db || items.length === 0) return [];
+    const saved = [];
+    const details = { items: saved, inserted: 0, existing: 0, skipped: 0, failed: 0 };
+    const result = () => opts.returnDetails ? details : saved;
+    if (!db) {
+      details.failed = items.length;
+      details.error = 'Database not available';
+      return result();
+    }
+    if (items.length === 0) return result();
 
     // Filter out blocked authors (e.g. noisy X accounts that post off-topic
     // social/political content). The blocklist check is a no-op for sources
     // whose items have no `author` field.
     const { readBlocklist, isBlocked } = require('../services/x-following-config');
     const blocklist = readBlocklist();
+    // R0-07 transactional outbox: pending side-effect events (e.g. search
+    // indexing) commit in the SAME transaction as the item rows they
+    // describe. An item only counts as "persisted, pending delivery" when
+    // BOTH the information_items row and its outbox row land in this
+    // transaction; drainOutbox() delivers at-least-once later and consumers
+    // dedup redelivery by unique_key (plan §7.4 checkpoint semantics).
+    const { registerEvent } = require('../services/outbox');
     let filtered = items;
     if (blocklist.size > 0) {
       filtered = items.filter(it => !isBlocked(it.author, blocklist));
+      details.skipped = items.length - filtered.length;
       if (filtered.length < items.length) {
         console.log(`  🚫 Filtered ${items.length - filtered.length} blocked-author item(s)`);
       }
-      if (filtered.length === 0) return [];
+      if (filtered.length === 0) return result();
+    }
+
+    for (const item of filtered) {
+      if (item.published_parse_status === undefined) {
+        const original = item.published_at;
+        const parsed = parsePublishedDate(original);
+        item.published_at = parsed.iso;
+        item.published_raw = parsed.status === 'missing' ? null : String(original ?? '');
+        item.published_precision = parsed.precision;
+        item.published_parse_status = parsed.status;
+      }
+      item.digest_date = normalizeDigestDate(item.digest_date) || todayDigestDate();
     }
 
     const insert = db.prepare(`
       INSERT OR IGNORE INTO information_items 
         (id, source_id, canonical_url, external_id, title, original_summary, content_text, 
-         language, author, published_at, digest_date, source_payload, normalized_payload, 
+         language, author, published_at, published_raw, published_precision, published_parse_status,
+         digest_date, source_payload, normalized_payload,
          score, popularity, content_hash)
       VALUES 
         (@id, @source_id, @canonical_url, @external_id, @title, @original_summary, @content_text,
-         @language, @author, @published_at, @digest_date, @source_payload, @normalized_payload,
+         @language, @author, @published_at, @published_raw, @published_precision, @published_parse_status,
+         @digest_date, @source_payload, @normalized_payload,
          @score, @popularity, @content_hash)
     `);
 
@@ -162,7 +208,6 @@ class BaseConnector {
       };
     };
 
-    const saved = [];
     // Cross-day dedup: when a newly-inserted item has a content_hash that
     // already exists from a DIFFERENT digest_date, assign both the same
     // duplicate_group_id (§16). This surfaces "you've seen this before" without
@@ -176,14 +221,26 @@ class BaseConnector {
 
     const tx = db.transaction(() => {
       for (const item of filtered) {
-        if (!item.canonical_url) continue;
+        if (!item.canonical_url) { details.skipped++; continue; }
         const result = insert.run(item);
         const rowId = result.changes > 0
           ? item.id
           : findItemByUniqueKey.get(item.source_id, item.canonical_url, item.digest_date)?.id;
+        if (result.changes === 0) {
+          if (rowId) details.existing++;
+          else details.failed++;
+        }
         const paperMeta = rowId ? normalizePaperMetadata({ ...item, id: rowId }) : null;
         if (paperMeta) upsertPaperMetadata.run(paperMeta);
         if (result.changes > 0) {
+          // Atomic pending-event registration: if this INSERT fails, the
+          // whole transaction (item row included) rolls back, so a committed
+          // item always carries its 'item_index_pending' outbox row.
+          registerEvent(db, {
+            type: 'item_index_pending',
+            payload: { item_id: item.id, source_id: item.source_id, digest_date: item.digest_date },
+            uniqueKey: `index_item:${item.id}`,
+          });
           // Cross-day dedup check: link to an existing group if this content
           // was seen on a prior day (e.g. a trending repo that persists).
           if (item.content_hash) {
@@ -197,7 +254,7 @@ class BaseConnector {
           saved.push(item);
         }
       }
-      if (saved.length > 0 && filtered[0]?.source_id) {
+      if ((saved.length > 0 || details.existing > 0) && filtered[0]?.source_id) {
         updateSourceCount.run(filtered[0].source_id, filtered[0].source_id);
       }
     });
@@ -206,10 +263,15 @@ class BaseConnector {
       tx();
     } catch (err) {
       console.error(`Error saving items for ${this.slug}:`, err.message);
+      saved.length = 0;
+      details.existing = 0;
+      details.failed = items.length - details.skipped;
+      details.error = err.message;
     }
 
-    return saved;
+    details.inserted = saved.length;
+    return result();
   }
 }
 
-module.exports = { BaseConnector };
+module.exports = { BaseConnector, parseItemLimit };

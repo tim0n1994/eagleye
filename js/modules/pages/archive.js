@@ -5,7 +5,7 @@
  * Split out of pages.js; render functions are unchanged.
  */
 
-import { $, escapeAttr, escapeHtml } from '../utils.js';
+import { $, escapeAttr, escapeHtml, normalizeDateStr } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
 import { API_BASE, fetchJSON, showError, showLoader } from './shared.js';
 
@@ -181,7 +181,10 @@ export async function renderCompareEntities(_params) {
       // Axis labels
       const axisLabels = [
         dates[0] || '', dates[Math.floor(n / 2)] || '', dates[n - 1] || ''
-      ].map((d, i) => `<text x="${x(i === 0 ? 0 : i === 1 ? Math.floor(n / 2) : n - 1).toFixed(1)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === 1 ? 'middle' : 'end'}" class="traj-axis-label">${d ? d.slice(4, 6) + '/' + d.slice(6, 8) : ''}</text>`).join('');
+      ].map((d, i) => {
+        const iso = normalizeDateStr(d);
+        return `<text x="${x(i === 0 ? 0 : i === 1 ? Math.floor(n / 2) : n - 1).toFixed(1)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === 1 ? 'middle' : 'end'}" class="traj-axis-label">${iso ? iso.slice(5, 7) + '/' + iso.slice(8, 10) : ''}</text>`;
+      }).join('');
 
       resultEl.innerHTML =
         `<div style="margin:12px 0">${legend}</div>` +

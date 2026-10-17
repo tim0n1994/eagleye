@@ -1,27 +1,10 @@
-/**
- * Eagleye — Reddit Connector (via agent-reach opencli)
- *
- * Fetches hot posts from a curated list of subreddits using the agent-reach
- * opencli backend (browser bridge — requires Chrome logged into reddit.com).
- *
- * Backend notes (verified against live opencli output):
- *  - `opencli reddit subreddit <name>` names the upvote metric `upvotes`
- *    (the `search` subcommand calls the same metric `score`). We read `upvotes`
- *    and fall back to `score` defensively.
- *  - `created_utc` is epoch seconds; converted to ISO here.
- *  - opencli drives real Chrome, so each call is multi-second. We crawl
- *    subreddits sequentially with a small politeness delay (rate-limit safety).
- *  - If the opencli bridge is down (Chrome closed) or auth expires, fetch()
- *    logs a warning and returns [] rather than crashing the allSettled fetch.
- */
+/** Reddit collector: explicit server adapter when configured, otherwise OpenCLI. */
 
 const { BaseConnector } = require('./base');
 const reach = require('../services/agent-reach');
+const collectors = require('../services/server-collectors');
+const { setTimeout: sleep } = require('node:timers/promises');
 const { readRedditConfig } = require('../services/reddit-config');
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 class RedditConnector extends BaseConnector {
   constructor() {
@@ -67,43 +50,40 @@ class RedditConnector extends BaseConnector {
     });
   }
 
-  async fetch(_date) {
+  async fetch(_date, { signal } = {}) {
+    signal?.throwIfAborted();
+    const serverBackend = Boolean(process.env.AGENT_REACH_RDT_BIN);
     const { subreddits } = readRedditConfig();
     if (subreddits.length === 0) {
       console.log('  ⚠ Reddit: no subreddits configured (set REDDIT_SUBREDDITS env or config/reddit-subreddits.txt)');
       return [];
     }
 
-    const ready = await reach.isReachReady('reddit').catch(() => true);
-    if (!ready) {
-      console.warn('  ⚠ Reddit: opencli backend not ready — skipping (open Chrome and log into reddit.com)');
-      return [];
+    if (!serverBackend && !await reach.isReachReady('reddit', { signal })) {
+      throw new Error('reddit: BACKEND_NOT_READY');
     }
 
     const limit = parseInt(process.env.REDDIT_POSTS_PER_SUB || '20', 10) || 20;
     const delayMs = parseInt(process.env.REDDIT_POLITENESS_MS || '2000', 10) || 0;
-    console.log(`  🔖 Reddit: fetching ${subreddits.length} subreddits via opencli...`);
+    console.log(`  🔖 Reddit: fetching ${subreddits.length} subreddits via ${serverBackend ? 'server' : 'opencli'}...`);
 
     const allItems = [];
     for (let i = 0; i < subreddits.length; i++) {
       const sub = subreddits[i];
-      const result = await reach.redditSubreddit(sub, { sort: 'hot', limit });
+      signal?.throwIfAborted();
+      const result = await (serverBackend ? collectors : reach).redditSubreddit(sub, { sort: 'hot', limit, signal });
       if (!result.ok) {
-        // Bridge down / auth expired: no point retrying every subreddit.
-        if (result.code === 'BRIDGE_DOWN' || result.code === 'AUTH_REQUIRED') {
-          console.warn(`  ⚠ Reddit: opencli ${result.code} — aborting remaining subreddits (${result.message})`);
-          break;
-        }
-        console.warn(`  ⚠ Reddit r/${sub}: ${result.code} — ${result.message}`);
+        throw new Error(`reddit: ${result.code || 'COLLECTION_FAILED'}`);
       } else {
-        const items = (result.data || [])
+        if (!Array.isArray(result.data)) throw new Error('SCHEMA_ERROR');
+        const items = result.data
           .filter(Boolean)
           .map(p => this._postToItem(p))
           .filter(it => it.canonical_url);
         allItems.push(...items);
         console.log(`  🔖 Reddit r/${sub}: ${items.length} posts`);
       }
-      if (delayMs > 0 && i < subreddits.length - 1) await sleep(delayMs);
+      if (delayMs > 0 && i < subreddits.length - 1) await sleep(delayMs, undefined, { signal });
     }
 
     console.log(`  🔖 Reddit: ${allItems.length} posts from ${subreddits.length} subreddits`);

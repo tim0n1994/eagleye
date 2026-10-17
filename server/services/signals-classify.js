@@ -7,6 +7,7 @@
  */
 
 const { getProvider, getLLMConfig } = require('./llm-provider');
+const { taskContext, abortableDelay, callWithMetadata, nonEmpty, validateBatch } = require('./llm-shared');
 
 function providerAvailable() {
   try { return !!getProvider(); } catch { return false; }
@@ -200,7 +201,10 @@ function normalizeThesisMatch(raw) {
   return 0.5;
 }
 
-async function classifyChunk(chunk, { retry = false } = {}) {
+async function classifyChunk(chunk, opts = {}) {
+  const { retry = false } = opts;
+  const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
+  context.check();
   const provider = getProvider();
   if (!provider || !chunk?.length) return [];
 
@@ -219,41 +223,32 @@ async function classifyChunk(chunk, { retry = false } = {}) {
   const basePrompt = retry ? SIGNAL_CLASSIFIER_RETRY_PROMPT : SIGNAL_CLASSIFIER_PROMPT;
   const prompt = basePrompt + '\n\n输入：' + JSON.stringify(batch);
   // 20 items × ~120 tokens each for output; cap at a safe ceiling.
-  const maxTokens = Math.min(4096, 300 + batch.length * 130);
+  const maxTokens = Math.min(4096, Math.max(2048, 300 + batch.length * 130));
 
   // 重试撑过 glm-5.2 间歇性过载(529/1305) 和账户限流(429/1302)
-  const maxAttempts = retry ? 2 : 3;
+  const maxAttempts = provider.isPool ? 1 : retry ? 2 : 3;
+  const allowedIds = new Set(chunk.map(item => item.id));
+  const validClassification = row => nonEmpty(row.signal_type || row.category || row.type || row.classification)
+    && (normalizeSignalType(row.signal_type || row.category || row.type || row.classification) !== 'uncategorized'
+      || (row.signal_type || row.category || row.type || row.classification) === 'uncategorized')
+    && typeof (row.thesis_match ?? row.confidence ?? row.score) === 'number'
+    && Number.isFinite(row.thesis_match ?? row.confidence ?? row.score)
+    && (row.thesis_match ?? row.confidence ?? row.score) >= 0
+    && (row.thesis_match ?? row.confidence ?? row.score) <= 1;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const text = await provider.call(prompt, { temperature: 0.1, maxTokens, json: true });
-      if (!text) {
-        if (!retry && attempt < maxAttempts) { await _signalBackoff(attempt, 'empty'); continue; }
-        if (!retry) console.warn('  ⚠  Signal classifier returned empty response for chunk of', batch.length);
-        return [];
-      }
-      // Strip markdown fences and <think> tags (reasoning models may emit them)
-      const clean = text
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/```json\s*/g, '')
-        .replace(/```\s*/g, '')
-        .trim();
-      const match = clean.match(/\[[\s\S]*\]/);
-      if (!match) {
-        if (!retry && attempt < maxAttempts) { await _signalBackoff(attempt, 'no-json'); continue; }
-        if (!retry) console.warn('  ⚠  Signal classifier: no JSON array found in response:', clean.slice(0, 200));
-        return [];
-      }
-      const data = JSON.parse(match[0]);
-      const byId = new Map(chunk.map(i => [i.id, i]));
-      return data.filter(r => r && byId.has(r.id)).map(r => ({
-        ...r,
-        // Models vary in field naming: some return `category` / `type` instead of
-        // `signal_type` (observed with glm-5.2 routing free-form labels). Accept
-        // any of them so a valid classification isn't silently dropped.
-        signal_type: normalizeSignalType(r.signal_type || r.category || r.type || r.classification || ''),
-        thesis_match: normalizeThesisMatch(r.thesis_match ?? r.confidence ?? r.score),
+      const { data } = await callWithMetadata(provider, prompt, {
+        task: 'classify', signal: context.signal, temperature: 0.1, maxTokens, json: true,
+        validate: rows => validateBatch(rows, allowedIds, validClassification),
+      });
+      context.check();
+      return data.filter(validClassification).map(row => ({
+        ...row,
+        signal_type: normalizeSignalType(row.signal_type || row.category || row.type || row.classification),
+        thesis_match: normalizeThesisMatch(row.thesis_match ?? row.confidence ?? row.score),
       }));
     } catch (err) {
+      context.check();
       // 1301 内容安全审核：不可恢复，跳过不重试
       if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
         if (!retry) console.log(`  ⏭  Signal classification skipped: content filtered by safety check`);
@@ -261,7 +256,7 @@ async function classifyChunk(chunk, { retry = false } = {}) {
       }
       if (!retry) console.warn(`  ⚠  Signal classification attempt ${attempt}/${maxAttempts} failed for chunk:`, err.message.slice(0, 100));
       if (attempt < maxAttempts) {
-        await _signalBackoff(attempt, err.message);
+        await _signalBackoff(attempt, err.message, context.signal);
       } else {
         return [];
       }
@@ -271,13 +266,15 @@ async function classifyChunk(chunk, { retry = false } = {}) {
 }
 
 // 529/429 长退避（共享逻辑，与 enrich 一致）
-async function _signalBackoff(attempt, errMsg) {
+async function _signalBackoff(attempt, errMsg, signal) {
   const isOverload = /429|529|1302|1305|rate.limit|overload|速率限制|访问量过大/i.test(String(errMsg || ''));
   const ms = Math.min(30000, (isOverload ? 8000 : 2000) * attempt);
-  await new Promise(r => setTimeout(r, ms));
+  await abortableDelay(ms, signal);
 }
 
-function classifySignals(items) {
+function classifySignals(items, opts = {}) {
+  const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
+  if (context.isCancelled()) return Promise.resolve([]);
   // Chunk items to keep each LLM call's output within token limits.
   const chunks = [];
   for (let i = 0; i < items.length; i += CLASSIFY_BATCH_SIZE) {
@@ -290,10 +287,14 @@ function classifySignals(items) {
   const results = [];
   let idx = 0;
   async function worker() {
-    while (idx < chunks.length) {
+    while (idx < chunks.length && !context.isCancelled()) {
       const i = idx++;
-      const out = await classifyChunk(chunks[i]).catch(() => []);
-      results[i] = out;
+      const out = await classifyChunk(chunks[i], context).catch(() => []);
+      if (context.isCancelled()) { results[i] = []; return; }
+      const found = new Set(out.map(row => row.id));
+      const missing = chunks[i].filter(item => !found.has(item.id));
+      const recovered = out.length && missing.length ? await classifyChunk(missing, { ...context, retry: true }).catch(() => []) : [];
+      results[i] = [...out, ...recovered];
     }
   }
   return Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker))
@@ -309,10 +310,12 @@ function classifySignals(items) {
  * Failures degrade gracefully: an unreachable LLM endpoint yields [] and the
  * items keep their first-pass uncategorized label.
  */
-async function classifyUncategorizedRetry(items) {
+async function classifyUncategorizedRetry(items, opts = {}) {
+  const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
+  if (context.isCancelled()) return [];
   if (!items?.length) return [];
   const provider = getProvider();
-  if (!provider) return [];
+  if (!provider || provider.isPool) return [];
   const retryBatch = Math.max(1, Math.floor(CLASSIFY_BATCH_SIZE / 2));
   const chunks = [];
   for (let i = 0; i < items.length; i += retryBatch) {
@@ -322,9 +325,9 @@ async function classifyUncategorizedRetry(items) {
   const results = [];
   let idx = 0;
   async function worker() {
-    while (idx < chunks.length) {
+    while (idx < chunks.length && !context.isCancelled()) {
       const i = idx++;
-      const out = await classifyChunk(chunks[i], { retry: true }).catch(() => []);
+      const out = await classifyChunk(chunks[i], { ...context, retry: true }).catch(() => []);
       results[i] = out;
     }
   }

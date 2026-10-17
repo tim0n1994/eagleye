@@ -12,6 +12,7 @@ const { getProviderInfo } = require('../services/llm-provider');
 const { sendJSON, sendError, requireAdmin } = require('./_shared');
 
 function register(routes) {
+  require('./llm-pool')(routes);
 
   // --- X Following Config: GET / PUT ---
   const { readXFollowingConfig, writeXFollowingConfig, getBlocklistArray, writeBlocklist, readBlocklist } = require('../services/x-following-config');
@@ -91,6 +92,8 @@ function register(routes) {
 
   // --- X Following Sync: POST /api/x-following/sync?background=true ---
   routes['/api/x-following/sync'] = async (req, res, parsed) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
+    if (requireAdmin(req, res)) return;
     const background = parsed.query.background !== 'false';
     if (background) {
       const jobId = await runJob(JOB_TYPES.X_FOLLOWING_SYNC, {});
@@ -115,7 +118,7 @@ function register(routes) {
   // The current server dispatches by pathname only, so we branch on method.
   routes['/api/settings/llm'] = (req, res, _parsed) => {
     const method = req.method.toUpperCase();
-    if (method !== 'GET' && requireAdmin(req, res)) return;
+    if (requireAdmin(req, res)) return;
 
     if (method === 'GET') {
       try {
@@ -127,6 +130,7 @@ function register(routes) {
             provider: cfg.provider || '',
             model: cfg.model || info.model || '',
             base_url: cfg.base_url || (info.base_url || ''),
+            endpoint_url: cfg.endpoint_url || '',
             api_key: maskSecret(cfg.api_key),
             source: cfg.source || 'env',
             updated_at: cfg.updated_at || '',
@@ -162,25 +166,25 @@ function register(routes) {
             if (parsed.error) return sendError(res, 400, parsed.error);
             next = parsed;
           } else if (payload.config && typeof payload.config === 'object') {
-            const { provider, api_key, base_url, model } = payload.config;
+            const { provider, api_key, base_url, endpoint_url, model } = payload.config;
             if (!provider) return sendError(res, 400, 'provider required');
-            if (!api_key) return sendError(res, 400, 'api_key required');
-            if (!base_url) return sendError(res, 400, 'base_url required');
+            if (!api_key && !getLLMConfig()?.api_key) return sendError(res, 400, 'api_key required');
+            if (!base_url && !endpoint_url) return sendError(res, 400, 'base_url or endpoint_url required');
             if (!model) return sendError(res, 400, 'model required');
-            next = { provider, api_key, base_url, model };
+            next = { provider, api_key, base_url, endpoint_url, model };
           } else {
             return sendError(res, 400, 'Provide either { pasted: "..." } or { config: { provider, api_key, base_url, model } }');
           }
 
           next.source = payload.config?.source || (payload.pasted ? 'user-pasted' : 'manual');
-          saveLLMConfig(next);
+          const saved = saveLLMConfig(next);
 
           sendJSON(res, 200, {
             status: 'ok',
             message: 'LLM config saved. Provider reloaded.',
             config: {
-              ...next,
-              api_key: maskSecret(next.api_key),
+              ...saved,
+              api_key: maskSecret(saved.api_key),
             },
             active: getProviderInfo(),
           });
@@ -206,6 +210,8 @@ function register(routes) {
 
   // --- LLM Settings: POST /api/settings/llm/test — ping the endpoint ---
   routes['/api/settings/llm/test'] = async (req, res, _parsed) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
+    if (requireAdmin(req, res)) return;
     try {
       const result = await testLLMConfig();
       sendJSON(res, 200, { status: 'ok', ...result });
@@ -216,6 +222,8 @@ function register(routes) {
 
   // --- LLM Settings: POST /api/settings/llm/parse — dry-run parse, no save ---
   routes['/api/settings/llm/parse'] = (req, res, _parsed) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
+    if (requireAdmin(req, res)) return;
     let body = '';
     req.on('data', chunk => { body += chunk; if (body.length > 1048576) req.destroy(); });
     req.on('end', () => {
@@ -234,7 +242,7 @@ function register(routes) {
       }
       sendJSON(res, 200, {
         status: 'ok',
-        ...result,
+        ...result, api_key: maskSecret(result.api_key || ''),
         masked: { ...result, api_key: maskSecret(result.api_key || '') },
       });
     });

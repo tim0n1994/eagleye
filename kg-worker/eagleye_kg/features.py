@@ -5,7 +5,8 @@ import re
 import sqlite3
 
 from .config import EXTRACTOR_VERSION
-from .text import content_hash, domain_from_url, parse_json, slugify, stable_id, tokenize
+from .text import domain_from_url, parse_json, slugify, stable_id, tokenize
+from .selection import feature_hash
 
 
 GITHUB_REPO_RE = re.compile(r"github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)")
@@ -379,8 +380,15 @@ def extract_item(conn: sqlite3.Connection, item: sqlite3.Row, taxonomy: list[sql
     text = "\n".join([item["title"] or "", item["original_summary"] or "", item["content_text"] or ""])
     keywords = tokenize(text)
     features = source_features(item)
-    chash = content_hash(item["title"], item["original_summary"], item["content_text"], item["canonical_url"])
+    chash = feature_hash(item)
+    features["extractor_version"] = EXTRACTOR_VERSION
     qscore = quality_score(item, keywords)
+
+    conn.execute("DELETE FROM entity_links WHERE linker = 'deterministic' AND mention_id IN (SELECT id FROM entity_mentions WHERE item_id = ? AND extractor = 'deterministic')", (item["id"],))
+    conn.execute("DELETE FROM entity_mentions WHERE item_id = ? AND extractor = 'deterministic' AND NOT EXISTS (SELECT 1 FROM entity_links WHERE mention_id = entity_mentions.id)", (item["id"],))
+    conn.execute("DELETE FROM item_tag_assignments WHERE item_id = ? AND assigned_by IN ('source-rule', 'keyword')", (item["id"],))
+    conn.execute("DELETE FROM item_topic_assignments WHERE item_id = ? AND topic_kind = 'taxonomy' AND assigned_by = 'deterministic'", (item["id"],))
+    conn.execute("DELETE FROM kg_edges WHERE from_kind = 'item' AND from_id = ? AND extractor IN ('deterministic', 'source-rule', 'keyword')", (item["id"],))
 
     conn.execute(
         """

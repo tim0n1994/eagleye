@@ -1,0 +1,66 @@
+{
+  "date": "2026-09-09",
+  "scope": "isolated local release candidate; not public deployment",
+  "node": "v22.22.2",
+  "js": {
+    "command": "npm run test:coverage",
+    "exit_code": 0,
+    "files": 36,
+    "passed": 542,
+    "log": "/Users/chillbit/.codex/tmp/eagleye-final-suite-20260909.log"
+  },
+  "python": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=kg-worker python3 -B -m unittest discover -s kg-worker/tests -v",
+    "exit_code": 0,
+    "passed": 11,
+    "log": "/Users/chillbit/.codex/tmp/eagleye-python-20260909.log"
+  },
+  "lint": {
+    "exit_code": 0,
+    "errors": 0,
+    "warnings": 86,
+    "log": "/Users/chillbit/.codex/tmp/eagleye-final-lint-20260909.log"
+  },
+  "knip": {
+    "exit_code": 0,
+    "log": "/Users/chillbit/.codex/tmp/eagleye-final-knip-20260909.log"
+  },
+  "audit": {
+    "exit_code": 0,
+    "vulnerabilities": 0,
+    "evidence": "npm-audit-after.json"
+  },
+  "diff_check": {
+    "exit_code": 0
+  },
+  "coverage": {
+    "scope": "frontend modules only",
+    "statements": 28.41,
+    "branches": 23.68,
+    "functions": 27.39,
+    "lines": 30.32
+  },
+  "secrets": {
+    "scanned_files": 313,
+    "matching_files": [],
+    "passed": true
+  },
+  "browser": {
+    "surface": "Codex In-app Browser",
+    "desktop": true,
+    "mobile": "390x844",
+    "admin_config": true,
+    "ordinary_user_no_admin_controls": true,
+    "logout_both_roles": true,
+    "invalid_config_guidance": true,
+    "research_provenance": true,
+    "observed_ordinary_user_console_errors_warnings": 0
+  },
+  "limitations": [
+    "No public deployment",
+    "No real email delivery",
+    "No sustained-load or multi-process pool test",
+    "No whole-history factual audit",
+    "Existing Python cache changes retained after earlier approval rejection"
+  ]
+}

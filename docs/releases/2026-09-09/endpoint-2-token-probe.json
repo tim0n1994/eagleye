@@ -1,0 +1,12 @@
+{
+  "id": "lane-2",
+  "status": 200,
+  "latency_ms": 3507,
+  "model": "google-antigravity/gemini-3.8-flash-high",
+  "usage": {
+    "input_tokens": 269,
+    "output_tokens": 58
+  },
+  "stop_reason": "end_turn",
+  "response": "{\n  \"category\": \"new_tool\",\n  \"summary\": \"Acme released an MIT-licensed Python library for JSON validation that includes tests.\",\n  \"missing_evidence\": [\n    \"benchmark data\",\n    \"revenue data\"\n  ]\n}"
+}

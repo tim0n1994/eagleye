@@ -1,0 +1,21 @@
+{
+  "files_unchanged": true,
+  "counts_unchanged": true,
+  "files": {
+    "/Users/chillbit/Proj/eagleye/eagleye.db": {
+      "size": 1018732544,
+      "mtime_ns": 1785604787274241121
+    },
+    "/Users/chillbit/Proj/eagleye/eagleye.db-wal": {
+      "size": 60308592,
+      "mtime_ns": 1787037043795695703
+    }
+  },
+  "counts": {
+    "information_items": 41008,
+    "ai_summaries": 41287,
+    "item_features": 18401,
+    "signal_scores": 41008,
+    "background_jobs": 3677
+  }
+}

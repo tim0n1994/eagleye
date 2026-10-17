@@ -5,7 +5,9 @@
  * Allows adding new connectors by registering them here.
  */
 
+const { compactDigestDate } = require('../services/date-contract');
 const { HNConnector } = require('./hn');
+const { parseItemLimit } = require('./base');
 const { GitHubConnector } = require('./github');
 const { RSSConnector } = require('./rss');
 const { HuggingFaceConnector } = require('./huggingface');
@@ -47,35 +49,80 @@ const connectorRegistry = {
 /**
  * Fetch items from a specific source for a given date.
  */
-async function fetchSource(slug, date) {
+async function fetchSource(slug, date, opts = {}) {
+  opts.signal?.throwIfAborted();
+  const limit = parseItemLimit(opts.limit);
+  const returnDetails = opts.returnDetails === true || limit !== undefined;
   const connector = connectorRegistry[slug];
   if (!connector) {
+    if (returnDetails) throw new Error(`No connector registered for source: ${slug}`);
     console.warn(`No connector registered for source: ${slug}`);
     return [];
   }
 
-  const items = await connector.fetch(date);
-  const saved = connector.saveItems(items);
-  return saved;
-}
-
-/**
- * Race a promise against a deadline so one slow/dead source can't stall the
- * whole pipeline. Default budget is 3 min; override with SOURCE_TIMEOUT_MS.
- */
-function withSourceTimeout(promise, slug) {
-  const ms = parseInt(process.env.SOURCE_TIMEOUT_MS || '180000', 10);
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`source ${slug} exceeded ${ms}ms budget`)), ms);
+  const stats = { requested: 0, failed: 0, skipped: 0 };
+  // Connectors filter on compact yyyymmdd day strings (see base.js fetch
+  // contract); callers pass the canonical digest date, so normalize here
+  // once instead of per-connector.
+  const timeoutKey = `SOURCE_TIMEOUT_${slug.toUpperCase().replace(/-/g, '_')}_MS`;
+  const configuredMs = Number(process.env[timeoutKey] || process.env.SOURCE_TIMEOUT_MS || 180000);
+  const ms = Number.isFinite(configuredMs) && configuredMs > 0 ? configuredMs : 180000;
+  const controller = new AbortController();
+  const { signal } = controller;
+  const abort = () => controller.abort(opts.signal.reason);
+  opts.signal?.addEventListener('abort', abort, { once: true });
+  const deadline = Date.now() + ms;
+  const timeoutError = new Error(`source ${slug} exceeded ${ms}ms budget`);
+  timeoutError.name = 'TimeoutError';
+  const timer = setTimeout(() => controller.abort(timeoutError), ms);
+  let onAbort;
+  const aborted = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  try {
+    const items = await Promise.race([
+      Promise.resolve().then(() => {
+        signal.throwIfAborted();
+        return connector.fetch(compactDigestDate(date) || date, { limit, stats, signal });
+      }),
+      aborted,
+    ]);
+    // Check wall time too: a synchronous connector can delay the deadline timer.
+    if (Date.now() >= deadline) controller.abort(timeoutError);
+    signal.throwIfAborted();
+    if (!Array.isArray(items)) throw new Error(`Invalid item response from source: ${slug}`);
+    const selected = limit === undefined ? items : items.slice(0, limit);
+    if (opts.isCancelled?.()) {
+      return returnDetails ? { source: slug, date, limit: limit ?? null, cancelled: true,
+        items: [], inserted: 0, existing: 0, failed: stats.failed,
+        requested: stats.requested || items.length, fetched: items.length,
+        skipped: stats.skipped + items.length } : [];
+    }
+    if (!returnDetails) return connector.saveItems(selected);
+    const saved = connector.saveItems(selected, { returnDetails: true });
+    return {
+      ...saved,
+      source: slug,
+      date,
+      limit: limit ?? null,
+      requested: stats.requested || items.length,
+      fetched: items.length,
+      skipped: saved.skipped + stats.skipped + (items.length - selected.length),
+      failed: saved.failed + stats.failed,
+    };
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', onAbort);
+    opts.signal?.removeEventListener('abort', abort);
+  }
 }
 
 /**
  * Fetch all active sources for a given date.
  */
 async function fetchAllSources(date, opts = {}) {
+  opts.signal?.throwIfAborted();
   const { onProgress } = opts;
   const { getDB } = require('../db/connection');
   const db = getDB();
@@ -120,7 +167,7 @@ async function fetchAllSources(date, opts = {}) {
 
   const settled = await Promise.allSettled(sources.map(async (source) => {
     try {
-      const items = await withSourceTimeout(fetchSource(source.slug, date), source.slug);
+      const items = await fetchSource(source.slug, date, { signal: opts.signal, isCancelled: opts.isCancelled });
       const result = { source: source.slug, items: items.length };
       results.push(result);
       completed++;
@@ -138,6 +185,7 @@ async function fetchAllSources(date, opts = {}) {
     }
   }));
   if (heartbeatTimer) clearInterval(heartbeatTimer);
+  opts.signal?.throwIfAborted();
 
   const finalResults = results.length ? results : [];
   for (let i = 0; i < settled.length && finalResults.length < settled.length; i++) {

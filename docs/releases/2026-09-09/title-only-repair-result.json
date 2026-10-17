@@ -1,0 +1,47 @@
+{
+  "executed_at": "2026-09-09T04:12:44.320Z",
+  "database": "/Users/chillbit/.codex/tmp/eagleye-1.1-acceptance.sqlite",
+  "prior_trace": "ebc86058-4840-4f75-a2ec-1a2f7e2461d0",
+  "changed": {
+    "item_tags": 15,
+    "item_topics": 4,
+    "graph_edges": 23,
+    "signal_scores": 3
+  },
+  "preserved": {
+    "item_features": 19721,
+    "item_tag_assignments": 221627,
+    "item_topic_assignments": 33881,
+    "entity_mentions": 26638,
+    "item_vectors": 28080,
+    "vector_index_refs": 0,
+    "kg_edges": 282146,
+    "entity_links": 30598
+  },
+  "after": [
+    {
+      "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+      "model_provider": "deterministic",
+      "model_name": "",
+      "short_summary_zh": "仅据来源标题：“27.5KB language-agnostic WebGPU syntax highlighter”。未获取正文，细节及结论未核验。",
+      "source_grounding": "{\"item_id\":\"63b5b8eb-19e1-40c6-aeee-187912db160f\",\"source_label\":\"Hacker News\",\"canonical_url\":\"https://gpu-lexer.vercel.app/\",\"prompt_version\":\"title-only-v1\",\"evidence_level\":\"title_only\",\"body_available\":false,\"title_origin\":\"source_title_untranslated\",\"verified\":false}",
+      "llm_metadata": "{\"generation_method\":\"source_title_only\",\"provider\":\"deterministic\",\"model\":null,\"requested_model\":null,\"endpoint_id\":null,\"protocol\":null,\"trace_id\":null,\"attempts\":0,\"usage\":null,\"latency_ms\":0}"
+    },
+    {
+      "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+      "model_provider": "deterministic",
+      "model_name": "",
+      "short_summary_zh": "仅据来源标题：“AI Responsibility – OpenAI and Anthropic”。未获取正文，细节及结论未核验。",
+      "source_grounding": "{\"item_id\":\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\",\"source_label\":\"Hacker News\",\"canonical_url\":\"https://twitter.com/hilbertspaess/status/2097476196791709843\",\"prompt_version\":\"title-only-v1\",\"evidence_level\":\"title_only\",\"body_available\":false,\"title_origin\":\"source_title_untranslated\",\"verified\":false}",
+      "llm_metadata": "{\"generation_method\":\"source_title_only\",\"provider\":\"deterministic\",\"model\":null,\"requested_model\":null,\"endpoint_id\":null,\"protocol\":null,\"trace_id\":null,\"attempts\":0,\"usage\":null,\"latency_ms\":0}"
+    },
+    {
+      "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+      "model_provider": "deterministic",
+      "model_name": "",
+      "short_summary_zh": "仅据来源标题：“Harvard study predicts most suicide attempts a week in advance”。未获取正文，细节及结论未核验。",
+      "source_grounding": "{\"item_id\":\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\",\"source_label\":\"Hacker News\",\"canonical_url\":\"https://current.fas.harvard.edu/stories/harvard-study-predicts-most-suicide-attempts-week-advance\",\"prompt_version\":\"title-only-v1\",\"evidence_level\":\"title_only\",\"body_available\":false,\"title_origin\":\"source_title_untranslated\",\"verified\":false}",
+      "llm_metadata": "{\"generation_method\":\"source_title_only\",\"provider\":\"deterministic\",\"model\":null,\"requested_model\":null,\"endpoint_id\":null,\"protocol\":null,\"trace_id\":null,\"attempts\":0,\"usage\":null,\"latency_ms\":0}"
+    }
+  ]
+}

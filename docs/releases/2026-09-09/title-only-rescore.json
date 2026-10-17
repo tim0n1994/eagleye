@@ -1,0 +1,49 @@
+{
+  "result": {
+    "scored": 3
+  },
+  "scores": [
+    {
+      "item_id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+      "signal_type": "new_repo",
+      "novelty_score": 1,
+      "velocity_score": 0.01639194975899705,
+      "cross_source_score": 0,
+      "source_quality_score": 0.5205479452054794,
+      "thesis_match_score": 0.3,
+      "actionability_score": 0.75,
+      "alpha_score": 0.49119398949644766,
+      "consensus_penalty": 0,
+      "evidence_summary": "跨源覆盖 same_resource_v1：0 个其他来源；窗口 20260903–20260909；同资源 无可用资源标识；证据 无；按其他来源数/10计分，上限1；仅表示同资源覆盖，不证明来源独立或内容真实；Alpha 为启发式排序分。",
+      "scored_at": "2026-09-09 04:13:24"
+    },
+    {
+      "item_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+      "signal_type": "narrative_shift",
+      "novelty_score": 1,
+      "velocity_score": 0.01639194975899705,
+      "cross_source_score": 0,
+      "source_quality_score": 0.5205479452054794,
+      "thesis_match_score": 0.3,
+      "actionability_score": 1,
+      "alpha_score": 0.5286939894964477,
+      "consensus_penalty": 0,
+      "evidence_summary": "跨源覆盖 same_resource_v1：0 个其他来源；窗口 20260903–20260909；同资源 twitter.com/hilbertspaess/status/2097476196791709843；证据 无；按其他来源数/10计分，上限1；仅表示同资源覆盖，不证明来源独立或内容真实；Alpha 为启发式排序分。",
+      "scored_at": "2026-09-09 04:13:24"
+    },
+    {
+      "item_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+      "signal_type": "new_paper",
+      "novelty_score": 1,
+      "velocity_score": 0.01639194975899705,
+      "cross_source_score": 0,
+      "source_quality_score": 0.5205479452054794,
+      "thesis_match_score": 0.3,
+      "actionability_score": 0.75,
+      "alpha_score": 0.49119398949644766,
+      "consensus_penalty": 0,
+      "evidence_summary": "跨源覆盖 same_resource_v1：0 个其他来源；窗口 20260903–20260909；同资源 current.fas.harvard.edu/stories/harvard-study-predicts-most-suicide-attempts-week-advance；证据 无；按其他来源数/10计分，上限1；仅表示同资源覆盖，不证明来源独立或内容真实；Alpha 为启发式排序分。",
+      "scored_at": "2026-09-09 04:13:24"
+    }
+  ]
+}

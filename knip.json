@@ -2,5 +2,6 @@
   "$schema": "https://unpkg.com/knip@latest/schema.json",
   "entry": ["js/app.js", "scripts/*.js"],
   "project": ["js/**/*.js", "server/**/*.js"],
-  "ignore": ["js/lib/**"]
+  "ignore": ["js/lib/**"],
+  "ignoreBinaries": ["python3"]
 }

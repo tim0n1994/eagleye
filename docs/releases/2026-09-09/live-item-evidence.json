@@ -1,0 +1,41 @@
+[
+  {
+    "id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+    "title": "27.5KB language-agnostic WebGPU syntax highlighter",
+    "original_summary": "",
+    "content_text": "",
+    "short_summary_zh": "开发者推出仅 27.5KB 的跨语言语法高亮器，借助 WebGPU 提供轻量高效的前端代码着色。",
+    "one_liner_zh": "一款仅 27.5KB 的轻量级跨语言语法高亮器，利用 WebGPU 实现高效前端代码渲染。",
+    "model_name": "google-antigravity/gemini-3.8-flash-high",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-2\",\"protocol\":\"anthropic\",\"requested_model\":\"google-antigravity/gemini-3.8-flash-high\",\"model\":\"google-antigravity/gemini-3.8-flash-high\",\"latency_ms\":9089,\"usage\":{\"input_tokens\":1648,\"output_tokens\":953},\"attempts\":1,\"trace_id\":\"ebc86058-4840-4f75-a2ec-1a2f7e2461d0\"}",
+    "alpha_score": 0.5404459030766946,
+    "signal_type": "new_repo",
+    "kg_feature_id": "63b5b8eb-19e1-40c6-aeee-187912db160f"
+  },
+  {
+    "id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+    "title": "AI Responsibility – OpenAI and Anthropic",
+    "original_summary": "",
+    "content_text": "",
+    "short_summary_zh": "社区围绕 OpenAI 与 Anthropic 两大头部机构的人工智能责任和治理理念展开对比与反思。",
+    "one_liner_zh": "社区就头部大模型公司 OpenAI 与 Anthropic 在人工智能责任与对齐规范上的实践展开讨论。",
+    "model_name": "google-antigravity/gemini-3.8-flash-high",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-2\",\"protocol\":\"anthropic\",\"requested_model\":\"google-antigravity/gemini-3.8-flash-high\",\"model\":\"google-antigravity/gemini-3.8-flash-high\",\"latency_ms\":9089,\"usage\":{\"input_tokens\":1648,\"output_tokens\":953},\"attempts\":1,\"trace_id\":\"ebc86058-4840-4f75-a2ec-1a2f7e2461d0\"}",
+    "alpha_score": 0.5779460574234024,
+    "signal_type": "narrative_shift",
+    "kg_feature_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f"
+  },
+  {
+    "id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+    "title": "Harvard study predicts most suicide attempts a week in advance",
+    "original_summary": "",
+    "content_text": "",
+    "short_summary_zh": "哈佛大学研究表明，通过预测模型可在自杀企图发生前一周实现高精度风险预警。",
+    "one_liner_zh": "哈佛大学最新科研成果显示，模型可提前一周有效识别并预测绝大多数自杀企图风险。",
+    "model_name": "google-antigravity/gemini-3.8-flash-high",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-2\",\"protocol\":\"anthropic\",\"requested_model\":\"google-antigravity/gemini-3.8-flash-high\",\"model\":\"google-antigravity/gemini-3.8-flash-high\",\"latency_ms\":9089,\"usage\":{\"input_tokens\":1648,\"output_tokens\":953},\"attempts\":1,\"trace_id\":\"ebc86058-4840-4f75-a2ec-1a2f7e2461d0\"}",
+    "alpha_score": 0.5404461611271061,
+    "signal_type": "new_paper",
+    "kg_feature_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b"
+  }
+]
