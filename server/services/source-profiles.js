@@ -6,34 +6,29 @@
 // have never been populated. This module computes and upserts their values
 // from existing signal_scores / entity_links data.
 //
-// Time-windowing reuses the digest_date lexicographic comparison convention
-// (YYYYMMDD strings) established in topic-graph.js.
+// Time-windowing reuses the canonical digest_date (YYYY-MM-DD) comparison
+// convention established in topic-graph.js.
 
 const { getDB } = require('../db/connection');
 const { burstScore } = require('./kleinberg');
+const { normalizeDigestDate, todayDigestDate } = require('./date-contract');
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
-/** Convert a Date to a YYYYMMDD digest-date string (UTC). */
-function toDigest(date) {
-  return date.toISOString().slice(0, 10).replace(/-/g, '');
-}
-
-/** Return a YYYYMMDD digest-date string N days before `date`. */
+/** Return a canonical digest-date string N days before `date`. */
 function digestDaysAgo(date, days) {
   const d = new Date(date);
-  d.setUTCDate(d.getUTCDate() - days);
-  return toDigest(d);
+  d.setDate(d.getDate() - days);
+  return todayDigestDate(d);
 }
 
-/** Return a YYYYMMDD digest-date string N days before a YYYYMMDD `digestDate`. */
+/** Return a canonical digest-date string N days before `digestDate`. */
 function digestMinus(digestDate, days) {
-  const y = Number(digestDate.slice(0, 4));
-  const m = Number(digestDate.slice(4, 6)) - 1;
-  const d = Number(digestDate.slice(6, 8));
-  const dt = new Date(Date.UTC(y, m, d));
+  const canonical = normalizeDigestDate(digestDate);
+  const [y, m, d] = canonical.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() - days);
-  return toDigest(dt);
+  return dt.toISOString().slice(0, 10);
 }
 
 /**
@@ -235,7 +230,7 @@ function computeEntityPhase1Metrics(db) {
     JOIN entity_links el ON el.mention_id = em.id
   `).get();
   if (!latestRow?.d) return { entities: 0, updated: 0 };
-  const latest = latestRow.d; // YYYYMMDD
+  const latest = latestRow.d;
 
   const since30 = digestMinus(latest, 30);
 

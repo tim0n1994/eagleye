@@ -8,27 +8,41 @@
 const { generateDailyDigest, enrichItems } = require('../services/llm');
 const { getDB } = require('../db/connection');
 const { getJob, getRecentJobs, runJob, cancelJob, JOB_TYPES } = require('../services/jobs');
-const { runFullPipeline } = require('../services/sync');
 const { translateItems } = require('../services/translate');
 const { sendJSON, sendError } = require('./_shared');
+const { requireAdminPost: requireMutation, positiveInteger: boundedInteger } = require('./_validation');
+const { normalizeDigestDate, todayDigestDate } = require('../services/date-contract');
+
+function validDigestDate(value) {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10) === value;
+}
 
 function register(routes) {
 
   // --- Sync API ---
   routes['/api/sync'] = async (req, res, _parsed) => {
+    if (requireMutation(req, res)) return;
     const jobId = await runJob(JOB_TYPES.FETCH_ALL, {});
     sendJSON(res, 200, { status: 'queued', job_id: jobId, message: 'Sync queued' });
   };
 
   // --- Enrich API: Trigger AI summary enrichment ---
   routes['/api/enrich'] = async (req, res, parsed) => {
-    const batchSize = parseInt(parsed.query.batch || process.env.JOB_ENRICH_BATCH_SIZE || '1600', 10);
+    if (requireMutation(req, res)) return;
+    const configuredDefault = boundedInteger(process.env.JOB_ENRICH_BATCH_SIZE, 100, 1600) || 100;
+    const batchSize = boundedInteger(parsed.query.batch, configuredDefault, 1600);
+    if (batchSize === null) return sendError(res, 400, 'batch must be an integer between 1 and 1600');
     const background = parsed.query.background !== 'false';
     const priorityOnly = parsed.query.priority_only === 'true' || parsed.query.priority_only === '1';
     const resetAttempts = parsed.query.reset_attempts === 'true' || parsed.query.reset_attempts === '1';
+    const requestId = parsed.query.request_id;
+    if (requestId !== undefined && (!background || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId))) {
+      return sendError(res, 400, 'request_id must be a UUID v4 for a background job');
+    }
 
     if (background) {
-      const jobId = await runJob(JOB_TYPES.ENRICH_ITEMS, { batchSize, priorityOnly, resetAttempts });
+      const jobId = await runJob(JOB_TYPES.ENRICH_ITEMS, { batchSize, priorityOnly, resetAttempts, ...(requestId ? { requestId } : {}) });
       sendJSON(res, 200, {
         status: 'ok',
         job_id: jobId,
@@ -44,33 +58,16 @@ function register(routes) {
     }
   };
 
-  // --- Full Re-enrich: clear all existing enrichment + re-process ---
-  routes['/api/enrich/reenrich'] = async (req, res, parsed) => {
-    const db = getDB();
-    if (!db) return sendError(res, 500, 'Database not available');
-    const batchSize = parseInt(parsed.query.batch || '0', 10) || 5000;
-
-    try {
-      const clearedSummaries = db.prepare('DELETE FROM ai_summaries').run().changes;
-      const clearedItemTags = db.prepare('DELETE FROM item_tags').run().changes;
-      const clearedGraphEdges = db.prepare("DELETE FROM graph_edges WHERE edge_type IN ('item_has_tag','item_belongs_topic','item_mentions_entity')").run().changes;
-      const clearedItemTopics = db.prepare("DELETE FROM item_topics WHERE assigned_by = 'keyword'").run().changes;
-
-      const result = await enrichItems(batchSize, { priorityOnly: false });
-
-      sendJSON(res, 200, {
-        status: 'ok',
-        cleared: { summaries: clearedSummaries, item_tags: clearedItemTags, graph_edges: clearedGraphEdges, item_topics: clearedItemTopics },
-        enriched: result,
-      });
-    } catch (err) {
-      sendError(res, 500, `Re-enrichment failed: ${err.message}`);
-    }
+  routes['/api/enrich/reenrich'] = (req, res) => {
+    if (requireMutation(req, res)) return;
+    return sendError(res, 410, 'Full destructive re-enrichment has been removed. Use POST /api/enrich?batch=50&reset_attempts=true&background=true for bounded incremental recovery; valid summaries are preserved.');
   };
 
   // --- Digest API: Build or get digest for a date ---
   routes['/api/digest/build'] = async (req, res, parsed) => {
-    const date = parsed.query.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    if (requireMutation(req, res)) return;
+    const date = normalizeDigestDate(parsed.query.date ?? todayDigestDate());
+    if (!date || !validDigestDate(date)) return sendError(res, 400, 'Invalid date: expected YYYY-MM-DD or YYYYMMDD');
     const background = parsed.query.background !== 'false';
 
     if (background) {
@@ -87,9 +84,13 @@ function register(routes) {
   };
 
   // --- Pipeline API: Run full fetch → enrich → digest pipeline ---
-  routes['/api/pipeline'] = async (req, res, _parsed) => {
+  routes['/api/pipeline'] = async (req, res, parsed) => {
+    if (requireMutation(req, res)) return;
+    const configuredDefault = boundedInteger(process.env.JOB_ENRICH_BATCH_SIZE, 100, 1600) || 100;
+    const enrichBatchSize = boundedInteger(parsed.query.batch, configuredDefault, 1600);
+    if (enrichBatchSize === null) return sendError(res, 400, 'batch must be an integer between 1 and 1600');
     try {
-      const jobId = await runFullPipeline();
+      const jobId = await runJob(JOB_TYPES.FULL_PIPELINE, { enrichBatchSize });
       sendJSON(res, 200, { status: 'ok', job_id: jobId, message: 'Full pipeline started' });
     } catch (err) {
       sendError(res, 500, `Pipeline failed: ${err.message}`);
@@ -98,12 +99,16 @@ function register(routes) {
 
   // --- Jobs API: List recent jobs ---
   routes['/api/jobs'] = (req, res, parsed) => {
-    const jobs = getRecentJobs(parseInt(parsed.query.limit || '20', 10));
+    if (req.method !== 'GET') return sendError(res, 405, 'Method not allowed');
+    const limit = boundedInteger(parsed.query.limit, 20, 100);
+    if (limit === null) return sendError(res, 400, 'limit must be an integer between 1 and 100');
+    const jobs = getRecentJobs(limit);
     sendJSON(res, 200, { status: 'ok', jobs });
   };
 
   // --- Single Job API ---
   routes['/api/jobs/:id'] = (req, res, parsed, params) => {
+    if (req.method !== 'GET') return sendError(res, 405, 'Method not allowed');
     const jobId = params?.id || parsed.query.id;
     if (!jobId) return sendError(res, 400, 'Job ID required');
     const job = getJob(jobId);
@@ -113,6 +118,7 @@ function register(routes) {
 
   // --- Cancel Job API: POST /api/jobs/:id/cancel ---
   routes['/api/jobs/:id/cancel'] = (req, res, parsed, params) => {
+    if (requireMutation(req, res)) return;
     const jobId = params?.id;
     if (!jobId) return sendError(res, 400, 'Job ID required');
     const ok = cancelJob(jobId);
@@ -125,20 +131,26 @@ function register(routes) {
 
   // --- Translation Backfill API: POST /api/translate/backfill?batch_size=50&force=false&background=true ---
   routes['/api/translate/backfill'] = async (req, res, parsed) => {
+    if (requireMutation(req, res)) return;
     const db = getDB();
     if (!db) return sendError(res, 500, 'Database not available');
 
     const all = parsed.query.all === 'true' || parsed.query.all === '1';
-    const batchSize = all
-      ? Number.MAX_SAFE_INTEGER
-      : Math.max(1, Math.min(parseInt(parsed.query.batch_size || '50', 10), 500));
+    if (all) return sendError(res, 400, 'Unbounded backfill is disabled; use batch_size between 1 and 500 and repeat as needed');
+    const batchSize = boundedInteger(parsed.query.batch_size, 50, 500);
+    if (batchSize === null) return sendError(res, 400, 'batch_size must be an integer between 1 and 500');
     const force = parsed.query.force === 'true' || parsed.query.force === '1';
     const background = parsed.query.background !== 'false';
     const sourceSlug = String(parsed.query.source || '').trim();
+    const retryBlocked = parsed.query.retry_blocked === 'true';
+    const requestId = parsed.query.request_id;
+    if (requestId !== undefined && (!background || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId))) {
+      return sendError(res, 400, 'request_id must be a UUID v4 for a background job');
+    }
 
     if (background) {
       // Use the job system so this is cancellable and visible in /api/jobs
-      const jobId = await runJob(JOB_TYPES.TRANSLATE_BACKFILL, { batchSize, force, all, sourceSlug });
+      const jobId = await runJob(JOB_TYPES.TRANSLATE_BACKFILL, { batchSize, force, all, sourceSlug, ...(requestId ? { requestId } : {}), ...(retryBlocked ? { retryBlocked } : {}) });
       const translatedRow = db.prepare(`
         SELECT COUNT(*) as c FROM information_items WHERE title_zh IS NOT NULL AND title_zh != ''
       `).get();
@@ -189,7 +201,7 @@ function register(routes) {
       });
     }
 
-    const result = await translateItems({ batchSize, force, sourceSlug });
+    const result = await translateItems({ batchSize, force, sourceSlug, ...(retryBlocked ? { retryBlocked } : {}) });
 
     const updatedTranslated = db.prepare(`
       SELECT COUNT(*) as c FROM information_items WHERE title_zh IS NOT NULL AND title_zh != ''
@@ -208,6 +220,7 @@ function register(routes) {
 
   // --- Translation Status API: GET /api/translate/status ---
   routes['/api/translate/status'] = (req, res, _parsed) => {
+    if (req.method !== 'GET') return sendError(res, 405, 'Method not allowed');
     const db = getDB();
     if (!db) return sendError(res, 500, 'Database not available');
 
@@ -248,12 +261,16 @@ function register(routes) {
 
   // --- Fetch Source Job API (§13: POST /api/jobs/fetch-source) ---
   routes['/api/jobs/fetch-source'] = async (req, res, parsed) => {
+    if (requireMutation(req, res)) return;
+    const limit = boundedInteger(parsed.query.limit, 5, 100);
+    if (limit === null) return sendError(res, 400, 'limit must be an integer between 1 and 100');
     const slug = parsed.query.slug || '';
-    const date = parsed.query.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const date = normalizeDigestDate(parsed.query.date ?? todayDigestDate());
+    if (!date || !validDigestDate(date)) return sendError(res, 400, 'Invalid date: expected YYYY-MM-DD or YYYYMMDD');
     if (!slug) return sendError(res, 400, 'Source slug required');
 
     try {
-      const jobId = await runJob(JOB_TYPES.FETCH_SOURCE, { slug, date });
+      const jobId = await runJob(JOB_TYPES.FETCH_SOURCE, { slug, date: date.replace(/-/g, ''), limit });
       sendJSON(res, 200, { status: 'ok', job_id: jobId, message: `Fetch queued for ${slug}` });
     } catch (err) {
       sendError(res, 500, `Failed to queue fetch: ${err.message}`);

@@ -7,6 +7,9 @@
  */
 
 const { getDB } = require('../db/connection');
+const { taskContext, abortableDelay } = require('./llm-shared');
+const { normalizeDigestDate } = require('./date-contract');
+const { buildCrossSourceEvidence, describeEvidence } = require('./cross-source-evidence');
 const {
   providerAvailable, preClassifyByTags, classifySignals, classifyUncategorizedRetry,
 } = require('./signals-classify');
@@ -25,17 +28,18 @@ function computeSourceScore(sourceSlug, profiles) {
 }
 
 /**
- * Subtract `days` from a YYYYMMDD digest_date string, returning YYYYMMDD.
+ * Subtract `days` from a digest_date string (canonical or legacy compact),
+ * returning the canonical form.
  * Used for the entity-novelty trailing window (relative to the item's own date,
  * not "now", so backfilled historical items get a correct lookback).
  */
 function digestMinusDays(digestDate, days) {
-  const y = Number(digestDate.slice(0, 4));
-  const m = Number(digestDate.slice(4, 6)) - 1;
-  const d = Number(digestDate.slice(6, 8));
-  const dt = new Date(Date.UTC(y, m, d));
+  const canonical = normalizeDigestDate(digestDate);
+  if (!canonical) return null;
+  const [y, m, d] = canonical.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() - days);
-  return dt.toISOString().slice(0, 10).replace(/-/g, '');
+  return dt.toISOString().slice(0, 10);
 }
 
 function computeNovelty(item, db) {
@@ -128,20 +132,14 @@ function computeVelocity(item, db) {
   } catch { return 0; }
 }
 
-function computeCrossSource(item, db) {
-  try {
-    const src = db.prepare(`SELECT COUNT(DISTINCT source_id) as cnt FROM information_items
-      WHERE digest_date = ?`).get(item.digest_date);
-    const totalSources = src?.cnt || 1;
-    return Math.min(1, totalSources / 10);
-  } catch { return 0; }
-}
-
 async function scoreSignals(items, opts = {}) {
+  const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
+  if (context.isCancelled()) return { scored: 0, cancelled: true };
   const db = getDB();
   if (!db || !items?.length) return { scored: 0 };
 
   const profiles = loadSourceProfiles(db);
+  const crossSourceEvidence = buildCrossSourceEvidence(db, items);
 
   // Hydrate ai_summary from DB — callers (enrichItems, SCORE_SIGNALS job) pass
   // item objects without joining ai_summaries, so item.ai_summary is undefined.
@@ -188,7 +186,7 @@ async function scoreSignals(items, opts = {}) {
       const sourceScore = computeSourceScore(item.source_slug, profiles);
       const novelty = computeNovelty(item, db);
       const velocity = computeVelocity(item, db);
-      const crossSource = computeCrossSource(item, db);
+      const crossSource = crossSourceEvidence.get(item.id).score;
 
       classifierItems.push({
         id: item.id,
@@ -277,8 +275,9 @@ async function scoreSignals(items, opts = {}) {
   }
 
   const llmClassified = opts.llmSkipRuleMatched
-    ? await classifySignals(classifierItems.filter(it => ruleById.get(it.id).signal_type === 'uncategorized')).catch(() => [])
-    : await classifySignals(classifierItems).catch(() => []);
+    ? await classifySignals(classifierItems.filter(it => ruleById.get(it.id).signal_type === 'uncategorized'), context).catch(() => [])
+    : await classifySignals(classifierItems, context).catch(() => []);
+  if (context.isCancelled()) return { scored: 0, cancelled: true };
   const llmById = new Map(llmClassified.map(c => [c.id, c]));
 
   const classById = new Map();
@@ -303,7 +302,7 @@ async function scoreSignals(items, opts = {}) {
   if (!opts.noRetry && providerAvailable()) {
     const stillUnc = classifierItems.filter(it => (classById.get(it.id)?.signal_type) === 'uncategorized');
     if (stillUnc.length > 0) {
-      const retried = await classifyUncategorizedRetry(stillUnc).catch(() => []);
+      const retried = await classifyUncategorizedRetry(stillUnc, context).catch(() => []);
       for (const r of retried) {
         if (r.signal_type && r.signal_type !== 'uncategorized') classById.set(r.id, r);
       }
@@ -388,7 +387,7 @@ async function scoreSignals(items, opts = {}) {
       insertScore.run(
         item.id, signalType, item.novelty, item.velocity, item.crossSource,
         item.sourceScore, thesisMatch, actionability, finalAlpha,
-        consensusPenalty, cls.reason_zh || null
+        consensusPenalty, [cls.reason_zh, describeEvidence(crossSourceEvidence.get(item.id))].filter(Boolean).join('；')
       );
       // Collect high-alpha items for the post-commit auto-research hook.
       if (opts.autoResearch && finalAlpha >= (opts.alphaResearchThreshold || 0.75)) {
@@ -397,6 +396,7 @@ async function scoreSignals(items, opts = {}) {
     }
   });
 
+  if (context.isCancelled()) return { scored: 0, cancelled: true };
   writeTx();
 
   // Phase 3.B: auto-queue deep research for genuinely high-alpha signals so the
@@ -411,9 +411,10 @@ async function scoreSignals(items, opts = {}) {
       // 每个之间隔 2s，给上游喘息空间。research 是后台任务，不要求实时。
       let queued = 0;
       for (const itemId of highAlphaItems) {
+        if (context.isCancelled()) break;
         const id = await runJob(JOB_TYPES.ITEM_RESEARCH, { itemId });
         if (id) queued++;
-        await new Promise(r => setTimeout(r, 2000));
+        await abortableDelay(2000, context.signal);
       }
       console.log(`  🔬 Auto-queued ${queued} deep-research jobs for high-alpha items (>= ${(opts.alphaResearchThreshold || 0.75)})`);
     } catch (err) {
@@ -421,7 +422,7 @@ async function scoreSignals(items, opts = {}) {
     }
   }
 
-  return { scored: classifierItems.length };
+  return { scored: classifierItems.length, ...(context.isCancelled() ? { cancelled: true } : {}) };
 }
 
 // ─── Audience reweighting (Phase 2) ─────────────────────────────────────

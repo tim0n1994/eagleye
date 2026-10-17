@@ -5,7 +5,7 @@
  * Split out of pages.js; render functions are unchanged.
  */
 
-import { $, escapeAttr, escapeHtml } from '../utils.js';
+import { $, escapeAttr, escapeHtml, normalizeDateStr } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
 import { API_BASE, fetchJSON, showError, showLoader } from './shared.js';
 
@@ -48,7 +48,10 @@ function trajectorySparkline(series) {
     : '';
 
   // X-axis date labels (first / peak / last) so the reader has orientation.
-  const fmt = (yyyymmdd) => yyyymmdd ? `${yyyymmdd.slice(4, 6)}/${yyyymmdd.slice(6, 8)}` : '';
+  const fmt = (value) => {
+    const iso = normalizeDateStr(value);
+    return typeof iso === 'string' ? `${iso.slice(5, 7)}/${iso.slice(8, 10)}` : '';
+  };
   const labels = [
     { i: 0, anchor: 'start' },
     { i: peakIdx, anchor: 'middle' },

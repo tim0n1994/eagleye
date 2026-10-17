@@ -1,0 +1,90 @@
+[
+  {
+    "id": "0f9fe537-19e0-42df-b6cd-46cdf497ecd2",
+    "title": "EverettFish/holo-card-studio: Turn the user's description or uploaded reference into a finished, editable Blender card and an interactive Three.js page. Preserve the requested subject, style, typography and destination. This skill contains code and text only; generated artwork belongs in the user's output project.",
+    "digest_date": "20260907",
+    "short_summary_zh": "该项目将用户描述或参考图转化为可编辑的Blender卡片和交互式Three.js页面，保留主题、风格、排版与目标。",
+    "model_provider": "claude",
+    "model_name": "configured-model",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-5\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":15986,\"usage\":{\"input_tokens\":1188,\"output_tokens\":346,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0},\"attempts\":1,\"trace_id\":\"f262c08f-864d-4058-9888-420c0ce6b946\"}",
+    "alpha_score": 0.5497363761933537,
+    "kg_feature_id": "0f9fe537-19e0-42df-b6cd-46cdf497ecd2"
+  },
+  {
+    "id": "32fbb17d-efef-4878-9624-7f8fce39027e",
+    "title": "ashemag/human-atlas: Open-source 3D anatomy explorer: 2,234 selectable BodyParts3D meshes, system layers, search, and exploded views.",
+    "digest_date": "20260905",
+    "short_summary_zh": "通过三维网格、系统分层和拆解视图探索人体结构。",
+    "model_provider": "claude",
+    "model_name": "configured-model",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-4\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":22260,\"usage\":{\"input_tokens\":9050,\"output_tokens\":1634},\"attempts\":1,\"trace_id\":\"1fc9c11c-a978-4841-8364-896c2b904010\"}",
+    "alpha_score": 0.599736376244794,
+    "kg_feature_id": "32fbb17d-efef-4878-9624-7f8fce39027e"
+  },
+  {
+    "id": "495008a4-e9cf-4a27-8d67-9642f9007fdb",
+    "title": "Rion-Wu-tech/wechat-intelligence-hub: Local-first WeChat intelligence system with a read-only CLI, Codex skills, searchable chat history, daily briefings, follow-ups and opportunity tracking.",
+    "digest_date": "20260904",
+    "short_summary_zh": "本地管理微信信息，支持检索、简报和机会跟踪。",
+    "model_provider": "claude",
+    "model_name": "configured-model",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-4\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":22260,\"usage\":{\"input_tokens\":9050,\"output_tokens\":1634},\"attempts\":1,\"trace_id\":\"1fc9c11c-a978-4841-8364-896c2b904010\"}",
+    "alpha_score": 0.5622363762190739,
+    "kg_feature_id": "495008a4-e9cf-4a27-8d67-9642f9007fdb"
+  },
+  {
+    "id": "54d7cc15-8bd5-4a67-992c-7dfb5cbaff1d",
+    "title": "Albert-Weasker/niubigeo: Open-source AI brand visibility and competitor reports",
+    "digest_date": "20260903",
+    "short_summary_zh": "用人工智能分析品牌可见度和竞争对手表现。",
+    "model_provider": "claude",
+    "model_name": "configured-model",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-4\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":22260,\"usage\":{\"input_tokens\":9050,\"output_tokens\":1634},\"attempts\":1,\"trace_id\":\"1fc9c11c-a978-4841-8364-896c2b904010\"}",
+    "alpha_score": 0.5622363762190739,
+    "kg_feature_id": "54d7cc15-8bd5-4a67-992c-7dfb5cbaff1d"
+  },
+  {
+    "id": "63b5b8eb-19e1-40c6-aeee-187912db160f",
+    "title": "27.5KB language-agnostic WebGPU syntax highlighter",
+    "digest_date": "20260909",
+    "short_summary_zh": "仅据来源标题：“27.5KB language-agnostic WebGPU syntax highlighter”。未获取正文，细节及结论未核验。",
+    "model_provider": "deterministic",
+    "model_name": "",
+    "llm_metadata": "{\"generation_method\":\"source_title_only\",\"provider\":\"deterministic\",\"model\":null,\"requested_model\":null,\"endpoint_id\":null,\"protocol\":null,\"trace_id\":null,\"attempts\":0,\"usage\":null,\"latency_ms\":0}",
+    "alpha_score": 0.49119398949644766,
+    "kg_feature_id": "63b5b8eb-19e1-40c6-aeee-187912db160f"
+  },
+  {
+    "id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f",
+    "title": "AI Responsibility – OpenAI and Anthropic",
+    "digest_date": "20260909",
+    "short_summary_zh": "仅据来源标题：“AI Responsibility – OpenAI and Anthropic”。未获取正文，细节及结论未核验。",
+    "model_provider": "deterministic",
+    "model_name": "",
+    "llm_metadata": "{\"generation_method\":\"source_title_only\",\"provider\":\"deterministic\",\"model\":null,\"requested_model\":null,\"endpoint_id\":null,\"protocol\":null,\"trace_id\":null,\"attempts\":0,\"usage\":null,\"latency_ms\":0}",
+    "alpha_score": 0.5286939894964477,
+    "kg_feature_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f"
+  },
+  {
+    "id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b",
+    "title": "Harvard study predicts most suicide attempts a week in advance",
+    "digest_date": "20260909",
+    "short_summary_zh": "仅据来源标题：“Harvard study predicts most suicide attempts a week in advance”。未获取正文，细节及结论未核验。",
+    "model_provider": "deterministic",
+    "model_name": "",
+    "llm_metadata": "{\"generation_method\":\"source_title_only\",\"provider\":\"deterministic\",\"model\":null,\"requested_model\":null,\"endpoint_id\":null,\"protocol\":null,\"trace_id\":null,\"attempts\":0,\"usage\":null,\"latency_ms\":0}",
+    "alpha_score": 0.49119398949644766,
+    "kg_feature_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b"
+  },
+  {
+    "id": "f319023e-77fd-41ca-9679-b23dc45c8e4a",
+    "title": "lnkiai/m3e-canvas: Sketch Material 3 Expressive screens in the browser and turn them into vibe-coding prompts.",
+    "digest_date": "20260902",
+    "short_summary_zh": "在浏览器绘制界面，并将设计转为编程提示。",
+    "model_provider": "claude",
+    "model_name": "configured-model",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-4\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":22260,\"usage\":{\"input_tokens\":9050,\"output_tokens\":1634},\"attempts\":1,\"trace_id\":\"1fc9c11c-a978-4841-8364-896c2b904010\"}",
+    "alpha_score": 0.5622363508589915,
+    "kg_feature_id": "f319023e-77fd-41ca-9679-b23dc45c8e4a"
+  }
+]

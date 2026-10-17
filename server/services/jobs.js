@@ -11,9 +11,14 @@
 const { getDB } = require('../db/connection');
 const { enrichItems, generateDailyDigest } = require('./llm');
 const { buildTopicGraph } = require('./topic-graph');
+const { normalizeDigestDate, todayDigestDate } = require('./date-contract');
 
 // Circular dependency: sync.js imported lazily inside executeJob()
 const crypto = require('crypto');
+const jobControllers = new Map();
+const jobLeases = new Map();
+const leaseColumnCache = new WeakMap();
+const WORKER_ID = `worker-${process.pid}-${crypto.randomUUID().slice(0, 8)}`;
 
 function generateId() {
   return crypto.randomUUID();
@@ -36,7 +41,9 @@ const JOB_TYPES = {
   BUILD_TAG_HIERARCHY: 'build-tag-hierarchy',
 };
 
-const DEFAULT_JOB_ENRICH_BATCH = Math.max(1, parseInt(process.env.JOB_ENRICH_BATCH_SIZE || '1600', 10));
+const configuredEnrichBatch = Number(process.env.JOB_ENRICH_BATCH_SIZE || 100);
+const DEFAULT_JOB_ENRICH_BATCH = Number.isInteger(configuredEnrichBatch) && configuredEnrichBatch > 0
+  ? Math.min(1600, configuredEnrichBatch) : 100;
 const SINGLETON_JOB_TYPES = new Set([
   JOB_TYPES.FETCH_ALL,
   JOB_TYPES.FULL_PIPELINE,
@@ -45,7 +52,112 @@ const SINGLETON_JOB_TYPES = new Set([
   JOB_TYPES.RESCORE_ALL,
 ]);
 
+function boundedJobCount(value, fallback, maximum) {
+  const count = Number(value ?? fallback);
+  if (!Number.isSafeInteger(count) || count <= 0 || count > maximum) {
+    throw new Error(`Job batch must be an integer between 1 and ${maximum}`);
+  }
+  return count;
+}
+
+function jobDate(value, label = 'date') {
+  if (value === undefined || value === null || value === '') return todayDigestDate();
+  const canonical = normalizeDigestDate(value);
+  if (!canonical) throw new Error(`Invalid ${label}: expected YYYY-MM-DD or YYYYMMDD`);
+  return canonical;
+}
+
+// R0-06 rollback gate: with EAGLEYE_JOBS_PAUSED truthy the queue refuses new
+// intake and new claims while in-flight jobs keep running and committing, so
+// operators can drain work and roll the deployment back safely.
+function isJobIntakePaused() {
+  const raw = String(process.env.EAGLEYE_JOBS_PAUSED ?? '').trim().toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(raw);
+}
+
+function leaseTtlMs() {
+  const seconds = Number(process.env.EAGLEYE_JOB_LEASE_TTL_SECONDS ?? 900);
+  return (Number.isFinite(seconds) && seconds > 0 ? seconds : 900) * 1000;
+}
+
+function hasLeaseColumns(db) {
+  if (!db) return false;
+  if (!leaseColumnCache.has(db)) {
+    const names = db.prepare("PRAGMA table_info('background_jobs')").all().map(column => column.name);
+    leaseColumnCache.set(db, names.includes('lease_owner') && names.includes('lease_epoch'));
+  }
+  return leaseColumnCache.get(db);
+}
+
+function claimJob(jobId, workerId) {
+  const db = getDB();
+  if (!db) return { claimed: false, reason: 'no-database', epoch: null };
+  if (isJobIntakePaused()) return { claimed: false, reason: 'paused', epoch: null };
+  if (!hasLeaseColumns(db)) {
+    const claimed = db.prepare(`
+      UPDATE background_jobs SET status = 'running', started_at = datetime('now')
+      WHERE id = ? AND status = 'queued'
+    `).run(jobId).changes > 0;
+    return { claimed, reason: claimed ? 'legacy' : 'not-queued', epoch: null };
+  }
+  return db.transaction(() => {
+    const expiry = new Date(Date.now() + leaseTtlMs()).toISOString();
+    const claimed = db.prepare(`
+      UPDATE background_jobs
+      SET status = 'running', started_at = datetime('now'),
+          lease_owner = ?, lease_epoch = lease_epoch + 1, lease_expiry = ?,
+          attempt = attempt + 1
+      WHERE id = ? AND status = 'queued'
+    `).run(workerId, expiry, jobId).changes > 0;
+    const epoch = claimed
+      ? Number(db.prepare('SELECT lease_epoch FROM background_jobs WHERE id = ?').get(jobId).lease_epoch)
+      : null;
+    return { claimed, reason: claimed ? 'lease-acquired' : 'not-queued', epoch };
+  })();
+}
+
+function commitJobOutcome(jobId, expectedEpoch, apply) {
+  const db = getDB();
+  if (!db) return { committed: false, reason: 'no-database' };
+  if (!hasLeaseColumns(db) || expectedEpoch === null) {
+    apply();
+    return { committed: true, reason: 'unverified' };
+  }
+  return db.transaction(() => {
+    const row = db.prepare('SELECT lease_epoch FROM background_jobs WHERE id = ?').get(jobId);
+    if (!row) return { committed: false, reason: 'job-missing' };
+    if (Number(row.lease_epoch ?? 0) !== expectedEpoch) return { committed: false, reason: 'lease-stale' };
+    apply();
+    return { committed: true, reason: 'lease-current' };
+  })();
+}
+
+function isStaleLeaseWriter(db, id) {
+  if (!jobLeases.has(id) || !hasLeaseColumns(db)) return false;
+  const row = db.prepare('SELECT lease_epoch FROM background_jobs WHERE id = ?').get(id);
+  return !row || Number(row.lease_epoch ?? 0) !== jobLeases.get(id);
+}
+
+function staleLeaseResult(jobId, jobType, epoch, error) {
+  console.warn(`  ⚠  Job ${jobId} (${jobType}) late commit rejected: lease epoch moved on from ${epoch}; newer results preserved`);
+  return { stale: true, reason: 'lease-stale', jobId, jobType, ...(error ? { error } : {}) };
+}
+
 // ─── Job CRUD ───────────────────────────────────────────────────────────
+
+function requestedJob(jobType, params) {
+  if (!params.requestId) return null;
+  if (![JOB_TYPES.ENRICH_ITEMS, JOB_TYPES.TRANSLATE_BACKFILL].includes(jobType)
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.requestId)) {
+    throw new Error('Invalid bounded-job request ID');
+  }
+  const existing = getJob(params.requestId);
+  if (existing && (existing.job_type !== jobType
+    || !require('node:util').isDeepStrictEqual(JSON.parse(existing.params), params))) {
+    throw new Error('Request ID already used with different job parameters');
+  }
+  return existing;
+}
 
 function createJob(jobType, params = {}) {
   const db = getDB();
@@ -61,11 +173,12 @@ function createJob(jobType, params = {}) {
     if (existing?.id) return existing.id;
   }
 
-  const id = generateId();
-  db.prepare(`
-    INSERT INTO background_jobs (id, job_type, status, params)
+  const id = params.requestId || generateId();
+  const inserted = db.prepare(`
+    INSERT ${params.requestId ? 'OR IGNORE' : ''} INTO background_jobs (id, job_type, status, params)
     VALUES (?, ?, 'queued', ?)
   `).run(id, jobType, JSON.stringify(params));
+  if (!inserted.changes && params.requestId) return requestedJob(jobType, params)?.id || null;
 
   return id;
 }
@@ -110,12 +223,13 @@ function updateJobStatus(id, status, result = null, error = null) {
   }
 
   params.push(id);
-  db.prepare(`UPDATE background_jobs SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
+  db.prepare(`UPDATE background_jobs SET ${setClauses.join(', ')} WHERE id = ? AND status != 'cancelled'`).run(...params);
 }
 
 function updateJobProgress(id, result) {
   const db = getDB();
   if (!db || !id) return;
+  if (isStaleLeaseWriter(db, id)) return;
   const row = db.prepare('SELECT job_type, result FROM background_jobs WHERE id = ? AND status = ?').get(id, 'running');
   if (row?.job_type === JOB_TYPES.FULL_PIPELINE) {
     db.prepare('UPDATE background_jobs SET result = ? WHERE id = ? AND status = ?')
@@ -129,11 +243,11 @@ function updateJobProgress(id, result) {
 const PIPELINE_STAGES = [
   ['fetch', '抓取信息源', 'Fetch sources'],
   ['enrich', 'AI 摘要与打标签', 'Enrich and tag'],
-  ['source_profiles', '源质量画像', 'Source quality profiles'],
   ['translate', '中文卡片回填', 'Chinese card backfill'],
   ['topic_graph', '主题图谱', 'Topic graph'],
   ['kg_worker', 'KG Worker', 'KG worker'],
   ['entity_momentum', '实体动量', 'Entity momentum'],
+  ['source_profiles', '源质量画像与重新评分', 'Source profiles and rescoring'],
   ['digest', '每日简报', 'Daily digest'],
   ['hierarchy', '概念图谱', 'Concept graph'],
 ];
@@ -177,7 +291,9 @@ function mergePipelineProgress(existingRaw, incoming) {
   const existing = parseProgress(existingRaw);
   const progress = existing?.pipeline ? existing : emptyPipelineProgress();
   const incomingObj = typeof incoming === 'string' ? { message: incoming } : (incoming || {});
-  const stageKey = inferPipelineStage(incomingObj) || progress.current_stage || 'fetch';
+  const stageKey = incomingObj.phase === 'scoring' && progress.current_stage === 'source_profiles'
+    ? 'source_profiles'
+    : inferPipelineStage(incomingObj) || progress.current_stage || 'fetch';
   const now = new Date().toISOString();
 
   progress.current_stage = stageKey;
@@ -197,6 +313,7 @@ function mergePipelineProgress(existingRaw, incoming) {
 function updatePipelineStage(jobId, stageKey, status, detail = null, result = null) {
   const db = getDB();
   if (!db || !jobId) return;
+  if (isStaleLeaseWriter(db, jobId)) return;
   const row = db.prepare('SELECT result FROM background_jobs WHERE id = ? AND status = ?').get(jobId, 'running');
   const progress = parseProgress(row?.result);
   const next = progress?.pipeline ? progress : emptyPipelineProgress();
@@ -206,7 +323,7 @@ function updatePipelineStage(jobId, stageKey, status, detail = null, result = nu
   for (const stage of next.stages) {
     if (stage.key === stageKey) {
       if (status === 'running' && !stage.started_at) stage.started_at = now;
-      if (status === 'completed' || status === 'failed') stage.completed_at = now;
+      if (['completed', 'failed', 'skipped'].includes(status)) stage.completed_at = now;
       stage.status = status;
       if (detail !== null) stage.detail = detail;
       if (result !== null) stage.result = result;
@@ -222,6 +339,56 @@ function getJob(id) {
   return db.prepare('SELECT * FROM background_jobs WHERE id = ?').get(id);
 }
 
+function pipelineResult(jobId, outcome = null) {
+  const progress = parseProgress(getJob(jobId)?.result) || emptyPipelineProgress();
+  const stages = progress.stages || [];
+  const failedStages = stages.filter(stage => stage.status === 'failed').map(stage => stage.key);
+  const cancelled = outcome === 'cancelled';
+  return {
+    ...progress,
+    completed: !cancelled && failedStages.length === 0 && stages.every(stage => ['completed', 'skipped'].includes(stage.status)),
+    cancelled,
+    outcome: outcome || (failedStages.length ? 'failed' : 'completed'),
+    partial: stages.some(stage => stage.status === 'completed') && (cancelled || failedStages.length > 0),
+    failed_stages: failedStages,
+    summary: Object.fromEntries(stages.map(stage => [stage.key, stage.result])),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function stageFailure(result) {
+  if (!result || typeof result !== 'object') return null;
+  if (result.error || ['error', 'failed'].includes(result.status)) return result.error || result.message || 'Stage returned a failure';
+  if (result.fallback_reason) return `Requested backend degraded: ${result.fallback_reason}`;
+  if (Number(result.failed) > 0) return `${result.failed} item(s) failed`;
+  const failedSources = (result.fetch || []).filter(row => row.error || row.status === 'failed');
+  if (failedSources.length) return failedSources.map(row => `${row.source || 'unknown'}: ${row.error || 'failed'}`).join('; ');
+  if (result.skipped && result.reason === 'no-llm-provider') return 'Enrichment unavailable: no LLM provider configured';
+  for (const key of ['extract', 'embed', 'topics', 'rescore']) {
+    const failure = stageFailure(result[key]);
+    if (failure) return `${key}: ${failure}`;
+  }
+  return null;
+}
+
+async function runPipelineStage(jobId, stageKey, detail, work) {
+  if (isJobCancelled(jobId)) throw new Error('Job cancelled by user');
+  updatePipelineStage(jobId, stageKey, 'running', detail);
+  try {
+    const result = await work();
+    if (isJobCancelled(jobId)) throw new Error('Job cancelled by user');
+    const failure = stageFailure(result);
+    updatePipelineStage(jobId, stageKey, failure ? 'failed' : result?.skipped ? 'skipped' : 'completed',
+      failure ? { error: failure } : {}, result);
+    return result;
+  } catch (err) {
+    if (isJobCancelled(jobId)) throw err;
+    updatePipelineStage(jobId, stageKey, 'failed', { error: err.message });
+    console.warn(`  ⚠  Pipeline stage ${stageKey} failed: ${err.message}`);
+    return null;
+  }
+}
+
 function getRecentJobs(limit = 20) {
   const db = getDB();
   if (!db) return [];
@@ -231,19 +398,35 @@ function getRecentJobs(limit = 20) {
 function markInterruptedJobs() {
   const db = getDB();
   if (!db) return 0;
-  const info = db.prepare(`
-    UPDATE background_jobs
-    SET status = 'failed',
-        completed_at = datetime('now'),
-        error = 'Server restarted before this background job completed'
-    WHERE status IN ('running', 'queued')
-  `).run();
-  return info.changes || 0;
+  const reason = 'Server restarted before this background job completed';
+  const now = new Date().toISOString();
+  const leaseClauses = hasLeaseColumns(db)
+    ? ', lease_epoch = lease_epoch + 1, lease_owner = NULL, lease_expiry = NULL'
+    : '';
+  return db.transaction(() => {
+    const interrupted = db.prepare("SELECT * FROM background_jobs WHERE status IN ('running', 'queued')").all();
+    const update = db.prepare(`UPDATE background_jobs SET status = 'failed', completed_at = ?, error = ?, result = ?${leaseClauses}
+      WHERE id = ? AND status IN ('running', 'queued')`);
+    for (const job of interrupted) {
+      const previous = parseProgress(job.result);
+      const result = { ...(previous && typeof previous === 'object' ? previous : { previous_result: job.result }),
+        completed: false, cancelled: false, interrupted: true, outcome: 'failed', updated_at: now };
+      if (Array.isArray(result.stages)) {
+        result.stages = result.stages.map(stage => ['running', 'pending'].includes(stage.status)
+          ? { ...stage, status: stage.status === 'running' ? 'failed' : 'skipped', completed_at: now,
+            detail: { ...stage.detail, reason, ...(stage.status === 'running' ? { error: reason } : {}) } }
+          : stage);
+        result.failed_stages = result.stages.filter(stage => stage.status === 'failed').map(stage => stage.key);
+        result.partial = result.stages.some(stage => stage.status === 'completed');
+      }
+      update.run(now, reason, JSON.stringify(result), job.id);
+    }
+    return interrupted.length;
+  })();
 }
 
 /**
- * Mark a job as cancelled. Cooperative cancellation — the executor must
- * poll isJobCancelled() periodically. Returns true if cancellation succeeded.
+ * Persist cancellation and abort in-flight operations that consume the job signal.
  */
 function cancelJob(id) {
   const db = getDB();
@@ -253,13 +436,32 @@ function cancelJob(id) {
   if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
     return false;
   }
-  db.prepare(`
+  const existing = parseProgress(job.result);
+  const result = job.job_type === JOB_TYPES.FULL_PIPELINE
+    ? pipelineResult(id, 'cancelled')
+    : { ...(existing && typeof existing === 'object' ? existing : { previous_result: job.result }), completed: false, cancelled: true, outcome: 'cancelled' };
+  result.cancel_reason = 'cancelled by user';
+  for (const stage of result.stages || []) {
+    if (stage.status === 'running' || stage.status === 'pending') {
+      stage.status = stage.status === 'running' ? 'cancelled' : 'skipped';
+      stage.completed_at = result.updated_at;
+      stage.detail = { ...stage.detail, reason: result.cancel_reason };
+    }
+  }
+  const updated = db.prepare(`
     UPDATE background_jobs
     SET status = 'cancelled', completed_at = datetime('now'),
-        result = COALESCE(result, ?) || ' [cancelled by user]'
-    WHERE id = ?
-  `).run(JSON.stringify({ cancelled: true }), id);
-  return true;
+        result = ?
+    WHERE id = ? AND status IN ('queued', 'running')
+  `).run(JSON.stringify(result), id);
+  if (updated.changes > 0) jobControllers.get(id)?.abort(new Error('Job cancelled by user'));
+  return updated.changes > 0;
+}
+
+function getJobSignal(id) {
+  const signal = jobControllers.get(id)?.signal;
+  if (signal) return signal;
+  return isJobCancelled(id) ? AbortSignal.abort(new Error('Job cancelled by user')) : undefined;
 }
 
 /**
@@ -281,189 +483,118 @@ function isJobCancelled(id) {
 async function executeJob(jobId) {
   const job = getJob(jobId);
   if (!job) throw new Error(`Job ${jobId} not found`);
+  if (job.status !== 'queued') return parseProgress(job.result);
 
-  updateJobStatus(jobId, 'running');
+  const claim = claimJob(jobId, WORKER_ID);
+  if (!claim.claimed) return parseProgress(job.result);
+  jobLeases.set(jobId, claim.epoch);
 
+  const controller = new AbortController();
+  jobControllers.set(jobId, controller);
+  const signal = controller.signal;
   try {
     let result;
 
     switch (job.job_type) {
       case JOB_TYPES.FETCH_ALL: {
         const { syncAllSources } = require('./sync');
-        result = await syncAllSources({ jobId });
+        result = await syncAllSources({ jobId, signal });
         break;
       }
 
       case JOB_TYPES.FETCH_SOURCE: {
         const params = JSON.parse(job.params || '{}');
         const { syncSource } = require('./sync');
-        result = await syncSource(params.slug, params.date, { jobId });
+        result = await syncSource(params.slug, params.date, { jobId, signal, limit: params.limit || 5, skipEnrich: true });
         break;
       }
 
       case JOB_TYPES.ENRICH_ITEMS: {
         const params = JSON.parse(job.params || '{}');
-        result = await enrichItems(params.batchSize || DEFAULT_JOB_ENRICH_BATCH, { jobId, ...params });
+        result = await enrichItems(params.batchSize || DEFAULT_JOB_ENRICH_BATCH, { ...params, jobId, signal });
         break;
       }
 
       case JOB_TYPES.BUILD_DIGEST: {
         const params = JSON.parse(job.params || '{}');
-        const date = params.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        result = await generateDailyDigest(date, { jobId });
+        const date = jobDate(params.date);
+        result = await generateDailyDigest(date, { jobId, signal });
+        if (!result) throw new Error('Digest generation returned no result');
         break;
       }
 
       case JOB_TYPES.BUILD_TOPIC_GRAPH: {
         const params = JSON.parse(job.params || '{}');
-        const date = params.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        result = await buildTopicGraph(date, { jobId, deep: params.deep === true });
+        const date = jobDate(params.date);
+        result = await buildTopicGraph(date, { jobId, signal, deep: params.deep === true });
         break;
       }
 
       case JOB_TYPES.FULL_PIPELINE: {
-        // Full pipeline: fetch all → enrich → translate backfill → build topic graph → KG worker → build digest → build tag hierarchy
         const { syncAllSources: syncAll } = require('./sync');
         const { runKGFullPipeline } = require('./kg-worker');
         const { translateItems } = require('./translate');
         const params = JSON.parse(job.params || '{}');
-        const baseEnrichBatchSize = params.enrichBatchSize || DEFAULT_JOB_ENRICH_BATCH;
-        updatePipelineStage(jobId, 'fetch', 'running', { message: 'Starting source fetch' });
-        if (isJobCancelled(jobId)) throw new Error('Job cancelled by user');
-        const fetchResult = await syncAll({ jobId, skipEnrich: true });
-        updatePipelineStage(jobId, 'fetch', 'completed', null, fetchResult);
-        if (isJobCancelled(jobId)) throw new Error('Job cancelled by user');
-        const fetchedCount = (fetchResult?.fetch || []).reduce((sum, row) => sum + (Number(row?.items) || 0), 0);
-        const enrichBatchSize = Math.max(baseEnrichBatchSize, fetchedCount);
-        updatePipelineStage(jobId, 'enrich', 'running', { message: `Starting enrichment, batch size ${enrichBatchSize}` });
-        const enrichResult = await enrichItems(enrichBatchSize, { jobId });
-        updatePipelineStage(jobId, 'enrich', 'completed', null, enrichResult);
-        if (isJobCancelled(jobId)) throw new Error('Job cancelled by user');
-        // Source quality profiles (depends on signal_scores from enrich)
-        try {
-          updatePipelineStage(jobId, 'source_profiles', 'running', { message: 'Computing source quality profiles' });
+        const today = todayDigestDate();
+        const stage = (key, detail, work) => runPipelineStage(jobId, key, detail, work);
+        await stage('fetch', { message: 'Starting source fetch' },
+          () => syncAll({ jobId, signal, skipEnrich: true }));
+        const requestedBatch = Number(params.enrichBatchSize ?? DEFAULT_JOB_ENRICH_BATCH);
+        const enrichBatchSize = Number.isInteger(requestedBatch) && requestedBatch > 0
+          ? Math.min(1600, requestedBatch) : DEFAULT_JOB_ENRICH_BATCH;
+        await stage('enrich', { message: `Starting enrichment, batch size ${enrichBatchSize}` },
+          () => enrichItems(enrichBatchSize, { jobId, signal }));
+        await stage('translate', { message: 'Starting Chinese card backfill' },
+          () => translateItems({ jobId, signal, batchSize: Math.min(200, enrichBatchSize) }));
+        await stage('topic_graph', { date: today }, () => buildTopicGraph(today, { jobId, signal }));
+        await stage('kg_worker', { sources: 'All active sources / 所有活跃信息源' },
+          () => runKGFullPipeline(null));
+        await stage('entity_momentum', { message: 'Computing entity momentum' }, () => {
+          const { updateEntityMomentum } = require('./source-profiles');
+          return updateEntityMomentum();
+        });
+        await stage('source_profiles', { message: 'Computing source profiles and rescoring with fresh evidence' }, async () => {
           const { updateSourceProfiles } = require('./source-profiles');
           const profileResult = updateSourceProfiles();
-          // Rescore today's items so source_quality_score reflects the fresh
-          // profiles immediately (computeSourceScore reads source_profiles).
-          let rescored = 0;
+          const { scoreSignals } = require('./signals');
+          const todayItems = getDB().prepare(`
+            SELECT i.*, s.label as source_label, s.slug as source_slug
+            FROM information_items i JOIN sources s ON i.source_id = s.id
+            WHERE i.digest_date = ? LIMIT ?
+          `).all(today, enrichBatchSize);
+          let rescore = { scored: 0 };
           try {
-            const { scoreSignals } = require('./signals');
-            const rescoreDb = getDB();
-            const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-            const todayItems = rescoreDb.prepare(`
-              SELECT i.*, s.label as source_label, s.slug as source_slug
-              FROM information_items i JOIN sources s ON i.source_id = s.id
-              WHERE i.digest_date = ?
-            `).all(today);
-            if (todayItems.length > 0) {
-              const rescoreResult = await scoreSignals(todayItems, { jobId, autoResearch: true });
-              rescored = rescoreResult?.scored || 0;
-              console.log(`  📊 Auto-rescored ${rescored} items with fresh source profiles`);
-            }
-          } catch (rescoreErr) {
-            console.warn(`  ⚠  Auto-rescore after source_profiles failed (non-fatal): ${rescoreErr.message}`);
+            if (todayItems.length > 0) rescore = await scoreSignals(todayItems, { jobId, signal, autoResearch: false });
+          } catch (err) {
+            rescore = { error: err.message };
           }
-          updatePipelineStage(jobId, 'source_profiles', 'completed', null, { ...profileResult, rescored });
-        } catch (err) {
-          updatePipelineStage(jobId, 'source_profiles', 'failed', { error: err.message });
-          console.warn(`  ⚠  Source profiles failed (non-fatal): ${err.message}`);
-        }
-        if (isJobCancelled(jobId)) throw new Error('Job cancelled by user');
-        // Chinese translation backfill — pass a larger batch so the backlog
-        // actually shrinks. Default translateItems batchSize is 10 which never
-        // clears the ~2.5k backlog; pipeline gives it 200 per run.
-        let translateResult = null;
-        try {
-          updatePipelineStage(jobId, 'translate', 'running', { message: 'Starting Chinese card backfill' });
-          translateResult = await translateItems({ jobId, batchSize: 200 });
-          updatePipelineStage(jobId, 'translate', 'completed', null, translateResult);
-          console.log(`  🌐 Translate backfill: translated=${translateResult.translated || 0}`);
-        } catch (err) {
-          updatePipelineStage(jobId, 'translate', 'failed', { error: err.message });
-          console.warn(`  ⚠  Translate backfill failed (non-fatal): ${err.message}`);
-        }
-        if (isJobCancelled(jobId)) throw new Error('Job cancelled by user');
-        const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        updatePipelineStage(jobId, 'topic_graph', 'running', { date: today });
-        const topicGraphResult = await buildTopicGraph(today, { jobId });
-        updatePipelineStage(jobId, 'topic_graph', 'completed', null, topicGraphResult);
-        if (isJobCancelled(jobId)) throw new Error('Job cancelled by user');
-        let kgResult = null;
-        try {
-          updatePipelineStage(jobId, 'kg_worker', 'running', { sources: 'x-following,hacker-news,github-trending,hugging-face,arxiv-ai,physical-ai-arxiv' });
-          kgResult = await runKGFullPipeline('x-following,hacker-news,github-trending,hugging-face,arxiv-ai,physical-ai-arxiv');
-          updatePipelineStage(jobId, 'kg_worker', 'completed', null, kgResult);
-          console.log(`  🧠 KG Worker pipeline completed: extract=${kgResult.extract?.total || 0}, embed=${kgResult.embed?.vectors || 0}, topics=${kgResult.topics?.dynamic_topics || 0}`);
-        } catch (err) {
-          updatePipelineStage(jobId, 'kg_worker', 'failed', { error: err.message });
-          console.warn(`  ⚠  KG Worker pipeline failed (non-fatal): ${err.message}`);
-        }
-        // Entity momentum (depends on canonical_entities/entity_links from kg_worker)
-        try {
-          updatePipelineStage(jobId, 'entity_momentum', 'running', { message: 'Computing entity momentum' });
-          const { updateEntityMomentum } = require('./source-profiles');
-          const momentumResult = updateEntityMomentum();
-          updatePipelineStage(jobId, 'entity_momentum', 'completed', null, momentumResult);
-        } catch (err) {
-          updatePipelineStage(jobId, 'entity_momentum', 'failed', { error: err.message });
-          console.warn(`  ⚠  Entity momentum failed (non-fatal): ${err.message}`);
-        }
-        updatePipelineStage(jobId, 'digest', 'running', { date: today });
-        const digestResult = await generateDailyDigest(today, { jobId });
-        if (digestResult && digestResult.id) {
-          updatePipelineStage(jobId, 'digest', 'completed', null, { generated: true, id: digestResult.id });
-        } else if (digestResult && digestResult.__skipped) {
-          // Not a failure — no data to summarize (e.g. date has no items yet).
-          updatePipelineStage(jobId, 'digest', 'completed', null, { generated: false, skipped: true, reason: digestResult.reason });
-          console.log(`  ⏭️  Daily digest skipped for ${today}: ${digestResult.reason}`);
-        } else {
-          // LLM failure (empty/unparseable response or exception).
-          updatePipelineStage(jobId, 'digest', 'failed', { error: 'digest LLM call failed (empty/unparseable response or exception)', generated: false });
-          console.warn(`  ⚠  Daily digest not generated for ${today} (LLM failure)`);
-        }
-        // Build tag hierarchy
-        let hierarchyResult = null;
-        try {
-          updatePipelineStage(jobId, 'hierarchy', 'running', { message: 'Building concept graph from tags' });
+          return { ...profileResult, rescored: rescore?.scored || 0, rescore };
+        });
+        await stage('digest', { date: today }, async () => {
+          const digest = await generateDailyDigest(today, { jobId, signal });
+          if (digest?.id) return { generated: true, id: digest.id };
+          if (digest?.__skipped) return { generated: false, skipped: true, reason: digest.reason };
+          return { generated: false, error: 'Digest LLM call failed (empty/unparseable response or exception)' };
+        });
+        await stage('hierarchy', { message: 'Building concept graph from tags' }, () => {
           const { buildTagHierarchy } = require('./tag-hierarchy');
-          hierarchyResult = await buildTagHierarchy();
-          updatePipelineStage(jobId, 'hierarchy', 'completed', null, hierarchyResult);
-          console.log(`  🏷️  Tag hierarchy built: ${hierarchyResult.domains} domains → ${hierarchyResult.topics} topics → ${hierarchyResult.subTopics} sub-topics → ${hierarchyResult.tags} tags`);
-        } catch (err) {
-          updatePipelineStage(jobId, 'hierarchy', 'failed', { error: err.message });
-          console.warn(`  ⚠  Tag hierarchy build failed (non-fatal): ${err.message}`);
-        }
-        const finalProgress = parseProgress(getJob(jobId)?.result);
-        result = {
-          pipeline: true,
-          completed: true,
-          current_stage: 'hierarchy',
-          stages: finalProgress?.pipeline ? finalProgress.stages : [],
-          summary: {
-            fetch: fetchResult,
-            enrich: enrichResult,
-            translate: translateResult,
-            topic_graph: topicGraphResult,
-            kg_worker: kgResult,
-            digest: !!digestResult,
-            hierarchy: hierarchyResult,
-          },
-        };
+          return buildTagHierarchy({ jobId, signal });
+        });
+        result = pipelineResult(jobId);
         break;
       }
 
       case JOB_TYPES.X_FOLLOWING_SYNC: {
         const { syncXFollowing } = require('./x-following');
         const params = JSON.parse(job.params || '{}');
-        result = await syncXFollowing({ jobId, ...params });
+        result = await syncXFollowing({ ...params, jobId, signal });
         break;
       }
 
       case JOB_TYPES.TRANSLATE_BACKFILL: {
         const { translateItems } = require('./translate');
         const params = JSON.parse(job.params || '{}');
-        result = await translateItems({ ...params, jobId });
+        result = await translateItems({ ...params, jobId, signal });
         break;
       }
 
@@ -472,7 +603,7 @@ async function executeJob(jobId) {
         const { getDB } = require('../db/connection');
         const params = JSON.parse(job.params || '{}');
         const db = getDB();
-        const date = params.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const date = jobDate(params.date);
         const limit = params.limit || 200;
         const items = db.prepare(`
           SELECT i.*, s.label as source_label, s.slug as source_slug
@@ -481,7 +612,7 @@ async function executeJob(jobId) {
           WHERE i.digest_date = ?
           ORDER BY i.score DESC LIMIT ?
         `).all(date, limit);
-        result = await scoreSignals(items, { jobId });
+        result = await scoreSignals(items, { jobId, signal, concurrency: params.concurrency });
         break;
       }
 
@@ -492,7 +623,7 @@ async function executeJob(jobId) {
         // the in-flight run rather than doubling LLM load.
         const { rescoreAllSignals } = require('./signal-rescore');
         const params = JSON.parse(job.params || '{}');
-        result = await rescoreAllSignals({ jobId, concurrency: params.concurrency });
+        result = await rescoreAllSignals({ jobId, signal, concurrency: params.concurrency });
         break;
       }
 
@@ -509,14 +640,14 @@ async function executeJob(jobId) {
         if (existing) {
           result = { itemId: params.itemId, skipped: true, reason: 'existing completed report', reportId: existing.id };
         } else {
-          result = await generateItemResearch(params.itemId);
+          result = await generateItemResearch(params.itemId, { jobId, signal });
         }
         break;
       }
 
       case JOB_TYPES.BUILD_TAG_HIERARCHY: {
         const { buildTagHierarchy } = require('./tag-hierarchy');
-        result = await buildTagHierarchy();
+        result = await buildTagHierarchy({ jobId, signal });
         break;
       }
 
@@ -531,8 +662,12 @@ async function executeJob(jobId) {
       return result;
     }
 
-    const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
-    updateJobStatus(jobId, 'completed', resultStr);
+    const failure = stageFailure(result);
+    const failed = result?.pipeline ? !result.completed : !!failure;
+    const commit = commitJobOutcome(jobId, claim.epoch, () =>
+      updateJobStatus(jobId, failed ? 'failed' : 'completed', result,
+        failed ? (result?.pipeline ? `Pipeline stages failed: ${result.failed_stages.join(', ')}` : failure) : null));
+    if (commit.reason === 'lease-stale') return staleLeaseResult(jobId, job.job_type, claim.epoch);
     return result;
   } catch (err) {
     const cancelled = isJobCancelled(jobId);
@@ -541,8 +676,25 @@ async function executeJob(jobId) {
       return null;
     }
     console.error(`  ❌ Job ${jobId} (${job.job_type}) failed:`, err.message);
-    updateJobStatus(jobId, 'failed', null, err.message);
+    let failureResult = null;
+    if (job.job_type === JOB_TYPES.FULL_PIPELINE) {
+      const current = parseProgress(getJob(jobId)?.result)?.current_stage || 'fetch';
+      updatePipelineStage(jobId, current, 'failed', { error: err.message });
+      failureResult = pipelineResult(jobId, 'failed');
+      for (const stage of failureResult.stages) {
+        if (stage.status === 'pending') {
+          stage.status = 'skipped';
+          stage.detail = { reason: 'Pipeline aborted before this stage' };
+          stage.completed_at = failureResult.updated_at;
+        }
+      }
+    }
+    const commit = commitJobOutcome(jobId, claim.epoch, () => updateJobStatus(jobId, 'failed', failureResult, err.message));
+    if (commit.reason === 'lease-stale') return staleLeaseResult(jobId, job.job_type, claim.epoch, err.message);
     throw err;
+  } finally {
+    jobControllers.delete(jobId);
+    jobLeases.delete(jobId);
   }
 }
 
@@ -551,10 +703,24 @@ async function executeJob(jobId) {
  * Returns the job ID immediately — the caller can poll for status.
  */
 async function runJob(jobType, params = {}) {
+  params = { ...params };
+  if (jobType === JOB_TYPES.ENRICH_ITEMS) params.batchSize = boundedJobCount(params.batchSize, DEFAULT_JOB_ENRICH_BATCH, 1600);
+  if (jobType === JOB_TYPES.FULL_PIPELINE) params.enrichBatchSize = boundedJobCount(params.enrichBatchSize, DEFAULT_JOB_ENRICH_BATCH, 1600);
+  if (jobType === JOB_TYPES.FETCH_SOURCE) params.limit = boundedJobCount(params.limit, 5, 100);
+  if (jobType === JOB_TYPES.SCORE_SIGNALS) params.limit = boundedJobCount(params.limit, 200, 1600);
+  if (jobType === JOB_TYPES.TRANSLATE_BACKFILL) {
+    if (params.all) throw new Error('Unbounded translation backfill is disabled');
+    params.batchSize = boundedJobCount(params.batchSize, 50, 500);
+  }
+  const requested = requestedJob(jobType, params);
+  if (requested) return requested.id;
   if (!params.allowConcurrent) {
     const existing = getActiveSingletonJob(jobType);
+    if (existing?.id && params.requestId) throw new Error('Another bounded job is already active');
     if (existing?.id) return existing.id;
   }
+
+  if (isJobIntakePaused()) return null;
 
   const jobId = createJob(jobType, params);
   if (!jobId) return null;
@@ -573,7 +739,10 @@ module.exports = {
   getRecentJobs,
   markInterruptedJobs,
   runJob,
+  executeJob,
   cancelJob,
+  getJobSignal,
   isJobCancelled,
+  isJobIntakePaused,
   updateJobProgress,
 };

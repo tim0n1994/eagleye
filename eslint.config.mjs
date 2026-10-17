@@ -28,7 +28,7 @@ export default [
   },
   // Server-side CommonJS files (server + operational scripts)
   {
-    files: ["server.js", "server/**/*.js", "scripts/**/*.js", "sw.js"],
+    files: ["server.js", "server/**/*.js", "server/**/*.cjs", "scripts/**/*.js", "sw.js", "mcp/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "commonjs",
@@ -46,5 +46,9 @@ export default [
       "curly": ["warn", "multi-line"],
       "no-empty": ["error", { "allowEmptyCatch": true }],
     },
+  },
+  {
+    files: ["server/**/*.test.js", "mcp/**/*.test.js"],
+    languageOptions: { sourceType: "module" },
   },
 ];

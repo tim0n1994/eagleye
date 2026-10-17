@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "job": {
+    "id": "08eb7f1e-2c6c-42bf-8477-6a341a903ed1",
+    "job_type": "enrich-items",
+    "status": "completed",
+    "params": "{\"batchSize\":4,\"priorityOnly\":false,\"resetAttempts\":false}",
+    "result": "{\"enriched\":3,\"failed\":0,\"successful_item_ids\":[\"98677b4a-b353-4bed-a8e1-d43c16f45e9b\",\"7f7a5e29-5310-4f7d-a523-6b934b1e349f\",\"63b5b8eb-19e1-40c6-aeee-187912db160f\"],\"entities\":4,\"topics\":4,\"total\":3,\"batch_items\":4,\"workers\":1,\"priority_sources\":[\"x-following\",\"hacker-news\",\"github-trending\",\"hugging-face\"],\"priority_only\":false}",
+    "error": null,
+    "created_at": "2026-09-09 03:57:03",
+    "started_at": "2026-09-09 03:57:03",
+    "completed_at": "2026-09-09 03:57:18"
+  }
+}

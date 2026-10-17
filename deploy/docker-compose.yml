@@ -1,0 +1,58 @@
+# Eagleye compose stack (R0-09 artifact).
+# STATUS: artifact only — never built or run against production as of 2026-09-17.
+#
+# Required env when invoking compose:
+#   EAGLEYE_DATA_DIR   host directory containing eagleye.db (bind-mounted /data)
+#
+# CAVEAT (verified by code inspection, not runtime): mcp/server.js and
+# mcp/chatgpt-proxy.js bind 127.0.0.1 inside the container, so published ports
+# cannot reach them from outside the container network. The proxy therefore
+# shares the MCP server's network namespace (network_mode: service:...), and
+# exposing either to the host needs host networking or a bind-host code change.
+# Only eagleye-server is expected to work end-to-end as written.
+
+services:
+  eagleye-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: eagleye:local
+    container_name: eagleye-server
+    command: ["node", "server.js", "3019"]
+    ports:
+      - "3019:3019"
+    environment:
+      EAGLEYE_DB_PATH: /data/eagleye.db
+      EAGLEYE_HOST: 0.0.0.0
+      EAGLEYE_HEALTH_PORT: 3019
+    volumes:
+      - ${EAGLEYE_DATA_DIR:?set EAGLEYE_DATA_DIR to the host directory containing eagleye.db}:/data
+    restart: unless-stopped
+
+  eagleye-mcp:
+    image: eagleye:local
+    container_name: eagleye-mcp
+    depends_on:
+      eagleye-server:
+        condition: service_healthy
+    command: ["node", "mcp/server.js", "3020"]
+    environment:
+      EAGLEYE_DB_PATH: /data/eagleye.db
+      EAGLEYE_HEALTH_PORT: 3020
+    volumes:
+      - ${EAGLEYE_DATA_DIR:?set EAGLEYE_DATA_DIR to the host directory containing eagleye.db}:/data:ro
+      - ../config:/app/config
+    restart: unless-stopped
+
+  eagleye-mcp-proxy:
+    image: eagleye:local
+    container_name: eagleye-mcp-proxy
+    depends_on:
+      - eagleye-mcp
+    # Shares the MCP server's network namespace so its hardcoded
+    # 127.0.0.1:3020 target resolves. Publish the proxy port on the mcp service.
+    network_mode: "service:eagleye-mcp"
+    command: ["node", "mcp/chatgpt-proxy.js", "3021"]
+    volumes:
+      - ../config:/app/config
+    restart: unless-stopped

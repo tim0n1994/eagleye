@@ -12,7 +12,7 @@ class HuggingFaceConnector extends BaseConnector {
     super('hugging-face');
   }
 
-  async fetch(_date) {
+  async fetch(_date, options = {}) {
     try {
       const body = await fetchURL('https://huggingface.co/api/daily_papers');
       const papers = JSON.parse(body).slice(0, 25);
@@ -70,6 +70,7 @@ class HuggingFaceConnector extends BaseConnector {
         };
       });
     } catch (err) {
+      if (options.limit !== undefined) throw err;
       console.error('HuggingFace fetch error:', err.message);
       return [];
     }

@@ -5,9 +5,8 @@
  * Split out of pages.js; render functions are unchanged.
  */
 
-import { $, escapeAttr, escapeHtml, localDateStr } from '../utils.js';
+import { $, escapeAttr, escapeHtml, localDateStr, normalizeDateStr } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
-import { progressiveDateFeed } from '../progressive.js';
 import { router } from '../router.js';
 import { API_BASE, fetchJSON, orderedSourceEntries, pickZh, renderItemMiniCard, showError, showLoader , setSourcesCache } from './shared.js';
 
@@ -20,29 +19,44 @@ export async function renderHome(params) {
 
 try {
       const queryDate = params?.date || new URLSearchParams(window.location.search).get('date');
-      const today = queryDate || localDateStr();
-      const isToday = today === localDateStr();
+      const [srcData, sysData] = await Promise.all([
+        fetchJSON(`${API_BASE}/sources`),
+        fetchJSON(`${API_BASE}/system/stats`).catch(() => null),
+      ]);
+      const serverDate = sysData?.stats?.server_date || localDateStr();
+      const today = queryDate || serverDate;
+      const isToday = normalizeDateStr(today) === normalizeDateStr(serverDate);
 
       // Fetch sources to get full list (14 sources)
-     const srcData = await fetchJSON(`${API_BASE}/sources`);
      const allSources = srcData.sources || [];
      setSourcesCache(allSources);
 
      // Fetch today's items (initial batch: 60, progressive loading picks up the rest)
-     let data = await fetchJSON(`${API_BASE}/items?date=${today}&limit=60`);
+     let data = await fetchJSON(`${API_BASE}/items?date=${encodeURIComponent(today)}&limit=60`);
 
      // If no items for today, try getting most recent date with data
      let displayDate = today;
      let dateIsToday = isToday;
      if ((data.items || []).length === 0 && !queryDate) {
-       // Try yesterday
-       const yesterday = new Date();
-       yesterday.setDate(yesterday.getDate() - 1);
-       const yesterdayStr = localDateStr(yesterday);
-       data = await fetchJSON(`${API_BASE}/items?date=${yesterdayStr}&limit=60`);
-       displayDate = yesterdayStr;
-       dateIsToday = false;
+       const latestDate = sysData?.stats?.latest_digest_date;
+       if (/^(\d{8}|\d{4}-\d{2}-\d{2})$/.test(latestDate || '') && normalizeDateStr(latestDate) !== normalizeDateStr(today)) {
+         data = await fetchJSON(`${API_BASE}/items?date=${latestDate}&limit=60`);
+         displayDate = latestDate;
+         dateIsToday = false;
+       }
      }
+     const zh = getLanguage() === 'zh';
+     let loadedCount = (data.items || []).length;
+     const dailyTotal = Number.isFinite(data.total) ? data.total : null;
+     const loadedLabel = () => zh
+       ? `已加载 ${loadedCount} 条 · 该日总计 ${dailyTotal ?? '未知'}`
+       : `${loadedCount} LOADED · ${dailyTotal ?? 'UNKNOWN'} TOTAL FOR DATE`;
+     const freshnessNotice = !loadedCount
+       ? (!sysData ? (zh ? '该日无条目；最新数据状态未知（状态接口不可用）。' : 'No items for this date; latest data status unknown (status unavailable).')
+         : sysData.stats?.total_items === 0 ? (zh ? '暂无存储数据。' : 'No stored data.')
+         : (zh ? '该日无条目。' : 'No items for this date.'))
+       : !dateIsToday ? (zh ? `历史数据 · ${displayDate}。这些条目不是今日信号。` : `ARCHIVE · ${displayDate}. These are historical items.`)
+         : !sysData ? (zh ? '最新数据状态未知（状态接口不可用）。' : 'Latest data status unknown (status unavailable).') : '';
 
      // Build by_source map from items (items come with source_label)
      const bySourceMap = {};
@@ -73,7 +87,7 @@ try {
          <div class="issue-header">
           <div class="issue-meta">
             <span class="issue-number">ISSUE #${displayDate}</span>
-            <span class="issue-date">${new Date(displayDate.slice(0,4)+'-'+displayDate.slice(4,6)+'-'+displayDate.slice(6,8)).toLocaleDateString(getLanguage() === 'zh' ? 'zh-CN' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}${dateIsToday ? ` (${t('home.today')})` : ''}</span>
+            <span class="issue-date">${new Date(normalizeDateStr(displayDate)).toLocaleDateString(getLanguage() === 'zh' ? 'zh-CN' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}${dateIsToday ? ` (${t('home.today')})` : ''}</span>
           </div>
           <div class="issue-nav">
             <button class="nav-btn" onclick="window.__changeDate(-1)">← PREV</button>
@@ -81,13 +95,14 @@ try {
           </div>
         </div>
 
+         ${freshnessNotice ? `<p class="empty-state" role="status" id="homeFreshnessNotice">${escapeHtml(freshnessNotice)}</p>` : ''}
          <div class="hero-banner">
            <div class="hero-content">
              <h2 class="hero-title">EAGLEYE</h2>
              <p class="hero-subtitle">${t('brand.tagline')} Radar</p>
              <div class="hero-stats" id="heroStats">
                <span class="hero-stat">${Object.keys(bySourceMap).length} ${getLanguage() === 'zh' ? '信息源' : 'SOURCES'}</span>
-               <span class="hero-stat">${Object.values(bySourceMap).reduce((sum, arr) => sum + arr.length, 0)} ${getLanguage() === 'zh' ? '今日信号' : 'SIGNALS'}</span>
+               <span class="hero-stat" id="homeLoadedCount">${loadedLabel()}</span>
                <span class="hero-stat">⏱ ${(() => {
                  // Estimate total reading time: sum all item summaries' word counts.
                  let totalWords = 0;
@@ -99,7 +114,7 @@ try {
                  }
                  const mins = Math.round(totalWords / 200);
                  return mins > 60 ? Math.round(mins / 60) + 'h' : mins + 'm';
-               })()} ${getLanguage() === 'zh' ? '阅读' : 'READ'}</span>
+               })()} ${getLanguage() === 'zh' ? '首批阅读估计' : 'INITIAL SAMPLE READ'}</span>
                <span class="hero-stat" id="heroStatExtra"></span>
              </div>
            </div>
@@ -128,7 +143,7 @@ try {
              <section id="section-${escapeAttr(source)}" class="source-section">
                <div class="source-section-header">
                  <h3 class="source-section-title">${escapeHtml(displayName)}</h3>
-                 <span class="source-section-count">${items.length} ITEMS</span>
+                 <span class="source-section-count">${items.length} ${zh ? '已加载' : 'LOADED'}</span>
                </div>
                <div class="feed-list">
                  ${items.map(item => renderItemMiniCard(item)).join('')}
@@ -176,7 +191,7 @@ try {
         const d = new Date();
         d.setDate(d.getDate() - i);
         const ds = localDateStr(d);
-        days.push({ date: ds, count: coverage[ds] || 0, label: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) });
+        days.push({ date: ds, count: coverage[normalizeDateStr(ds)] || 0, label: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) });
       }
       const maxC = Math.max(1, ...days.map(d => d.count));
       strip.innerHTML = days.map(d => {
@@ -191,9 +206,9 @@ try {
     }).catch(() => { const s = document.getElementById('insightStrip'); if (s) s.style.display = 'none'; });
 
     // Async: fetch system stats for the hero badge (entities, total items).
-    fetchJSON(`${API_BASE}/system/stats`).then(sysData => {
+    Promise.resolve(sysData).then(sysData => {
       const el = document.getElementById('heroStatExtra');
-      if (!el || !sysData.stats) return;
+      if (!el || !sysData?.stats) return;
       const s = sysData.stats;
       el.textContent = `${(s.entities || 0).toLocaleString()} ${getLanguage() === 'zh' ? '实体' : 'ENTITIES'} · ${(s.scored || 0).toLocaleString()} ${getLanguage() === 'zh' ? '已评分' : 'SCORED'}`;
     }).catch(() => { const el = document.getElementById('heroStatExtra'); if (el) el.style.display = 'none'; });
@@ -280,8 +295,8 @@ try {
       // Parse current date from URL or use today
       const queryDate = new URLSearchParams(window.location.search).get('date')
         || params?.date
-        || localDateStr();
-      const d = new Date(queryDate.slice(0,4)+'-'+queryDate.slice(4,6)+'-'+queryDate.slice(6,8));
+        || displayDate;
+      const d = new Date(normalizeDateStr(queryDate));
       d.setDate(d.getDate() + delta);
       const newDate = localDateStr(d);
       if ((/** @type {any} */ (window)).__router) {
@@ -291,31 +306,53 @@ try {
 
     // Progressive loading: append more items as user scrolls
     const feedContainer = container.querySelector('.items-by-source');
-    if (feedContainer) {
-      progressiveDateFeed({
-        container: feedContainer,
-        date: displayDate,
-        batchSize: 40,
-        renderItem: (item) => {
-          const src = item.source_label || 'Other';
-          let section = feedContainer.querySelector(`#section-${CSS.escape(src)}`);
-          if (!section) {
-            const wrapper = document.createElement('section');
-            wrapper.id = `section-${CSS.escape(src)}`;
-            wrapper.className = 'source-section';
-            wrapper.innerHTML = `<div class="source-section-header"><h3 class="source-section-title">${escapeHtml(src)}</h3><span class="source-section-count">0 ITEMS</span></div><div class="feed-list"></div>`;
-            feedContainer.appendChild(wrapper);
-            section = wrapper;
+    if (feedContainer && loadedCount && (dailyTotal === null || loadedCount < dailyTotal)) {
+      const sentinel = document.createElement('div');
+      sentinel.className = 'load-sentinel';
+      feedContainer.appendChild(sentinel);
+      let loading = false;
+      let active = true;
+      const observer = new IntersectionObserver(async ([entry]) => {
+        if (!entry.isIntersecting || loading || !active) return;
+        loading = true;
+        try {
+          const next = await fetchJSON(`${API_BASE}/items?date=${encodeURIComponent(displayDate)}&offset=${loadedCount}&limit=40`);
+          if (!active) return;
+          for (const item of next.items || []) {
+            const src = item.source_label || 'Other';
+            let section = feedContainer.querySelector(`#section-${CSS.escape(src)}`);
+            if (!section) {
+              const wrapper = document.createElement('section');
+              wrapper.id = `section-${src}`;
+              wrapper.className = 'source-section';
+              wrapper.innerHTML = `<div class="source-section-header"><h3 class="source-section-title">${escapeHtml(src)}</h3><span class="source-section-count">0 ${zh ? '已加载' : 'LOADED'}</span></div><div class="feed-list"></div>`;
+              feedContainer.insertBefore(wrapper, sentinel);
+              section = wrapper;
+            }
+            const list = section.querySelector('.feed-list');
+            if (list) {
+              const count = section.querySelector('.source-section-count');
+              list.insertAdjacentHTML('beforeend', renderItemMiniCard(item));
+              const currentCount = list.children.length;
+              if (count) count.textContent = `${currentCount} ${zh ? '已加载' : 'LOADED'}`;
+            }
           }
-          const list = section.querySelector('.feed-list');
-          if (list) {
-            const count = section.querySelector('.source-section-count');
-            const currentCount = list.querySelectorAll('.mini-card').length + 1;
-            if (count) count.textContent = `${currentCount} ITEMS`;
+          loadedCount += (next.items || []).length;
+          const count = document.getElementById('homeLoadedCount');
+          if (count) count.textContent = loadedLabel();
+          if (!(next.items || []).length || (dailyTotal !== null && loadedCount >= dailyTotal) || (next.items || []).length < 40) {
+            active = false;
+            observer.disconnect();
+            sentinel.remove();
           }
-          return `<div>${renderItemMiniCard(item)}</div>`;
-        },
-      });
+        } catch {
+          active = false;
+          observer.disconnect();
+          sentinel.textContent = zh ? '后续条目加载失败，请刷新重试。' : 'More items could not be loaded. Refresh to retry.';
+        } finally { loading = false; }
+      }, { rootMargin: '400px' });
+      observer.observe(sentinel);
+      router.onCleanup(() => { active = false; observer.disconnect(); });
     }
   } catch (err) {
     showError(container, err.message);

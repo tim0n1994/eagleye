@@ -22,6 +22,7 @@
 
 const { getDB } = require('../db/connection');
 const { getAll: getWatchlist } = require('./watchlist');
+const { todayDigestDate } = require('./date-contract');
 
 // 5-minute TTL on the derived profile — cheap to recompute, but avoids
 // re-scanning saved_items + watchlist on every /api/for-you poll. Keyed by
@@ -176,7 +177,7 @@ function getForYou({ sinceDays = 3, limit = 60, userId } = {}) {
   const profile = getCachedProfile(userId);
   const since = (() => {
     const d = new Date(); d.setDate(d.getDate() - sinceDays);
-    return d.toISOString().slice(0, 10).replace(/-/g, '');
+    return todayDigestDate(d);
   })();
 
   // Pull a candidate pool wider than the return limit so personalisation has

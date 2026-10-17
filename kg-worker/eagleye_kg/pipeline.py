@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-from .config import EXTRACTOR_VERSION, PRIORITY_SOURCES
+from collections import Counter
+from .config import EXTRACTOR_VERSION
 from .features import extract_item, load_taxonomy
 from .text import stable_id
+from .selection import fair_items, resolve_sources, FEATURE_INPUTS, hash_inputs
 
 
 def source_clause(sources: list[str] | None) -> tuple[str, list[str]]:
@@ -42,33 +44,20 @@ def finish_run(conn: sqlite3.Connection, run_id: str, status: str, metrics: dict
 
 
 def load_items(conn: sqlite3.Connection, sources: list[str] | None, limit: int) -> list[sqlite3.Row]:
-    clause, params = source_clause(sources)
-    return conn.execute(
-        f"""
-        SELECT i.*, s.slug AS source_slug, s.label AS source_label
-        FROM information_items i
-        JOIN sources s ON s.id = i.source_id
-        WHERE 1 = 1
-          {clause}
-        ORDER BY CASE s.slug
-          WHEN 'x-following' THEN 0
-          WHEN 'hacker-news' THEN 1
-          WHEN 'github-trending' THEN 2
-          WHEN 'hugging-face' THEN 3
-          WHEN 'product-hunt' THEN 4
-          ELSE 99
-        END,
-        CASE WHEN i.id IN (SELECT item_id FROM item_features) THEN 1 ELSE 0 END,
-        i.score DESC,
-        COALESCE(i.published_at, i.created_at) DESC
-        LIMIT ?
-        """,
-        [*params, limit],
-    ).fetchall()
+    conn.create_function("kg_feature_hash", len(FEATURE_INPUTS),
+                         lambda *parts: hash_inputs(*parts, EXTRACTOR_VERSION), deterministic=True)
+    completed_by_source = dict(conn.execute("SELECT source_slug, COUNT(*) FROM item_features GROUP BY source_slug"))
+    conn.create_function("kg_features_done", 1, lambda slug: completed_by_source.get(slug, 0), deterministic=True)
+    fields = ",".join("s.slug" if key == "source_slug" else "i.score" if key == "score"
+                      else f"CAST(i.{key} AS BLOB)" for key in FEATURE_INPUTS)
+    return fair_items(conn, resolve_sources(conn, sources), limit,
+                      join="LEFT JOIN item_features f ON f.item_id = i.id",
+                      pending=f"f.item_id IS NULL OR f.content_hash IS NOT kg_feature_hash({fields})",
+                      completed="kg_features_done(s.slug)")
 
 
 def extract(conn: sqlite3.Connection, sources: list[str] | None = None, limit: int = 100) -> dict:
-    chosen_sources = sources or PRIORITY_SOURCES
+    chosen_sources = resolve_sources(conn, sources)
     run_id = create_run(conn, "source", ",".join(chosen_sources), {"sources": chosen_sources, "limit": limit})
     start = time.time()
     metrics = {"run_id": run_id, "processed": 0, "tags": 0, "topics": 0, "entities": 0, "edges": 0, "total": 0}
@@ -76,6 +65,8 @@ def extract(conn: sqlite3.Connection, sources: list[str] | None = None, limit: i
         taxonomy = load_taxonomy(conn)
         items = load_items(conn, chosen_sources, limit)
         metrics["total"] = len(items)
+        metrics["selection"] = "source-balanced-pending"
+        metrics["by_source"] = dict(Counter(item["source_slug"] for item in items))
         for item in items:
             result = extract_item(conn, item, taxonomy, run_id)
             metrics["processed"] += 1

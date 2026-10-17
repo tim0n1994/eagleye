@@ -7,6 +7,7 @@
 
 const { getDB } = require('../db/connection');
 const { getProvider, getLLMConfig } = require('./llm-provider');
+const { normalizeDigestDate, todayDigestDate } = require('./date-contract');
 
 // Whether a usable LLM provider is configured (env or runtime override). Avoids
 // burning a full provider.call() round-trip just to detect absence — used to
@@ -124,7 +125,7 @@ function getSignals(opts = {}) {
   }
 
   let sql = `
-    SELECT ss.*, i.title, i.canonical_url, i.published_at, i.score,
+    SELECT ss.*, i.title, i.canonical_url, i.published_at, i.digest_date, i.score,
            s.label as source_label, s.slug as source_slug,
            a.one_liner, a.short_summary, a.ai_title,
            sp.source_type, sp.noise_rate, sp.early_signal_rate${audienceCol}
@@ -146,16 +147,15 @@ function getSignals(opts = {}) {
     sql += " AND ss.signal_type != 'uncategorized' AND ss.signal_type != 'non_tech'";
   }
 
-  if (date) {
+  const digestDate = date ? normalizeDigestDate(date) : '';
+  if (digestDate) {
     sql += ' AND i.digest_date = ?';
-    params.push(date);
+    params.push(digestDate);
   } else if (sinceDays && Number(sinceDays) > 0) {
-    // ISO yyyymmdd → lexicographic compare works because the column is stored
-    // as a zero-padded 8-char string.
-    const cutoff = new Date(Date.now() - Number(sinceDays) * 86400000)
-      .toISOString().slice(0, 10).replace(/-/g, '');
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - Number(sinceDays));
     sql += ' AND i.digest_date >= ?';
-    params.push(cutoff);
+    params.push(todayDigestDate(cutoffDate));
   }
 
   sql += ` ORDER BY ${orderCol} DESC LIMIT ? OFFSET ?`;
@@ -165,7 +165,7 @@ function getSignals(opts = {}) {
 }
 
 function getTodaySignals(limit = 100) {
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const today = todayDigestDate();
   // Try today first; if empty for 7+ days, show from the most recent scored date
   let signals = getSignals({ date: today, limit, sortBy: 'alpha_score', excludeUncategorized: true });
   if (signals.length > 0) return { signals, date: today, total: signals.length, fallback: false };
@@ -347,17 +347,16 @@ function getEntitySeries(slug) {
   // Anchor on the data's latest digest_date (NOT wall-clock now) so backfilled
   // data still lines up — identical reasoning to computeEntityPhase1Metrics.
   const latestRow = db.prepare(`SELECT MAX(digest_date) AS latest FROM information_items`).get();
-  const latest = latestRow?.latest;
+  const latest = normalizeDigestDate(latestRow?.latest);
   if (!latest) return { entity, series: [], stats: {} };
 
-  const since30 = (() => {
-    const y = Number(latest.slice(0, 4));
-    const m = Number(latest.slice(4, 6)) - 1;
-    const d = Number(latest.slice(6, 8));
-    const dt = new Date(Date.UTC(y, m, d));
-    dt.setUTCDate(dt.getUTCDate() - 30);
-    return dt.toISOString().slice(0, 10).replace(/-/g, '');
-  })();
+  const shiftDigest = (canonical, days) => {
+    const [y, m, d] = canonical.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return dt.toISOString().slice(0, 10);
+  };
+  const since30 = shiftDigest(latest, -30);
 
   const rows = db.prepare(`
     SELECT i.digest_date, COUNT(*) AS c
@@ -370,14 +369,7 @@ function getEntitySeries(slug) {
 
   const dayMap = new Map(rows.map(r => [r.digest_date, r.c]));
   const dateIndex = [];
-  for (let d = 30; d >= 0; d--) {
-    const y = Number(latest.slice(0, 4));
-    const m = Number(latest.slice(4, 6)) - 1;
-    const dd = Number(latest.slice(6, 8));
-    const dt = new Date(Date.UTC(y, m, dd));
-    dt.setUTCDate(dt.getUTCDate() - d);
-    dateIndex.push(dt.toISOString().slice(0, 10).replace(/-/g, ''));
-  }
+  for (let d = 30; d >= 0; d--) dateIndex.push(shiftDigest(latest, -d));
   const series30 = dateIndex.map(d => dayMap.get(d) || 0);
 
   // Find burst days: run viterbi over the series and mark the contiguous final

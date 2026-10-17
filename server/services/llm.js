@@ -10,19 +10,13 @@
  * - enrichItems()              — Batch enrichment of items without summaries
  */
 
-const { getProvider, getProviderInfo, getEnrichProvider, extractJSON } = require('./llm-provider');
+const { getProvider, getEnrichProvider } = require('./llm-provider');
 const { getDB } = require('../db/connection');
 const { generateDailyDigest } = require('./llm-digest');
-const { _isOverloadError } = require('./llm-shared');
-// Circular dependency: jobs.js imports enrichItems/generateDailyDigest from here at top level.
-// Keep isJobCancelled as a lazy require to avoid the cycle breaking exports.
+const { taskContext, abortableDelay, _isOverloadError, callWithMetadata, validCard, validateBatch, VALID_SUMMARY_SQL } = require('./llm-shared');
+const { isTerminalLLMError } = require('./llm-error-class');
+const { deepEnrichSkipReason } = require('./content-sufficiency');
 const crypto = require('crypto');
-
-function isJobCancelled(jobId) {
-  // Lazy require to break the circular dependency with jobs.js
-  const { isJobCancelled: _isJobCancelled } = require('./jobs');
-  return _isJobCancelled(jobId);
-}
 
 function generateId() {
   return crypto.randomUUID();
@@ -120,13 +114,13 @@ function getAllowedTopicsForPrompt() {
   }
 }
 
-function createSummaryResult(item, data) {
-  const info = getProviderInfo();
+function createSummaryResult(item, data, metadata) {
   const summaryRecord = {
     id: generateId(),
     item_id: item.id,
-    model_provider: info.provider,
-    model_name: info.model,
+    model_provider: metadata.provider,
+    model_name: metadata.model || '',
+    llm_metadata: JSON.stringify(metadata),
     prompt_version: getPromptVersion(),
     ai_title: data.ai_title || item.title || '',
     ai_title_zh: data.ai_title_zh || data.title_zh || '',
@@ -162,12 +156,52 @@ function createSummaryResult(item, data) {
   return { summary: summaryRecord, tags: extractedTags, entities: extractedEntities, topicSlugs };
 }
 
+function evidenceExcerpt(item) {
+  const title = String(item.title || '').replace(/\s+/g, ' ').trim();
+  return [item.original_summary, item.content_text].find(text => {
+    if (typeof text !== 'string') return false;
+    const cleaned = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return cleaned.length > 0 && cleaned !== title;
+  }) || '';
+}
+
+function createTitleOnlySummary(item) {
+  if (evidenceExcerpt(item)) throw new Error('Title-only fallback requires missing source content');
+  const title = String(item.title || '').trim() || '来源未提供标题';
+  const notice = `仅据来源标题：“${title}”。未获取正文，细节及结论未核验。`;
+  const result = createSummaryResult(item, {
+    ai_title: title, ai_title_zh: title,
+    one_liner: notice, one_liner_zh: notice,
+    short_summary: notice, short_summary_zh: notice, confidence: 0,
+  }, {
+    generation_method: 'source_title_only', provider: 'deterministic', model: null,
+    requested_model: null, endpoint_id: null, protocol: null, trace_id: null,
+    attempts: 0, usage: null, latency_ms: 0,
+  });
+  result.summary.translation_status = 'n/a';
+  result.summary.prompt_version = 'title-only-v1';
+  result.summary.source_grounding = JSON.stringify({
+    item_id: item.id, source_label: item.source_label, canonical_url: item.canonical_url,
+    prompt_version: 'title-only-v1', evidence_level: 'title_only', body_available: false,
+    title_origin: 'source_title_untranslated', verified: false,
+  });
+  return result;
+}
+
 /**
  * Generate an AI summary for a single item following §8.1.
  * Returns the summary record to be inserted into ai_summaries table,
  * plus extracted tags and entities.
  */
-async function generateItemSummary(item) {
+async function generateItemSummary(item, opts = {}) {
+  const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
+  context.check();
+  if (!evidenceExcerpt(item)) return createTitleOnlySummary(item);
+  const skipReason = deepEnrichSkipReason(item);
+  if (skipReason) {
+    console.log(`  ⏭  Deep enrich skipped (${item.id?.slice(0, 8)}): ${skipReason}`);
+    return null;
+  }
   const provider = getEnrichProvider();
   if (!provider) return null;
 
@@ -178,36 +212,30 @@ async function generateItemSummary(item) {
     .replace('{{canonical_url}}', item.canonical_url || '')
     .replace('{{published_at}}', item.published_at || '')
     .replace('{{source_payload}}', typeof item.source_payload === 'string' ? item.source_payload.slice(0, 400) : JSON.stringify(item.source_payload || {}).slice(0, 400))
-    .replace('{{content_excerpt}}', (item.original_summary || item.content_text || '').slice(0, 700))
+    .replace('{{content_excerpt}}', evidenceExcerpt(item).slice(0, 700))
     .replace('{{allowed_topics}}', JSON.stringify(getAllowedTopicsForPrompt()).slice(0, 1600));
 
-  const maxRetries = 3;
+  const maxRetries = provider.isPool ? 1 : 3;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const text = await provider.call(prompt, { temperature: 0.1, maxTokens: 1100 });
-      if (!text) {
-        if (attempt < maxRetries) {
-          await _llmBackoff(attempt, 'empty');
-          continue;
-        }
-        return null;
-      }
-
-      const data = extractJSON(text);
-      if (!data) {
-        console.warn(`  ⚠  LLM returned unparseable JSON for item ${item.id?.slice(0, 8)}`);
-        return null;
-      }
-
-      return createSummaryResult(item, data);
+      const { data, metadata } = await callWithMetadata(provider, prompt, {
+        task: 'enrich', signal: context.signal, temperature: 0.1, maxTokens: 1800, json: true, validate: validCard,
+      });
+      context.check();
+      return createSummaryResult(item, data, metadata);
     } catch (err) {
+      context.check();
       // 1301 内容安全审核：不可恢复，立即跳过
       if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
         console.log(`  ⏭  Summary skipped (${item.id?.slice(0, 8)}): content filtered by safety check`);
         return null;
       }
+      if (isTerminalLLMError(err)) {
+        console.error(`  ❌ Summary aborted (${item.id?.slice(0, 8)}): terminal LLM error (${err.code || err.name || 'unknown'})`);
+        return null;
+      }
       if (attempt < maxRetries) {
-        await _llmBackoff(attempt, err.message);
+        await _llmBackoff(attempt, err.message, context.signal);
       } else {
         console.error(`  ❌ Summary generation failed after ${maxRetries} attempts (${item.id?.slice(0, 8)}):`, err.message);
         return null;
@@ -250,16 +278,35 @@ items: {{items}}
   "confidence": 0.0
 }`;
 
-async function generateItemSummariesBatch(items) {
+async function generateItemSummariesBatch(items, opts = {}) {
+  const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
+  context.check();
+  if (!items?.length) return [];
+  const titleOnly = [];
+  const gateSkipped = [];
+  items = items.filter(item => {
+    if (!evidenceExcerpt(item)) {
+      titleOnly.push(createTitleOnlySummary(item));
+      return false;
+    }
+    const skipReason = deepEnrichSkipReason(item);
+    if (skipReason) {
+      gateSkipped.push((item.id?.slice(0, 8) || 'unknown') + ': ' + skipReason);
+      return false;
+    }
+    return true;
+  });
+  if (gateSkipped.length) console.log('  ⏭  Sufficiency gate skipped ' + gateSkipped.length + ' item(s): ' + gateSkipped.join('; '));
+  if (!items.length) return titleOnly;
   const provider = getEnrichProvider();
-  if (!provider || !items?.length) return [];
+  if (!provider) return titleOnly;
 
   const compactItems = items.map(item => ({
     id: item.id,
     source: item.source_label || item.source_slug || '',
     title: String(item.title || '').slice(0, 240),
     url: String(item.canonical_url || '').slice(0, 260),
-    summary: String(item.original_summary || item.content_text || '').replace(/\s+/g, ' ').slice(0, 420),
+    summary: evidenceExcerpt(item).replace(/\s+/g, ' ').slice(0, 420),
     payload: String(item.source_payload || '').replace(/\s+/g, ' ').slice(0, 260),
   }));
 
@@ -267,30 +314,27 @@ async function generateItemSummariesBatch(items) {
     .replace('{{allowed_topics}}', JSON.stringify(getAllowedTopicsForPrompt()).slice(0, 1400))
     .replace('{{items}}', JSON.stringify(compactItems));
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  const allowedIds = new Set(items.map(item => item.id));
+  const maxAttempts = provider.isPool ? 1 : 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const text = await provider.call(prompt, { temperature: 0.1, maxTokens: Math.min(8192, 600 + items.length * 360) });
-      const data = extractJSON(text);
-      if (Array.isArray(data)) {
-        const byId = new Map(items.map(item => [item.id, item]));
-        return data
-          .filter(row => row && byId.has(row.id))
-          .map(row => createSummaryResult(byId.get(row.id), row));
-      }
-      console.warn(`  ⚠  Batch summary: LLM returned ${data ? typeof data : 'null'} (attempt ${attempt}/${3})`);
-      if (attempt < 3) await _llmBackoff(attempt, 'unparseable');
+      const { data, metadata } = await callWithMetadata(provider, prompt, {
+        task: 'enrich', signal: context.signal, temperature: 0.1, json: true,
+        maxTokens: provider.isPool ? 8192 : Math.min(8192, 600 + items.length * 900),
+        validate: rows => validateBatch(rows, allowedIds, validCard),
+      });
+      context.check();
+      const byId = new Map(items.map(item => [item.id, item]));
+      return [...titleOnly, ...data.filter(validCard).map(row => createSummaryResult(byId.get(row.id), row, metadata))];
     } catch (err) {
-      // 1301 内容安全审核：不可恢复，跳过不重试
-      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
-        console.warn(`  ⏭  Batch summary skipped (${items.length} items): content filtered by safety check`);
-        return [];
-      }
-      console.warn(`  ⚠  Batch summary attempt ${attempt}/${3} failed (${items.length} items): ${err.message}`);
-      if (attempt < 3) await _llmBackoff(attempt, err.message);
+      context.check();
+      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) return titleOnly.length ? Object.assign(titleOnly, { batch_failed: true }) : [];
+      if (isTerminalLLMError(err)) return titleOnly.length ? Object.assign(titleOnly, { batch_failed: true }) : [];
+      console.warn(`  ⚠  Batch summary attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
+      if (attempt < maxAttempts) await _llmBackoff(attempt, err.message, context.signal);
     }
   }
-  console.warn(`  ⚠  Batch summary exhausted retries for ${items.length} items, falling back to single-item enrichment`);
-  return [];
+  return titleOnly.length ? Object.assign(titleOnly, { batch_failed: true }) : [];
 }
 
 /**
@@ -298,11 +342,11 @@ async function generateItemSummariesBatch(items) {
  * generic errors — the model capacity has to recover. Returns the ms waited.
  */
 
-async function _llmBackoff(attempt, errMsg) {
+async function _llmBackoff(attempt, errMsg, signal) {
   // 529 模型过载：需要长退避（10s/20s/30s），让它恢复容量
   const base = _isOverloadError(errMsg) ? 10000 : 2000;
   const ms = Math.min(30000, base * attempt);
-  await new Promise(r => setTimeout(r, ms));
+  await abortableDelay(ms, signal);
   return ms;
 }
 
@@ -471,9 +515,14 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     jobId,
     priorityOnly = false,
     resetAttempts = false,
-    batchItemSize = Math.max(1, Math.min(parseInt(process.env.ENRICH_LLM_BATCH_ITEMS || '20', 10), 48)),
+    batchItemSize = Math.max(1, Math.min(parseInt(process.env.ENRICH_LLM_BATCH_ITEMS || (getEnrichProvider()?.isPool ? '4' : '20'), 10), 48)),
     batchConcurrency = Math.max(1, Math.min(parseInt(process.env.ENRICH_LLM_BATCH_CONCURRENCY || '8', 10), 32)),
   } = opts;
+  if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 1600) throw new Error('Enrichment batchSize must be an integer from 1 to 1600');
+  if (!Number.isInteger(batchItemSize) || batchItemSize < 1 || batchItemSize > 48) throw new Error('Invalid enrichment batchItemSize');
+  if (!Number.isInteger(batchConcurrency) || batchConcurrency < 1 || batchConcurrency > 32) throw new Error('Invalid enrichment batchConcurrency');
+  const context = taskContext(opts, jobId ? require('./jobs') : null);
+  if (context.isCancelled()) return { enriched: 0, total: 0, cancelled: true, successful_item_ids: [] };
   const db = getDB();
   if (!db) {
     console.warn('  ⚠  No database available for enrichment.');
@@ -487,7 +536,7 @@ async function enrichItems(batchSize = 1600, opts = {}) {
   // If resetAttempts is set (e.g. after a prompt upgrade), clear the poison-pill
   // counter so previously-failed items get another chance with the new prompt.
   if (resetAttempts) {
-    const reset = db.prepare(`UPDATE information_items SET enrichment_attempts = 0 WHERE id NOT IN (SELECT item_id FROM ai_summaries)`);
+    const reset = db.prepare(`UPDATE information_items SET enrichment_attempts = 0 WHERE NOT EXISTS (SELECT 1 FROM ai_summaries WHERE item_id = information_items.id AND ${VALID_SUMMARY_SQL})`);
     const info = reset.run();
     console.log(`  🔄 Reset enrichment_attempts for ${info.changes} unsummarized items`);
   }
@@ -505,8 +554,8 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     SELECT i.*, s.label as source_label, s.slug as source_slug
     FROM information_items i
     JOIN sources s ON i.source_id = s.id
-    WHERE i.id NOT IN (SELECT item_id FROM ai_summaries)
-      AND i.enrichment_attempts < ?
+    WHERE NOT EXISTS (SELECT 1 FROM ai_summaries WHERE item_id = i.id AND ${VALID_SUMMARY_SQL})
+      AND COALESCE(i.enrichment_attempts, 0) < ?
       ${priorityFilter}
     ORDER BY ${ENRICH_PRIORITY_SQL} ASC,
              i.score DESC,
@@ -524,7 +573,7 @@ async function enrichItems(batchSize = 1600, opts = {}) {
   // even a crash mid-batch counts as an attempt.
   const markAttempted = db.prepare(`
     UPDATE information_items
-    SET enrichment_attempts = enrichment_attempts + 1,
+    SET enrichment_attempts = COALESCE(enrichment_attempts, 0) + 1,
         last_enrich_attempt = datetime('now')
     WHERE id = ?
   `);
@@ -545,13 +594,14 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     total: items.length,
   });
 
+  const successfulItemIds = new Set();
   let enriched = 0;
   let failed = 0;
   let entitiesSaved = 0;
   let topicsAssigned = 0;
   const updateItemTitleZh = db.prepare(`
     UPDATE information_items
-    SET title_zh = ?, title_zh_status = 'translated'
+    SET title_zh = ?, title_zh_status = ?
     WHERE id = ? AND (title_zh IS NULL OR title_zh = '' OR title_zh_status = 'pending')
   `);
   const insertSummary = db.prepare(`
@@ -559,22 +609,27 @@ async function enrichItems(batchSize = 1600, opts = {}) {
       (id, item_id, model_provider, model_name, prompt_version, ai_title, ai_title_zh,
        one_liner, one_liner_zh, short_summary, short_summary_zh, deep_summary,
        key_points, key_points_zh, why_it_matters, why_it_matters_zh, audience, risks,
-       opportunities, action_items, confidence, translation_status, source_grounding)
+       opportunities, action_items, confidence, translation_status, source_grounding, llm_metadata)
     VALUES
       (@id, @item_id, @model_provider, @model_name, @prompt_version, @ai_title, @ai_title_zh,
        @one_liner, @one_liner_zh, @short_summary, @short_summary_zh, @deep_summary,
        @key_points, @key_points_zh, @why_it_matters, @why_it_matters_zh, @audience, @risks,
-       @opportunities, @action_items, @confidence, @translation_status, @source_grounding)
+       @opportunities, @action_items, @confidence, @translation_status, @source_grounding, @llm_metadata)
   `);
 
   function writeResult(item, result) {
+    context.check();
     if (!result?.summary) return { ok: false };
     let itemEntityCount = 0;
     let itemTopicCount = 0;
     const txn = db.transaction(() => {
-      insertSummary.run(result.summary);
+      const validExisting = db.prepare(`SELECT 1 FROM ai_summaries WHERE item_id = ? AND ${VALID_SUMMARY_SQL} LIMIT 1`).get(item.id);
+      if (validExisting) return;
+      db.prepare(`DELETE FROM ai_summaries WHERE item_id = ? AND NOT (${VALID_SUMMARY_SQL})`).run(item.id);
+      const inserted = insertSummary.run(result.summary);
+      if (inserted.changes !== 1) throw new Error('Summary was not persisted');
       if (result.summary.ai_title_zh) {
-        updateItemTitleZh.run(result.summary.ai_title_zh, item.id);
+        updateItemTitleZh.run(result.summary.ai_title_zh, result.summary.translation_status, item.id);
       }
       saveItemTags(item.id, result.tags);
       itemEntityCount = saveItemEntities(item.id, result.entities);
@@ -582,14 +637,17 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     });
     txn();
     console.log(`  ✅ ${item.title?.slice(0, 60)}`);
-    return { ok: true, entities: itemEntityCount, topics: itemTopicCount };
+    successfulItemIds.add(item.id);
+    return { ok: true, item_id: item.id, entities: itemEntityCount, topics: itemTopicCount };
   }
 
   async function processItemFallback(item) {
     try {
-      const result = await generateItemSummary(item);
+      context.check();
+      const result = await generateItemSummary(item, context);
       return writeResult(item, result);
     } catch (err) {
+      if (context.isCancelled()) return { cancelled: true };
       console.error(`  ❌ Failed to enrich ${item.id?.slice(0, 8)}:`, err.message);
       return { ok: false };
     }
@@ -604,11 +662,13 @@ async function enrichItems(batchSize = 1600, opts = {}) {
   let processed = 0;
 
   async function processChunk(chunk) {
-    const batchResults = await generateItemSummariesBatch(chunk);
+    context.check();
+    const batchResults = await generateItemSummariesBatch(chunk, context);
     const byItemId = new Map(batchResults.map(result => [result.summary.item_id, result]));
     const results = [];
 
     for (const item of chunk) {
+      if (context.isCancelled()) break;
       if (byItemId.has(item.id)) {
         try {
           results.push(writeResult(item, byItemId.get(item.id)));
@@ -616,6 +676,13 @@ async function enrichItems(batchSize = 1600, opts = {}) {
           console.error(`  ❌ Failed to write enriched item ${item.id?.slice(0, 8)}:`, err.message);
           results.push({ ok: false });
         }
+      }
+    }
+    for (const item of chunk) {
+      if (context.isCancelled()) break;
+      if (byItemId.has(item.id)) continue;
+      if (getEnrichProvider()?.isPool && (batchResults.length === 0 || batchResults.batch_failed)) {
+        results.push({ ok: false });
       } else {
         results.push(await processItemFallback(item));
       }
@@ -627,6 +694,7 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     let chunkTopics = 0;
 
     for (const result of results) {
+      if (result?.cancelled) continue;
       if (result?.ok) {
         chunkEnriched++;
         chunkEntities += result.entities || 0;
@@ -640,7 +708,8 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     failed += chunkFailed;
     entitiesSaved += chunkEntities;
     topicsAssigned += chunkTopics;
-    processed += chunk.length;
+    processed += results.filter(result => !result?.cancelled).length;
+    if (context.isCancelled()) return;
 
     updateProgress({
       phase: 'enriching',
@@ -660,11 +729,14 @@ async function enrichItems(batchSize = 1600, opts = {}) {
 
   async function worker() {
     while (true) {
-      if (jobId && isJobCancelled(jobId)) return;
+      if (context.isCancelled()) return;
       const index = chunkCursor;
       if (index >= chunks.length) return;
       chunkCursor++;
-      await processChunk(chunks[index]);
+      try { await processChunk(chunks[index]); } catch (error) {
+        if (context.isCancelled()) return;
+        throw error;
+      }
     }
   }
 
@@ -672,19 +744,19 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     Array.from({ length: Math.min(batchConcurrency, chunks.length) }, () => worker())
   );
 
-  if (jobId && isJobCancelled(jobId)) {
+  if (context.isCancelled()) {
     console.log(`  ⛔ enrichItems cancelled at ${processed}/${items.length}`);
-    return { enriched, failed, entities: entitiesSaved, topics: topicsAssigned, total: items.length, cancelled: true };
+    return { enriched, failed, successful_item_ids: [...successfulItemIds], entities: entitiesSaved, topics: topicsAssigned, total: items.length, cancelled: true };
   }
 
   // Auto-trigger signal scoring after enrichment
   if (process.env.ENABLE_SIGNAL_SCORING !== 'false' && enriched > 0) {
     try {
       const { scoreSignals } = require('./signals');
-      const enrichedItems = items.slice(0, processed).filter((_, i) => i < enriched);
+      const enrichedItems = items.filter(item => successfulItemIds.has(item.id));
       if (enrichedItems.length > 0) {
         updateProgress({ phase: 'scoring', processed, enriched, failed, entities: entitiesSaved, topics: topicsAssigned, total: items.length });
-        await scoreSignals(enrichedItems, { jobId });
+        await scoreSignals(enrichedItems, { jobId, signal: context.signal, autoResearch: false });
         console.log(`  📡 Signal scoring complete for ${enrichedItems.length} items`);
       }
     } catch (err) {
@@ -692,10 +764,12 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     }
   }
 
+  if (context.isCancelled()) return { enriched, failed, successful_item_ids: [...successfulItemIds], total: items.length, cancelled: true };
   console.log(`  ✅ Enriched ${enriched}/${items.length} items. Entities: ${entitiesSaved}, topics: ${topicsAssigned}.`);
   return {
     enriched,
     failed,
+    successful_item_ids: [...successfulItemIds],
     entities: entitiesSaved,
     topics: topicsAssigned,
     total: items.length,
@@ -710,6 +784,8 @@ module.exports = {
   generateDailyDigest,
   enrichItems,
   generateItemSummary,
+  generateItemSummariesBatch,
+  createTitleOnlySummary,
   saveItemTags,
   saveItemEntities,
   assignItemToTopics,

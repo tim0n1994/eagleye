@@ -10,6 +10,7 @@
  */
 
 const { getProvider } = require('./llm-provider');
+const { callWithMetadata } = require('./llm-shared');
 const { getDB } = require('../db/connection');
 const { fetchURL, generateId } = require('./utils');
 
@@ -307,8 +308,11 @@ async function generateDeployPlan(itemId) {
     JSON.stringify(eligibility.detected_stack));
 
   try {
-    const text = await provider.call(prompt, { temperature: 0.3, maxTokens: 4096 });
-    if (!text) throw new Error('LLM returned empty response');
+    const { text, metadata } = await callWithMetadata(provider, prompt, {
+      task: 'general', temperature: 0.3, maxTokens: 4096,
+      validate: value => typeof value === 'string' && value.trim().length > 0,
+    });
+    if (!text?.trim()) throw new Error('LLM returned empty response');
 
     db.prepare(`
       UPDATE deployment_plans
@@ -316,12 +320,12 @@ async function generateDeployPlan(itemId) {
       WHERE id = ?
     `).run(text, planId);
 
-    return { id: planId, eligibility, plan: text };
+    return { id: planId, eligibility, plan: text, llm_metadata: metadata };
   } catch (err) {
     db.prepare(`
-      UPDATE deployment_plans SET status = 'failed', error = ?, completed_at = datetime('now')
+      UPDATE deployment_plans SET status = 'failed', risk_notes = ?, completed_at = datetime('now')
       WHERE id = ?
-    `).run(err.message, planId);
+    `).run(JSON.stringify([err.message]), planId);
 
     return { id: planId, eligibility, error: err.message };
   }

@@ -5,97 +5,62 @@
  * Split out of api.js; handlers are unchanged.
  */
 
-const { generateId } = require('../services/utils');
-const { getResearchReport } = require('../services/research');
+const { getResearchReport, generateItemResearch } = require('../services/research');
 const { getDB } = require('../db/connection');
-const { getProvider } = require('../services/llm-provider');
 const { getSkills, getSkillById, getSkillStats } = require('../services/skill-crawler');
-const { sendJSON, sendError } = require('./_shared');
+const { sendJSON, sendError, readBody } = require('./_shared');
 
 function register(routes) {
 
   // --- Research API ---
   routes['/api/research'] = async (req, res, parsed) => {
-    const itemId = parsed.query.item_id || parsed.query.url;
-    const itemUrl = parsed.query.url;
-    if (!itemId && !itemUrl) return sendError(res, 400, 'item_id or url required');
-
+    if (!['GET', 'POST'].includes(req.method)) return sendError(res, 405, 'Use GET to read research or POST to generate');
+    if (!req.user) return sendError(res, 401, 'Authentication required');
+    let body = {};
+    if (req.method === 'POST') {
+      try { body = await readBody(req); }
+      catch (err) { return sendError(res, 400, err.message); }
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return sendError(res, 400, 'JSON object required');
+    }
+    const itemId = body.item_id || parsed.query?.item_id;
+    const itemUrl = body.url || parsed.query?.url;
+    if ((!itemId && !itemUrl) || (itemId && typeof itemId !== 'string') || (itemUrl && typeof itemUrl !== 'string')) {
+      return sendError(res, 400, 'item_id or url string required');
+    }
     const db = getDB();
-
-    // Check cached research
-    if (itemId) {
-      const cached = db?.prepare('SELECT * FROM research_reports WHERE item_id = ? AND status = ?').get(itemId, 'completed');
-      if (cached) {
-        return sendJSON(res, 200, { status: 'ok', content: cached.report_markdown, id: cached.id });
+    if (!db) return sendError(res, 503, 'Database not available');
+    const item = itemId
+      ? db.prepare('SELECT id FROM information_items WHERE id = ?').get(itemId)
+      : db.prepare('SELECT id FROM information_items WHERE canonical_url = ? ORDER BY created_at DESC LIMIT 1').get(itemUrl);
+    const cached = item && db.prepare(`SELECT * FROM research_reports
+      WHERE item_id = ? AND status = 'completed' AND LENGTH(TRIM(COALESCE(report_markdown, ''), char(9) || char(10) || char(13) || ' ')) > 0
+      ORDER BY created_at DESC LIMIT 1`).get(item.id);
+    if (cached) {
+      return sendJSON(res, 200, { status: 'ok', content: cached.report_markdown, id: cached.id, cached: true,
+        model_name: cached.model_name, model_provider: cached.model_provider, llm_metadata: cached.llm_metadata });
+    }
+    if (req.method === 'GET') {
+      if (itemUrl) {
+        const legacy = db.prepare("SELECT content FROM research WHERE url = ? AND LENGTH(TRIM(COALESCE(content, ''), char(9) || char(10) || char(13) || ' ')) > 0").get(itemUrl);
+        if (legacy) return sendJSON(res, 200, { status: 'ok', content: legacy.content, cached: true, provenance: 'legacy-unverified' });
       }
+      return sendError(res, 404, 'No completed research found; POST to generate from an imported item');
     }
-
-    // Check legacy research table
-    if (itemUrl) {
-      const cached = db?.prepare('SELECT content FROM research WHERE url = ?').get(itemUrl);
-      if (cached) {
-        return sendJSON(res, 200, { status: 'ok', content: cached.content });
-      }
+    if (!item) return sendError(res, 422, 'URL has not been imported; import the source content before generating research');
+    try {
+      const result = await generateItemResearch(item.id);
+      if (result?.error || !result?.report?.trim()) return sendError(res, 502, result?.error || 'Research generation failed');
+      const report = getResearchReport(result.id);
+      return sendJSON(res, 200, { status: 'ok', content: result.report, id: result.id, cached: false,
+        model_name: report?.model_name, model_provider: report?.model_provider, llm_metadata: report?.llm_metadata });
+    } catch (err) {
+      return sendError(res, 502, `Research generation failed: ${err.message}`);
     }
-
-    // Generate new research
-    const item = itemId ? db?.prepare(`
-      SELECT i.*, s.label as source_label FROM information_items i 
-      JOIN sources s ON i.source_id = s.id WHERE i.id = ?
-    `).get(itemId) : null;
-
-    // Get topics
-    let topics = [];
-    let relatedItems = [];
-    if (item) {
-      topics = db?.prepare(`
-        SELECT t.name FROM item_topics it JOIN topics t ON it.topic_id = t.id WHERE it.item_id = ?
-      `).all(item.id).map(r => r.name) || [];
-      
-      relatedItems = db?.prepare(`
-        SELECT i.title FROM information_items i 
-        WHERE i.id != ? AND i.source_id = ? 
-        ORDER BY i.published_at DESC LIMIT 5
-      `).all(item.id, item.source_id).map(r => r.title) || [];
-    }
-
-    const provider = getProvider();
-    let report = null;
-    if (provider) {
-      try {
-        const researchPrompt = `Generate a comprehensive research report about the following item.
-
-Title: ${item?.title || itemUrl}
-Source: ${item?.source_label || 'N/A'}
-URL: ${item?.canonical_url || 'N/A'}
-Topics: ${(topics || []).join(', ')}
-Related: ${(relatedItems || []).slice(0, 3).join(', ')}
-
-Write in Markdown: Executive Summary, Technical Analysis, Market Impact, Key Takeaways, Recommendations.`;
-        report = await provider.call(researchPrompt, { temperature: 0.3, maxTokens: 4096 });
-      } catch (err) {
-        console.error('Research report failed:', err.message);
-      }
-    }
-    const reportId = generateId();
-
-    if (db && itemId) {
-      db.prepare(`
-        INSERT INTO research_reports (id, item_id, status, prompt, report_markdown, model_provider, model_name, completed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-      `).run(reportId, itemId, 'completed', '', report || '', 'gemini', 'gemini-2.0-flash');
-    }
-
-    // Cache in legacy table too
-    if (db && itemUrl) {
-      db.prepare('INSERT OR REPLACE INTO research (url, content) VALUES (?, ?)').run(itemUrl, report || '');
-    }
-
-    sendJSON(res, 200, { status: 'ok', content: report || 'Research failed to generate.', id: reportId });
   };
 
   // --- Get Research Report API (§13: GET /api/research/:id) ---
   routes['/api/research/:id'] = (req, res, _parsed, params) => {
+    if (req.method !== 'GET') return sendError(res, 405, 'Method not allowed');
     const reportId = params?.id || '';
     if (!reportId) return sendError(res, 400, 'Report ID required');
 
@@ -107,6 +72,7 @@ Write in Markdown: Executive Summary, Technical Analysis, Market Impact, Key Tak
 
   // --- Research Reports list: GET /api/reports ---
   routes['/api/reports'] = (req, res, parsed) => {
+    if (req.method !== 'GET') return sendError(res, 405, 'Method not allowed');
     const db = getDB();
     if (!db) return sendError(res, 500, 'Database not available');
     const limit = Math.min(parseInt(parsed.query.limit || '50', 10), 200);

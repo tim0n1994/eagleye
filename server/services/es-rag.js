@@ -9,6 +9,7 @@
  */
 
 const { getProvider } = require('./llm-provider');
+const { callWithMetadata, taskContext } = require('./llm-shared');
 const { esAvailable, esRequest, getQueryEmbedding, ES_HOST, ES_INDEX } = require('./elasticsearch');
 
 const RAG_PROMPT = `/no_think
@@ -44,6 +45,8 @@ const MAX_CONTEXT_CHARS = 8000;
  * @returns {Promise<{answer, sources, followUpQuestions, total_found, mode, degraded}>}
  */
 async function ragChat(question, opts = {}) {
+  const task = taskContext(opts);
+  task.check();
   const mode = opts.mode || 'auto';
   const sources = [];
   let degraded = false;
@@ -60,6 +63,11 @@ async function ragChat(question, opts = {}) {
   } else {
     degraded = true;
   }
+  task.check();
+  if (!sources.length) {
+    return { answer: '当前情报库中没有足够信息，尚不能基于来源回答这个问题。', sources: [],
+      followUpQuestions: [], total_found: 0, mode: 'no-evidence', degraded: true };
+  }
 
   // Step 2: Build context from retrieved docs
   const context = buildContext(sources);
@@ -70,7 +78,12 @@ async function ragChat(question, opts = {}) {
     .replace('{question}', question);
 
   const provider = getProvider();
-  const answer = await provider.call(prompt, { temperature: 0.3 });
+  if (!provider) throw new Error('No LLM provider configured');
+  const { text: answer, metadata } = await callWithMetadata(provider, prompt, {
+    task: 'general', temperature: 0.3, maxTokens: 3000, signal: task.signal,
+    validate: value => typeof value === 'string' && value.trim().length > 0,
+  });
+  if (!answer?.trim()) throw new Error('LLM returned empty response');
 
   // Step 4: Generate follow-up questions from source topics
   let followUpQuestions = [];
@@ -78,13 +91,14 @@ async function ragChat(question, opts = {}) {
     try {
       const topics = sources.slice(0, 5).map(s => s.title.slice(0, 40)).join('; ');
       const fp = FOLLOWUP_PROMPT.replace('{question}', question).replace('{topics}', topics);
-      const raw = await provider.call(fp, { temperature: 0.5 });
+      const raw = await provider.call(fp, { task: 'general', temperature: 0.5, maxTokens: 256, signal: task.signal });
       if (raw) {
         followUpQuestions = raw.split('\n').map(l => l.trim()).filter(l => l.length > 2 && l.length < 50).slice(0, 3);
       }
     } catch { /* follow-ups are optional */ }
   }
 
+  task.check();
   return {
     answer: answer || '(LLM 未返回结果)',
     sources,
@@ -92,6 +106,7 @@ async function ragChat(question, opts = {}) {
     total_found: sources.length,
     mode: degraded ? 'pure-llm' : mode,
     degraded,
+    llm_metadata: metadata,
   };
 }
 

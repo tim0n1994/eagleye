@@ -4,7 +4,7 @@
  * Provides a shared better-sqlite3 connection instance.
  */
 
-const path = require('path');
+const { getDBPath } = require('../config');
 
 let db = null;
 
@@ -13,7 +13,7 @@ function getDB() {
   
   try {
     const Database = require('better-sqlite3');
-    const dbPath = path.join(__dirname, '..', '..', 'eagleye.db');
+    const dbPath = getDBPath();
     db = new Database(dbPath);
     
     // Enable WAL mode for better concurrent performance

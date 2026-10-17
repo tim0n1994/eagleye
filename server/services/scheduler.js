@@ -1,112 +1,151 @@
 'use strict';
 
-/**
- * Eagleye — Built-in Scheduler
- *
- * There was no cron / no setInterval scheduler: daily ingestion relied on a
- * manual POST /api/sync, which is the single biggest ops gap. This module gives
- * the radar a heartbeat: a 60s tick evaluates the persisted schedule and fires
- * a FULL_PIPELINE (or RESCORE_ALL) job at the configured time, guarded by the
- * existing singleton lock so a slow pipeline never overlaps itself.
- *
- * Config (user_data[scheduler_config]):
- *   { enabled: bool,
- *     time:   "HH:MM"      // local time, daily (default "04:00")
- *     task:   "pipeline"|"rescore"   // what to run (default "pipeline")
- *     lastRun: "YYYY-MM-DD HH:MM" }  // set by the tick, for /api/scheduler
- *
- * The cron surface is deliberately tiny (one daily time). A full 5-field cron
- * parser is overkill for a single-user radar; HH:MM covers the real need
- * ("refresh overnight") and is trivially correct.
- */
-
 const { getValue, setValue } = require('../db/user-data');
+const { getSwitches } = require('../services/runtime-switches');
 const CONFIG_KEY = 'scheduler_config';
-
 const TICK_MS = 60 * 1000;
 const DEFAULTS = { enabled: false, time: '04:00', task: 'pipeline' };
+const ENQUEUE_RETRY_MS = 5 * 60 * 1000;
+const MAX_ENQUEUE_ATTEMPTS = 3;
+const TASK_REQUIRED_SWITCHES = {
+  pipeline: ['collect', 'enrich', 'digest'],
+  rescore: ['enrich'],
+};
 
 let _timer = null;
+let _firing = false;
+let _lastPauseKey = null;
 
-function getConfig() {
-  const c = getValue(CONFIG_KEY) || {};
+function normalizeConfig(c = {}) {
   return {
     enabled: c.enabled === true,
-    time: /^\d{2}:\d{2}$/.test(c.time || '') ? c.time : DEFAULTS.time,
+    time: /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(c.time || '') ? c.time : DEFAULTS.time,
     task: c.task === 'rescore' ? 'rescore' : DEFAULTS.task,
     lastRun: c.lastRun || null,
+    last_attempt: c.last_attempt || null,
+    attempt_count: Number.isInteger(c.attempt_count) && c.attempt_count >= 0 ? c.attempt_count : 0,
+    last_job_id: c.last_job_id || null,
+    last_outcome: c.last_outcome || null,
+    last_error: c.last_error || null,
   };
 }
 
-function saveConfig(patch) {
-  const next = { ...getConfig(), ...patch };
-  setValue(CONFIG_KEY, next);
-  return next;
-}
-
-/**
- * Returns "YYYY-MM-DD HH:MM" in local time (matches lastRun format).
- */
-function nowLocalStamp() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
+function nowLocalStamp(d = new Date()) {
+  const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/**
- * Decide whether the schedule should fire right now.
- * Fires once per scheduled minute: when the wall clock has just reached the
- * configured time AND we haven't already run in that exact minute. Idempotent
- * across ticks because lastRun records the "YYYY-MM-DD HH:MM" that fired.
- */
-function shouldFire(cfg) {
-  if (!cfg.enabled) return false;
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  const hhmm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  if (hhmm !== cfg.time) return false;
-  const stamp = nowLocalStamp();
-  // Already fired this exact minute → don't double-fire within the 60s tick.
-  return cfg.lastRun !== stamp;
+function attemptIsToday(cfg, now) {
+  return cfg.last_attempt && nowLocalStamp(new Date(cfg.last_attempt)).slice(0, 10) === nowLocalStamp(now).slice(0, 10);
 }
 
-function fire() {
+function scheduledTime(cfg, now) {
+  const due = new Date(now);
+  const [hours, minutes] = cfg.time.split(':').map(Number);
+  due.setHours(hours, minutes, 0, 0);
+  return due;
+}
+
+function nextDue(cfg, now) {
+  if (!cfg.enabled) return null;
+  const due = scheduledTime(cfg, now);
+  const firedToday = cfg.lastRun?.slice(0, 10) === nowLocalStamp(now).slice(0, 10);
+  const exhaustedToday = attemptIsToday(cfg, now) && cfg.attempt_count >= MAX_ENQUEUE_ATTEMPTS;
+  const uncertainToday = attemptIsToday(cfg, now) && ['enqueueing', 'enqueue_unknown'].includes(cfg.last_outcome);
+  if (firedToday || exhaustedToday || uncertainToday) due.setDate(due.getDate() + 1);
+  else if (attemptIsToday(cfg, now) && cfg.last_outcome === 'enqueue_failed') {
+    return new Date(Math.max(due.getTime(), Date.parse(cfg.last_attempt) + ENQUEUE_RETRY_MS)).toISOString();
+  }
+  return due.toISOString();
+}
+
+function getConfig() {
+  const c = normalizeConfig(getValue(CONFIG_KEY) || {});
+  if (!_firing && c.last_outcome === 'enqueueing') {
+    c.last_outcome = 'enqueue_unknown';
+    c.last_error = 'Scheduler enqueue was interrupted. Inspect recent jobs before manually retrying.';
+  }
+  let lastJobStatus = null;
+  if (c.last_job_id) {
+    const { getJob } = require('./jobs');
+    lastJobStatus = getJob(c.last_job_id)?.status || null;
+  }
+  return { ...c, last_job_status: lastJobStatus,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    next_due: nextDue(c, new Date()) };
+}
+
+function saveConfig(patch) {
+  const next = normalizeConfig({ ...(getValue(CONFIG_KEY) || {}), ...patch });
+  setValue(CONFIG_KEY, next);
+  return getConfig();
+}
+
+function shouldFire(cfg, now = new Date()) {
+  if (!cfg.enabled || cfg.lastRun?.slice(0, 10) === nowLocalStamp(now).slice(0, 10)) return false;
+  if (now < scheduledTime(cfg, now)) return false;
+  if (attemptIsToday(cfg, now)) {
+    if (['enqueueing', 'enqueue_unknown'].includes(cfg.last_outcome)) return false;
+    if (cfg.attempt_count >= MAX_ENQUEUE_ATTEMPTS) return false;
+    if (cfg.last_outcome === 'enqueue_failed' && now.getTime() - Date.parse(cfg.last_attempt) < ENQUEUE_RETRY_MS) return false;
+  }
+  return true;
+}
+
+async function fire(cfg) {
+  const now = new Date();
+  const attempt = {
+    last_attempt: now.toISOString(),
+    attempt_count: attemptIsToday(cfg, now) ? cfg.attempt_count + 1 : 1,
+    last_error: null,
+    last_job_id: null,
+  };
+  saveConfig({ ...attempt, last_outcome: 'enqueueing' });
+  let id;
   try {
     const { runJob, JOB_TYPES } = require('./jobs');
-    const taskType = getConfig().task === 'rescore' ? JOB_TYPES.RESCORE_ALL : JOB_TYPES.FULL_PIPELINE;
-    const id = runJob(taskType, {});
-    const stamp = nowLocalStamp();
-    saveConfig({ lastRun: stamp });
-    console.log(`[scheduler] fired ${taskType} job ${id} at ${stamp}`);
-    return id;
+    const taskType = cfg.task === 'rescore' ? JOB_TYPES.RESCORE_ALL : JOB_TYPES.FULL_PIPELINE;
+    id = await runJob(taskType, {});
+    if (typeof id !== 'string' || !id) throw new Error('Scheduler could not create a background job');
   } catch (err) {
-    // Non-fatal: a missing DB or job error shouldn't kill the heartbeat.
-    console.warn(`[scheduler] fire failed (non-fatal): ${err.message}`);
+    saveConfig({ ...attempt, last_outcome: 'enqueue_failed', last_error: err.message });
+    console.warn(`[scheduler] enqueue failed: ${err.message}`);
     return null;
   }
+  saveConfig({ ...attempt, lastRun: nowLocalStamp(now), last_job_id: id, last_outcome: 'queued' });
+  return id;
 }
 
-function tick() {
+async function tick() {
+  if (_firing) return;
   try {
     const cfg = getConfig();
-    if (shouldFire(cfg)) fire();
+    if (!shouldFire(cfg)) return;
+    const required = TASK_REQUIRED_SWITCHES[cfg.task] || [];
+    const switches = getSwitches();
+    const paused = required.filter(key => switches[key] === false);
+    if (paused.length > 0) {
+      const pauseKey = paused.join(',');
+      if (_lastPauseKey !== pauseKey) {
+        _lastPauseKey = pauseKey;
+        console.warn(`[scheduler] ${cfg.task} skipped: runtime switch paused (${pauseKey})`);
+      }
+      if (cfg.last_outcome !== 'switch_paused') saveConfig({ last_outcome: 'switch_paused' });
+      return;
+    }
+    _lastPauseKey = null;
+    _firing = true;
+    await fire(cfg);
   } catch (err) {
-    console.warn(`[scheduler] tick error (non-fatal): ${err.message}`);
-  }
+    console.warn(`[scheduler] tick error: ${err.message}`);
+  } finally { _firing = false; }
 }
 
-/**
- * Start the scheduler heartbeat. Safe to call multiple times (idempotent) —
- * a running timer is cleared first. Called from server.js on boot.
- */
 function start() {
   if (_timer) clearInterval(_timer);
   _timer = setInterval(tick, TICK_MS);
-  // Don't keep the event loop alive solely for the scheduler (allows clean
-  // shutdown when the server closes).
   if (_timer.unref) _timer.unref();
-  tick(); // evaluate once immediately in case we boot exactly on the minute
-  console.log('[scheduler] heartbeat started (60s tick)');
+  void tick();
 }
 
 function stop() {
@@ -114,4 +153,4 @@ function stop() {
   _timer = null;
 }
 
-module.exports = { start, stop, getConfig, saveConfig, nowLocalStamp, TICK_MS, DEFAULTS, CONFIG_KEY };
+module.exports = { start, stop, getConfig, saveConfig, nowLocalStamp, tick, shouldFire, TICK_MS, DEFAULTS, CONFIG_KEY };

@@ -1,0 +1,10 @@
+{
+  "http_status": 200,
+  "status": "ok",
+  "content": "# 条目研究\n\n## 存储的来源材料\n\n以下字段由服务直接读取并引用，表示已存材料，不表示独立核验。本次没有联网读取 URL。\n\n来源：GitHub Trending\nURL：https://github.com/lnkiai/m3e-canvas\n\n证据范围：仅有短描述或缺失摘录；不足以确认实现、技术栈、效果或行业趋势。\n\n### title · title\n\n> lnkiai/m3e-canvas: Sketch Material 3 Expressive screens in the browser and turn them into vibe-coding prompts.\n\n### source_excerpt · original_summary\n\n> Sketch Material 3 Expressive screens in the browser and turn them into vibe-coding prompts.\n\n## 模型分析，待核验\n\n下面仅为基于引文的假设，不构成来源事实。\n\n引用 source\\_excerpt：\n\n> Sketch Material 3 Expressive screens in the browser\n\n假设：可能该项目支持在浏览器中绘制或草图化 Material 3 Expressive 风格的界面，尚需验证具体交互形式与实现方式。\n\n引用 source\\_excerpt：\n\n> turn them into vibe-coding prompts\n\n假设：可能草图可被转换为用于 vibe-coding 的提示词，尚无法确认转换机制、输出格式及其与 AI 工具的对接方式。\n\n## 待核验问题\n\n- 需要查阅仓库 README、源代码或在线演示，才能确认草图编辑的具体功能与浏览器内实现方式？\n- 需要查看项目文档或示例输出，才能确认草图转换为 vibe-coding 提示词的格式、流程与目标工具？",
+  "id": "a1f1d918-bb55-40e5-90ce-67e47cbf19b4",
+  "cached": false,
+  "model_name": "configured-model",
+  "model_provider": "claude",
+  "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-1\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":12574,\"usage\":{\"input_tokens\":388,\"output_tokens\":552,\"cache_read_input_tokens\":0,\"server_tool_use\":{\"web_search_requests\":0},\"service_tier\":\"standard\"},\"attempts\":1,\"trace_id\":\"a2ea38fe-7ed9-451f-a98e-80742ed5c3cc\"}"
+}

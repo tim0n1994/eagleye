@@ -6,14 +6,15 @@ const https = require('https');
 const http = require('http');
 const crypto = require('crypto');
 
-const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 32, maxFreeSockets: 16, timeout: 30000 });
-const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 32, maxFreeSockets: 16, timeout: 30000 });
+const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 32, maxFreeSockets: 16, timeout: 30000, proxyEnv: process.env });
+const HTTPS_AGENT = new https.Agent({ keepAlive: true, maxSockets: 32, maxFreeSockets: 16, timeout: 30000, proxyEnv: process.env });
 
 function generateId() {
   return crypto.randomUUID();
 }
 
 async function fetchURL(targetUrl, options = {}) {
+  options.signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const parsed = new URL(targetUrl);
     const isHttps = parsed.protocol === 'https:';
@@ -23,6 +24,7 @@ async function fetchURL(targetUrl, options = {}) {
       port: parsed.port || (isHttps ? 443 : 80),
       path: parsed.pathname + parsed.search,
       method: 'GET',
+      signal: options.signal,
       agent: isHttps ? HTTPS_AGENT : HTTP_AGENT,
       headers: {
         'User-Agent': 'EagleyeBot/1.0',
@@ -35,6 +37,7 @@ async function fetchURL(targetUrl, options = {}) {
     const mod = parsed.protocol === 'https:' ? https : http;
     const req = mod.request(reqOpts, (proxyRes) => {
       const chunks = [];
+      proxyRes.on('error', reject);
       proxyRes.on('data', c => chunks.push(c));
       proxyRes.on('end', () => {
         const body = Buffer.concat(chunks).toString('utf-8');

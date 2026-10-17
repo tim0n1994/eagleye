@@ -57,7 +57,13 @@ export const API = {
   },
 
   fetchResearch: async (url) => {
-    return await fetchJSON(`${API_BASE}/research?url=${encodeURIComponent(url)}`);
+    const res = await fetch(`${API_BASE}/research`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+    return await res.json();
   },
 
   fetchItem: async (itemId) => {
@@ -130,7 +136,8 @@ export const API = {
   },
 
   logout: async () => {
-    await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+    if (!res.ok) throw new Error(`Sign out failed (HTTP ${res.status})`);
   },
 
   // ─── Admin ─────────────────────────────────────────────────────────────

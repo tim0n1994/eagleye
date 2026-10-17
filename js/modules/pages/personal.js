@@ -5,7 +5,7 @@
  * Split out of pages.js; render functions are unchanged.
  */
 
-import { $, escapeAttr, escapeHtml, localDateStr } from '../utils.js';
+import { $, escapeAttr, escapeHtml } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
 import { router } from '../router.js';
 import { API_BASE, fetchJSON, markItemSeen, showError, showLoader } from './shared.js';
@@ -122,8 +122,6 @@ export async function renderForYou(_params) {
     const fullProfile = profileData.profile || {};
 
     // Profile summary chip: shows whether personalisation is active.
-    const crossValidated = items.filter(i => i.signal_type && i.signal_type !== 'uncategorized' && (i.alpha_score || 0) >= 0.7).length;
-    const crossValPct = items.length > 0 ? Math.round((crossValidated / items.length) * 100) : 0;
     const profileChip = profile.has_signal
       ? `<span class="fy-profile-on">🎯 ${t('foryou.personalized')} · ${profile.type_count} ${t('foryou.types')} · ${profile.entity_count} ${t('foryou.entities')}</span>`
       : `<span class="fy-profile-off">${t('foryou.generic_hint')}</span>`;
@@ -159,13 +157,12 @@ export async function renderForYou(_params) {
       return;
     }
 
-    // Stats: unread count, source count, top type, confidence aggregate.
     const unseen = items.filter(i => !i.seen).length;
     const sourcesSet = new Set(items.map(i => i.source_slug).filter(Boolean));
     const sources = sourcesSet.size;
     const avgAlpha = items.length > 0 ? items.reduce((s, x) => s + (x.alpha_score || 0), 0) / items.length : 0;
     const highAlphaCount = items.filter(i => (i.alpha_score || 0) >= 0.7).length;
-    const confidencePct = items.length > 0 ? Math.round((highAlphaCount / items.length) * 100) : 0;
+    const highAlphaPct = items.length > 0 ? Math.round((highAlphaCount / items.length) * 100) : 0;
     const typeCounts = {};
     for (const it of items) { if (it.signal_type) typeCounts[it.signal_type] = (typeCounts[it.signal_type] || 0) + 1; }
     const topType = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
@@ -205,8 +202,7 @@ export async function renderForYou(_params) {
       stat(t('foryou.sources'), sources) +
       stat(getLanguage() === 'zh' ? '多样熵' : 'Entropy', entropyPct + '%') +
       stat(getLanguage() === 'zh' ? '平均α' : 'Avg α', avgAlpha.toFixed(2)) +
-      stat(getLanguage() === 'zh' ? '高置信' : 'High-α', confidencePct + '%') +
-      stat(getLanguage() === 'zh' ? '交叉验证' : 'Cross-Val', crossValidated) +
+      stat(getLanguage() === 'zh' ? '高 Alpha 占比（≥ 0.70）' : 'High-Alpha share (≥ 0.70)', highAlphaPct + '%') +
       (topType ? stat(t('foryou.top_type'), topType[0].replace(/_/g, ' ')) : '') +
       `</div></div>`;
 
@@ -332,15 +328,14 @@ export async function renderForYou(_params) {
       profileViz +
       `</div>` +
       statsWithPie +
-      freshBarHtml +
       srcMixHtml +
-      // Signal confidence heatmap strip: one bar per top item, color-coded by alpha.
       `${(() => {
         const top20 = items.slice(0, 20);
         if (top20.length < 3) return '';
         const zh = getLanguage() === 'zh';
         return '<div class="metrics-block" style="margin-bottom:16px">' +
-          '<h3 class="metrics-block-title">' + (zh ? '信号置信度热力条' : 'Signal Confidence Heatmap') + '</h3>' +
+          '<h3 class="metrics-block-title">' + (zh ? 'Alpha 优先级分布' : 'Alpha Priority Distribution') + '</h3>' +
+          '<p class="subtle">' + (zh ? 'Alpha 用于排列阅读优先级；高 Alpha 占比表示当前列表中分数达到 0.70 的条目比例。' : 'Alpha ranks reading priority; the high-Alpha share is the proportion of items in this list scoring at least 0.70.') + '</p>' +
           '<div style="display:flex;gap:1px;height:24px;border-radius:3px;overflow:hidden">' +
           top20.map(it => {
             const a = it.alpha_score || 0;
@@ -350,41 +345,11 @@ export async function renderForYou(_params) {
           }).join('') +
           '</div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--fg-mute);font-family:var(--font-mono)"><span>low α</span><span>high α</span></div></div>';
       })()}` +
-      // Async: reading activity heatmap (last 30 days of seen items).
-      `<div id="readingHeatmap" style="margin-bottom:16px"></div>` +
+      `<div id="readingHeatmap" class="metrics-block" style="margin-bottom:16px">` +
+      `<h3 class="metrics-block-title">${getLanguage() === 'zh' ? '阅读活动' : 'Reading Activity'}</h3>` +
+      `<p class="subtle">${getLanguage() === 'zh' ? '按日阅读记录尚不可用。' : 'Daily reading history is not available yet.'}</p></div>` +
       `<div class="fy-grid">${items.map(card).join('')}</div>` +
       `</section>`;
-
-    // Async: fetch seen-items count for the last 30 days for the reading heatmap.
-    fetchJSON(`${API_BASE}/profile`).then(profData => {
-      const hmEl = document.getElementById('readingHeatmap');
-      if (!hmEl) return;
-      // We don't have a per-day seen-items API, so approximate using the profile's
-      // tracked entities count as a proxy for engagement level.
-      // Show a simple 30-day activity strip with varying bar heights.
-      const days = [];
-      for (let i = 29; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        days.push({ date: localDateStr(d), dow: d.getDay() });
-      }
-      // Pseudo-random but deterministic: derive from date hash.
-      const activity = days.map(d => {
-        const hash = (parseInt(d.date) * 31) % 100;
-        return { ...d, level: hash % 5 }; // 0-4 intensity
-      });
-      const colors = ['var(--bg-side)', 'rgba(229,130,78,0.2)', 'rgba(229,130,78,0.4)', 'rgba(229,130,78,0.7)', 'var(--accent)'];
-      const zh = getLanguage() === 'zh';
-      hmEl.innerHTML =
-        `<div class="metrics-block"><h3 class="metrics-block-title">${zh ? '阅读活动' : 'Reading Activity'} (30d)</h3>` +
-        `<div style="display:flex;flex-wrap:wrap;gap:2px">${activity.map(d =>
-          `<div title="${d.date}" style="width:14px;height:14px;background:${colors[d.level]};border-radius:2px;display:inline-block"></div>`
-        ).join('')}</div>` +
-        `<div style="display:flex;align-items:center;gap:4px;margin-top:6px;font-size:9px;color:var(--fg-mute)">` +
-        `<span>${zh ? '少' : 'Less'}</span>` +
-        colors.map(c => `<div style="width:10px;height:10px;background:${c};border-radius:1px"></div>`).join('') +
-        `<span>${zh ? '多' : 'More'}</span></div></div>`;
-    }).catch(() => { const el = document.getElementById('readingHeatmap'); if (el) el.style.display = 'none'; });
 
     // Reading session timer: counts time spent on this page.
     const timerEl = container.querySelector('#readingTimer');

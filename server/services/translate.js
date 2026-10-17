@@ -9,13 +9,15 @@
 
 const crypto = require('crypto');
 const { getDB } = require('../db/connection');
-const { isJobCancelled } = require('./jobs');
-const { getProvider, getEnrichProvider, getProviderInfo, extractJSON } = require('./llm-provider');
+const { getEnrichProvider, getProviderInfo } = require('./llm-provider');
 
 // Match the enrichment prompt version so rows aren't stamped with a different
 // version by the translate backfill (which used to overwrite prompt_version,
 // breaking cache invalidation). Translation only fills in *_zh fields; the
 // prompt_version should reflect which enrichment prompt generated the row.
+const { taskContext, callWithMetadata, validCard, validateBatch, nonEmpty, _llmBackoff } = require('./llm-shared');
+const { isTerminalLLMError } = require('./llm-error-class');
+
 const PROMPT_VERSION = 'v3.1-knowledge-card-graph-zh';
 const DEFAULT_BATCH_ITEMS = Math.max(1, Math.min(parseInt(process.env.TRANSLATE_LLM_BATCH_ITEMS || '16', 10), 32));
 const DEFAULT_BATCH_WORKERS = Math.max(1, Math.min(parseInt(process.env.TRANSLATE_LLM_BATCH_WORKERS || '8', 10), 16));
@@ -222,91 +224,60 @@ function normalizeFeedCard(data, row) {
   };
 }
 
-async function generateChineseFeedCard(row) {
+async function generateChineseFeedCard(row, opts = {}) {
+  const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
+  context.check();
   const provider = getEnrichProvider();
-  if (!provider) {
-    throw new Error('No active local LLM provider configured. Configure it in Settings -> LLM.');
-  }
-
-  const prompt = buildPrompt(row);
-  const maxRetries = 3;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  if (!provider) throw new Error('No active LLM provider configured.');
+  const maxAttempts = provider.isPool ? 1 : 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const text = await provider.call(prompt, { temperature: 0.1, maxTokens: 1400 });
-      const data = extractJSON(text);
-      if (data && typeof data === 'object' && !Array.isArray(data)) {
-        const card = normalizeFeedCard(data, row);
-        if (card.title_zh || card.one_liner_zh || card.short_summary_zh) return card;
-      }
+      const { data, metadata } = await callWithMetadata(provider, buildPrompt(row), {
+        task: 'translate', signal: context.signal, temperature: 0.1, maxTokens: 2000, json: true, validate: validCard,
+      });
+      context.check();
+      return { ...normalizeFeedCard(data, row), llm_metadata: metadata };
     } catch (err) {
-      // 1301 内容安全审核：智谱拒绝处理敏感内容，不可恢复，立即跳过
-      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
-        throw new Error('content_filtered', { cause: err });
-      }
-      if (attempt >= maxRetries) throw err;
-      const isOverload = /429|529|1302|1305|rate.limit|overload|速率限制|访问量过大/i.test(err.message);
-      await new Promise(r => setTimeout(r, isOverload ? 8000 * attempt : 2000 * attempt));
-      continue;
-    }
-    if (attempt < maxRetries) {
-      await new Promise(r => setTimeout(r, 2000 * attempt));
+      context.check();
+      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) throw new Error('content_filtered', { cause: err });
+      if (isTerminalLLMError(err)) throw err;
+      if (attempt >= maxAttempts) throw err;
+      await _llmBackoff(attempt, err.message, context.signal);
     }
   }
-
-  throw new Error(`LLM returned no usable JSON for item ${String(row.id || '').slice(0, 8)}`);
 }
 
-async function generateChineseFeedCardsBatch(rows) {
+async function generateChineseFeedCardsBatch(rows, opts = {}) {
+  const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
+  context.check();
   const provider = getEnrichProvider();
   if (!provider || !rows?.length) return [];
-
-  const prompt = buildBatchPrompt(rows);
-  const maxRetries = 3;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  const allowedIds = new Set(rows.map(row => row.id));
+  const maxAttempts = provider.isPool ? 1 : 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const text = await provider.call(prompt, {
-        temperature: 0.1,
-        maxTokens: Math.min(5200, 400 + rows.length * 260),
+      const { data, metadata } = await callWithMetadata(provider, buildBatchPrompt(rows), {
+        task: 'translate', signal: context.signal, temperature: 0.1, maxTokens: Math.min(8192, 600 + rows.length * 1000),
+        json: true, validate: output => validateBatch(output, allowedIds, validCard),
       });
-      const data = extractJSON(text);
-      if (Array.isArray(data)) {
-        const rowMap = new Map(rows.map((row) => [row.id, row]));
-        return data
-          .filter((entry) => entry && rowMap.has(entry.id))
-          .map((entry) => ({
-            id: entry.id,
-            card: normalizeFeedCard(entry, rowMap.get(entry.id)),
-          }))
-          .filter((entry) => entry.card.title_zh || entry.card.one_liner_zh || entry.card.short_summary_zh);
-      }
+      context.check();
+      const rowMap = new Map(rows.map(row => [row.id, row]));
+      return data.filter(validCard).map(entry => ({
+        id: entry.id, card: { ...normalizeFeedCard(entry, rowMap.get(entry.id)), llm_metadata: metadata },
+      }));
     } catch (err) {
-      // 1301 内容安全审核：不可恢复，跳过整批不重试
-      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
-        console.warn(`  ⏭  Batch Chinese card skipped (${rows.length} rows): content filtered by safety check`);
-        // Mark all rows as blocked so they don't re-enter the queue
-        try {
-          const blockStmt = getDB().prepare('UPDATE ai_summaries SET translation_status = ? WHERE item_id = ?');
-          for (const row of rows) blockStmt.run('blocked', row.id);
-        } catch {}
-        return [];
-      }
-      console.warn(`  ⚠  Batch Chinese card attempt ${attempt}/${maxRetries} failed (${rows.length} rows): ${err.message.slice(0, 100)}`);
-      if (attempt < maxRetries) {
-        const isOverload = /429|529|1302|1305|rate.limit|overload|速率限制|访问量过大/i.test(err.message);
-        await new Promise(r => setTimeout(r, isOverload ? 8000 * attempt : 2000 * attempt));
-      }
-    }
-    if (attempt < maxRetries) {
-      await new Promise((r) => setTimeout(r, 500 * attempt));
+      context.check();
+      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) return [];
+      if (isTerminalLLMError(err)) return [];
+      if (attempt < maxAttempts) await _llmBackoff(attempt, err.message, context.signal);
     }
   }
-
   return [];
 }
 
-async function translateText(text) {
+async function translateText(text, opts = {}) {
+  const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
+  context.check();
   const trimmed = clampText(text, 1000);
   if (!trimmed) return '';
   if (containsChinese(trimmed)) return trimmed;
@@ -314,7 +285,7 @@ async function translateText(text) {
   const provider = getEnrichProvider();
   if (!provider) return null;
   const prompt = `/no_think\n请将下面文本改写为自然、简洁的中文。保留专有名词。只输出中文文本，不要解释。\n\n${trimmed}`;
-  const result = await provider.call(prompt, { temperature: 0.1, maxTokens: 300 });
+  const { text: result } = await callWithMetadata(provider, prompt, { task: 'translate', signal: context.signal, temperature: 0.1, maxTokens: 300, validate: nonEmpty });
   return clampText(result, 1000) || null;
 }
 
@@ -334,9 +305,12 @@ function fetchItemForBackfill(itemId) {
   `).get(itemId);
 }
 
-function writeFeedCard(row, card) {
+function writeFeedCard(row, card, opts = {}) {
+  const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
+  context.check();
   const db = getDB();
-  const info = getProviderInfo();
+  const metadata = card.llm_metadata;
+  if (!metadata || !validCard(card)) throw new Error('Invalid generated translation');
   const translated = !!(card.title_zh || card.one_liner_zh || card.short_summary_zh);
 
   const updateTitle = db.prepare(`
@@ -348,8 +322,8 @@ function writeFeedCard(row, card) {
 
   const updateSummary = db.prepare(`
     UPDATE ai_summaries
-    SET model_provider = COALESCE(NULLIF(model_provider, ''), ?),
-        model_name = COALESCE(NULLIF(model_name, ''), ?),
+    SET model_provider = ?,
+        model_name = ?,
         prompt_version = COALESCE(NULLIF(prompt_version, ''), ?),
         ai_title = COALESCE(NULLIF(?, ''), ai_title),
         ai_title_zh = COALESCE(NULLIF(?, ''), ai_title_zh),
@@ -363,7 +337,8 @@ function writeFeedCard(row, card) {
         why_it_matters_zh = COALESCE(NULLIF(?, ''), why_it_matters_zh),
         confidence = COALESCE(?, confidence),
         translation_status = ?,
-        source_grounding = ?
+        source_grounding = ?,
+        llm_metadata = ?
     WHERE item_id = ?
   `);
 
@@ -372,12 +347,12 @@ function writeFeedCard(row, card) {
       (id, item_id, model_provider, model_name, prompt_version, ai_title, ai_title_zh,
        one_liner, one_liner_zh, short_summary, short_summary_zh, deep_summary,
        key_points, key_points_zh, why_it_matters, why_it_matters_zh, audience, risks,
-       opportunities, action_items, confidence, translation_status, source_grounding)
+       opportunities, action_items, confidence, translation_status, source_grounding, llm_metadata)
     VALUES
       (@id, @item_id, @model_provider, @model_name, @prompt_version, @ai_title, @ai_title_zh,
        @one_liner, @one_liner_zh, @short_summary, @short_summary_zh, NULL,
        @key_points, @key_points_zh, @why_it_matters, @why_it_matters_zh, '[]', '[]',
-       '[]', '[]', @confidence, @translation_status, @source_grounding)
+       '[]', '[]', @confidence, @translation_status, @source_grounding, @llm_metadata)
   `);
 
   const sourceGrounding = JSON.stringify({
@@ -386,16 +361,17 @@ function writeFeedCard(row, card) {
     source_slug: row.source_slug,
     canonical_url: row.canonical_url,
     prompt_version: PROMPT_VERSION,
-    provider: info.provider,
-    model: getEnrichProvider()?.model || info.model,
+    provider: metadata.provider,
+    model: metadata.model,
     generated_at: new Date().toISOString(),
   });
 
   const summaryPayload = {
     id: row.summary_id || generateId(),
     item_id: row.id,
-    model_provider: info.provider || 'local',
-    model_name: info.model || 'unknown',
+    model_provider: metadata.provider,
+    model_name: metadata.model,
+    llm_metadata: JSON.stringify(metadata),
     prompt_version: PROMPT_VERSION,
     ai_title: card.ai_title || row.title || '',
     ai_title_zh: card.ai_title_zh || card.title_zh || '',
@@ -433,6 +409,7 @@ function writeFeedCard(row, card) {
         summaryPayload.confidence,
         summaryPayload.translation_status,
         summaryPayload.source_grounding,
+        summaryPayload.llm_metadata,
         row.id
       );
     } else {
@@ -443,12 +420,12 @@ function writeFeedCard(row, card) {
   txn();
 }
 
-async function translateItem(itemId) {
+async function translateItem(itemId, opts = {}) {
   const row = fetchItemForBackfill(itemId);
   if (!row) return null;
 
-  const card = await generateChineseFeedCard(row);
-  writeFeedCard(row, card);
+  const card = await generateChineseFeedCard(row, opts);
+  writeFeedCard(row, card, opts);
 
   return {
     itemId,
@@ -459,10 +436,10 @@ async function translateItem(itemId) {
   };
 }
 
-async function translateRow(row) {
+async function translateRow(row, opts = {}) {
   if (!row) return null;
-  const card = await generateChineseFeedCard(row);
-  writeFeedCard(row, card);
+  const card = await generateChineseFeedCard(row, opts);
+  writeFeedCard(row, card, opts);
   return {
     itemId: row.id,
     title_zh: card.title_zh,
@@ -488,9 +465,16 @@ async function translateItems(opts = {}) {
     force = false,
     jobId,
     sourceSlug = '',
-    batchItemSize = DEFAULT_BATCH_ITEMS,
+    retryBlocked = false,
+    batchItemSize = getEnrichProvider()?.isPool ? 4 : DEFAULT_BATCH_ITEMS,
     batchWorkers = DEFAULT_BATCH_WORKERS,
   } = opts;
+  if (!Number.isInteger(batchSize) || batchSize < 1) throw new Error('Invalid translation batchSize');
+  if (maxItems !== Infinity && (!Number.isInteger(maxItems) || maxItems < 1)) throw new Error('Invalid translation maxItems');
+  if (!Number.isInteger(batchItemSize) || batchItemSize < 1 || batchItemSize > 48) throw new Error('Invalid translation batchItemSize');
+  if (!Number.isInteger(batchWorkers) || batchWorkers < 1 || batchWorkers > 32) throw new Error('Invalid translation batchWorkers');
+  const context = taskContext(opts, jobId ? require('./jobs') : null);
+  if (context.isCancelled()) return { translated: 0, failed: 0, total: 0, cancelled: true };
   const db = getDB();
   if (!db) return { translated: 0, failed: 0, total: 0 };
 
@@ -514,7 +498,7 @@ async function translateItems(opts = {}) {
         OR s.one_liner_zh IS NULL OR s.one_liner_zh = ''
         OR s.short_summary_zh IS NULL OR s.short_summary_zh = ''
         OR s.translation_status = 'pending'
-      ) AND COALESCE(s.translation_status, '') != 'blocked'`;
+      ) ${retryBlocked ? '' : "AND COALESCE(s.translation_status, '') != 'blocked'"}`;
 
   const total = db.prepare(`
     SELECT COUNT(DISTINCT i.id) as c
@@ -579,7 +563,9 @@ async function translateItems(opts = {}) {
   let chunkCursor = 0;
 
   async function processChunk(chunk) {
-    const batchResults = await generateChineseFeedCardsBatch(chunk);
+    context.check();
+    const batchResults = await generateChineseFeedCardsBatch(chunk, context);
+    context.check();
     const byId = new Map(batchResults.map((entry) => [entry.id, entry.card]));
     const results = [];
 
@@ -588,7 +574,7 @@ async function translateItems(opts = {}) {
       for (const row of chunk) {
         if (byId.has(row.id)) {
           try {
-            writeFeedCard(row, byId.get(row.id));
+            writeFeedCard(row, byId.get(row.id), context);
             results.push({
               itemId: row.id,
               title_zh: byId.get(row.id).title_zh,
@@ -606,10 +592,13 @@ async function translateItems(opts = {}) {
 
     // Individual fallback for items not covered by the batch
     for (const row of chunk) {
+      if (context.isCancelled()) break;
       if (!byId.has(row.id)) {
+        if (getEnrichProvider()?.isPool && batchResults.length === 0) { results.push(null); continue; }
         try {
-          results.push(await translateRow(row));
+          results.push(await translateRow(row, context));
         } catch (err) {
+          if (context.isCancelled()) break;
           if (err.message === 'content_filtered') {
             console.log(`  ⏭  Chinese card skipped (${String(row.id).slice(0, 8)}): content filtered by safety check`);
             // Mark as blocked so it won't re-enter the queue on future runs
@@ -627,7 +616,8 @@ async function translateItems(opts = {}) {
       else failed++;
     }
 
-    processed += chunk.length;
+    processed += results.length;
+    if (context.isCancelled()) return;
     updateProgress({
       phase: 'translating',
       mode: 'local-llm-feed-card-batch',
@@ -645,11 +635,14 @@ async function translateItems(opts = {}) {
 
   async function worker() {
     while (true) {
-      if (jobId && isJobCancelled(jobId)) return;
+      if (context.isCancelled()) return;
       const index = chunkCursor;
       if (index >= chunks.length) return;
       chunkCursor++;
-      await processChunk(chunks[index]);
+      try { await processChunk(chunks[index]); } catch (error) {
+        if (context.isCancelled()) return;
+        throw error;
+      }
     }
   }
 
@@ -657,7 +650,7 @@ async function translateItems(opts = {}) {
     Array.from({ length: Math.min(batchWorkers, chunks.length) }, () => worker())
   );
 
-  if (jobId && isJobCancelled(jobId)) {
+  if (context.isCancelled()) {
     console.log(`  ⛔ translateItems cancelled at ${processed}/${items.length}`);
     return {
       translated,

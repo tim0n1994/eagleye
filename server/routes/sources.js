@@ -8,6 +8,7 @@
 const { escapeXML } = require('../services/utils');
 const { getDB } = require('../db/connection');
 const { sendJSON, sendError } = require('./_shared');
+const { normalizeDigestDate, todayDigestDate } = require('../services/date-contract');
 
 function register(routes) {
 
@@ -33,12 +34,12 @@ function register(routes) {
         WHEN 'product-hunt' THEN 4
         ELSE 99
       END, s.label
-    `).all(new Date().toISOString().slice(0, 10).replace(/-/g, ''));
+    `).all(todayDigestDate());
 
     // Per-source 7-day trend: item count per day per source (for mini sparkline).
     const since7 = (() => {
       const d = new Date(); d.setDate(d.getDate() - 7);
-      return d.toISOString().slice(0, 10).replace(/-/g, '');
+      return todayDigestDate(d);
     })();
     const trendRows = db.prepare(`
       SELECT s.slug, i.digest_date, COUNT(*) AS cnt
@@ -53,14 +54,27 @@ function register(routes) {
     }
     for (const s of sources) s.trend = trendMap[s.slug] || [];
 
-    sendJSON(res, 200, { status: 'ok', sources });
+
+    // R0-09: health fields (last_attempt_at, last_success_at, last_new_content_at,
+    // last_error_class, health_status) ride along via SELECT s.*. is_active
+    // reflects user enablement only and does not promise the source is healthy.
+    sendJSON(res, 200, {
+      status: 'ok',
+      semantics: {
+        is_active: 'user enablement; does not promise the source is healthy',
+        health_status: 'observed health (healthy | stale | failing | unknown), updated by the fetch scheduler',
+      },
+      sources,
+    });
   };
   routes['/api/source/:slug'] = (req, res, parsed, params) => {
     const db = getDB();
     if (!db) return sendError(res, 500, 'Database not available');
 
     const slug = params?.slug || parsed.query.slug;
-    const date = parsed.query.date;
+    const rawDate = parsed.query.date;
+    const date = rawDate ? normalizeDigestDate(rawDate) : '';
+    if (rawDate && !date) return sendError(res, 400, 'Invalid date: expected YYYY-MM-DD or YYYYMMDD');
 
     const source = db.prepare('SELECT * FROM sources WHERE slug = ?').get(slug);
     if (!source) return sendError(res, 404, 'Source not found');
@@ -106,7 +120,7 @@ function register(routes) {
       GROUP BY ss.signal_type ORDER BY count DESC
     `).all(slug, (() => {
       const d = new Date(); d.setDate(d.getDate() - 30);
-      return d.toISOString().slice(0, 10).replace(/-/g, '');
+      return todayDigestDate(d);
     })());
 
     sendJSON(res, 200, { exists: true, source, items, total: items.length, signal_dist: signalDist });

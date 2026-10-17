@@ -1,38 +1,43 @@
 {
   "name": "eagleye",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "engines": {
+    "node": "^22.21.0 || >=24.5.0"
+  },
   "description": "",
   "main": "server.js",
   "scripts": {
     "lint": "eslint . --ignore-pattern 'kg-worker/**' --ignore-pattern '_*.js'",
     "knip": "knip --exclude exports,nsExports,types,enumMembers",
     "test": "vitest run",
+    "test:pipeline": "node --test server/services/__tests__/*.test.cjs && python3 -B -m unittest discover -s server/services/__tests__ -p test_reddit_collector.py -v",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepare": "husky || true",
+    "mcp": "node mcp/server.js",
+    "mcp:proxy": "node mcp/chatgpt-proxy.js",
     "start": "node server.js 3019"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@vitalets/google-translate-api": "^9.2.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^17.4.2",
-    "google-translate-api-x": "^10.7.3",
     "resend": "^6.17.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.1",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.4.1",
     "globals": "^17.6.0",
     "husky": "^9.1.7",
     "jsdom": "^26.1.0",
     "knip": "^6.14.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.11"
   }
 }

@@ -22,25 +22,26 @@ const {
   semanticFingerprint,
 } = require('./embeddings');
 const crypto = require('crypto');
+const { normalizeDigestDate, todayDigestDate } = require('./date-contract');
 
 function generateId() {
   return crypto.randomUUID();
 }
 
+// R0 date contract: digest_date comparisons use canonical YYYY-MM-DD anchors.
+// Dates follow the local calendar (the writer's timezone basis); strings accept
+// both canonical and legacy compact forms and normalize to canonical.
 function toDigestDate(input = new Date()) {
-  if (input instanceof Date) {
-    return input.toISOString().slice(0, 10).replace(/-/g, '');
-  }
-  const text = String(input || '').replace(/-/g, '');
-  if (/^\d{8}$/.test(text)) return text;
-  return new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  if (input instanceof Date) return todayDigestDate(input);
+  return normalizeDigestDate(String(input || '')) || todayDigestDate();
 }
 
 function digestDateDaysAgo(date, days) {
   const digest = toDigestDate(date);
-  const d = new Date(`${digest.slice(0, 4)}-${digest.slice(4, 6)}-${digest.slice(6, 8)}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - days);
-  return toDigestDate(d);
+  const [y, m, d] = digest.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - days);
+  return dt.toISOString().slice(0, 10);
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -62,6 +63,7 @@ async function buildTopicGraph(date, opts = {}) {
     return { status: 'error', message: 'No database' };
   }
 
+  date = toDigestDate(date); // R0: canonical digest_date anchor for every comparison.
   console.log(`  📡 Building topic graph for ${date}...`);
 
   try {
@@ -394,7 +396,7 @@ function updateGraphEdges(db, _date) {
   // 4a: Entity co-occurrence edges
   // If two entities frequently appear in the same items, create entity_related_entity edges
   const entityPairs = db.prepare(`
-    SELECT e1.id as entity1_id, e2.id as entity2_id, COUNT(*) as co_occurrences
+    SELECT e1.to_id as entity1_id, e2.to_id as entity2_id, COUNT(*) as co_occurrences
     FROM graph_edges e1
     JOIN graph_edges e2 ON e1.from_id = e2.from_id AND e1.from_type = 'item' AND e2.from_type = 'item'
     WHERE e1.edge_type = 'item_mentions_entity'
@@ -525,9 +527,9 @@ function getTopicTimeline(topicId, granularity = 'day') {
 
   let groupBy;
   if (granularity === 'week') {
-    groupBy = "substr(i.digest_date, 1, 4) || '-W' || printf('%02d', ((CAST(substr(i.digest_date, 5, 2) AS INTEGER) * 31 + CAST(substr(i.digest_date, 7, 2) AS INTEGER)) / 7))";
+    groupBy = "substr(i.digest_date, 1, 4) || '-W' || printf('%02d', ((CAST(substr(i.digest_date, 6, 2) AS INTEGER) * 31 + CAST(substr(i.digest_date, 9, 2) AS INTEGER)) / 7))";
   } else if (granularity === 'month') {
-    groupBy = "substr(i.digest_date, 1, 6)";
+    groupBy = "substr(i.digest_date, 1, 7)";
   } else {
     groupBy = 'i.digest_date';
   }

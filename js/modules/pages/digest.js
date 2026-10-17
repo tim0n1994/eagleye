@@ -5,7 +5,7 @@
  * Split out of pages.js; render functions are unchanged.
  */
 
-import { $, escapeAttr, escapeHtml, localDateStr } from '../utils.js';
+import { $, escapeAttr, escapeHtml, localDateStr, normalizeDateStr } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
 import { API_BASE, _sourcesCache, fetchJSON, getSourcesCached, localizedDate, orderedSourceEntries, pickZh, renderItemMiniCard, showError, showLoader } from './shared.js';
 
@@ -35,7 +35,7 @@ export async function renderDigest(_params) {
         dateStr,
         label: i === 0 ? t('digest.today') : i === 1 ? t('digest.yesterday') : t('digest.days_ago', { n: i }),
         display: localizedDate(d, { month: 'short', day: 'numeric' }),
-        count: dateCoverage[dateStr] || 0,
+        count: dateCoverage[normalizeDateStr(dateStr)] || 0,
       });
     }
 
@@ -98,7 +98,7 @@ export async function renderDigestDate(params) {
     const data = await fetchJSON(`${API_BASE}/digest?date=${date}`);
 
     // Build prev/next dates
-    const d = new Date(date.slice(0,4)+'-'+date.slice(4,6)+'-'+date.slice(6,8));
+    const d = new Date(normalizeDateStr(date));
     const prevDate = localDateStr(new Date(d.getTime() - 86400000));
     const nextDate = localDateStr(new Date(d.getTime() + 86400000));
     const displayDate = localizedDate(d, { year: 'numeric', month: 'long', day: 'numeric' });

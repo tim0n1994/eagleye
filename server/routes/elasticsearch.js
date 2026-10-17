@@ -56,6 +56,7 @@ function register(routes) {
   // --- Elasticsearch: Reindex (admin) ---
   // POST /api/es/reindex
   routes['/api/es/reindex'] = async (req, res) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed; use POST');
     if (requireAdmin(req, res)) return;
     try {
       const result = await esReindex();
@@ -68,6 +69,7 @@ function register(routes) {
   // --- Elasticsearch: Incremental Sync ---
   // POST /api/es/sync — only sync items updated since last sync
   routes['/api/es/sync'] = async (req, res) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed; use POST');
     if (requireAdmin(req, res)) return;
     try {
       const result = await esIncrementalSync();
@@ -80,6 +82,7 @@ function register(routes) {
   // --- Elasticsearch: AI Setup (initialize inference endpoints + pipelines) ---
   // POST /api/es/setup-ai
   routes['/api/es/setup-ai'] = async (req, res) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed; use POST');
     if (requireAdmin(req, res)) return;
     try {
       const result = await setupAI();

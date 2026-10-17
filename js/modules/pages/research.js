@@ -49,6 +49,11 @@ export async function renderResearchPage(params) {
     const data = await API.fetchItem(itemId);
     const item = data.item || {};
     const summary = item.ai_summary || {};
+    const summaryProvenance = summary.model_provider === 'deterministic'
+      ? (getLanguage() === 'zh' ? '来源标题卡片 · 正文缺失' : 'Source title card · Body unavailable')
+      : (getLanguage() === 'zh'
+        ? `AI 摘要 · ${summary.model_name || '模型来源未记录'} · 未经独立核验`
+        : `AI summary · ${summary.model_name || 'Model not recorded'} · Not independently verified`);
     const deploy = data.deploy || {};
     const title = getItemDisplayTitle(item);
     const oneLiner = pickZh(summary.one_liner, summary.one_liner_zh);
@@ -94,6 +99,7 @@ export async function renderResearchPage(params) {
                 <div class="research-summary-source">${escapeHtml(item.source_label || '')}</div>
                 <div class="research-summary-time">${escapeHtml(item.published_at ? timeAgo(item.published_at) : timeAgo(item.created_at))}</div>
               </div>
+              <p class="subtle">${escapeHtml(summaryProvenance)}</p>
               ${oneLiner ? `<p class="research-one-liner">${escapeHtml(oneLiner)}</p>` : ''}
               ${shortSummary ? `<p class="research-short-summary">${escapeHtml(shortSummary)}</p>` : ''}
               ${keyPoints.length ? `<ul class="research-key-points">${keyPoints.map((point) => `<li>${escapeHtml(point)}</li>`).join('')}</ul>` : ''}

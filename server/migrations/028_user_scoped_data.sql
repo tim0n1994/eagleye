@@ -15,6 +15,11 @@
 -- infer, so they stay global and read back as unset for everyone — data is
 -- preserved either way, never dropped.
 
+CREATE TABLE IF NOT EXISTS user_data (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+
 CREATE TABLE user_data_scoped (
   key     TEXT NOT NULL,
   user_id TEXT NOT NULL DEFAULT '',

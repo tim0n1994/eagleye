@@ -21,23 +21,28 @@ class RSSConnector extends BaseConnector {
     return row?.feed_url || null;
   }
 
-  async fetch(date) {
+  async fetch(date, { signal } = {}) {
+    signal?.throwIfAborted();
     const feedUrl = this.getFeedUrl();
     if (!feedUrl) {
-      console.warn(`No feed URL for source: ${this.slug}`);
-      return [];
+      throw new Error(`No feed URL for source: ${this.slug}`);
     }
 
     try {
-      const xml = await fetchURL(feedUrl);
-      return this.parseRSS(xml, date);
+      const xml = await fetchURL(feedUrl, { signal });
+      return this.parseRSS(xml, date, feedUrl);
     } catch (err) {
-      console.error(`RSS fetch error for ${this.slug}:`, err.message);
-      return [];
+      signal?.throwIfAborted();
+      const fallback = this.slug === 'solidot' && process.env.SOLIDOT_RSS_FALLBACK_URL;
+      if (!fallback) throw err;
+      console.warn(`RSS primary failed for ${this.slug}; using configured fallback: ${err.message}`);
+      const xml = await fetchURL(fallback, { signal });
+      return this.parseRSS(xml, date, fallback);
     }
   }
 
-  parseRSS(xml, date) {
+  parseRSS(xml, date, feedUrl = this.getFeedUrl()) {
+    if (!/<(?:rss|feed)\b/i.test(xml)) throw new Error(`Invalid RSS/Atom response for ${this.slug}`);
     const items = [];
     const itemRegex = /<(item|entry)>([\s\S]*?)<\/\1>/gi;
     let itemMatch;
@@ -93,7 +98,7 @@ class RSSConnector extends BaseConnector {
           publishedAt: pubDate || new Date().toISOString(),
           sourcePayload: {
             guid: guidRaw || '',
-            feedUrl: this.getFeedUrl(),
+            feedUrl,
             image: extractImage(description),
           },
         }),

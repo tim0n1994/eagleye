@@ -14,6 +14,13 @@ const {
 const { runJob, JOB_TYPES } = require('../services/jobs');
 const { escapeXML } = require('../services/utils');
 const { sendJSON, sendError } = require('./_shared');
+const { requireAdminPost, positiveInteger } = require('./_validation');
+const { normalizeDigestDate, todayDigestDate } = require('../services/date-contract');
+
+function validDigestDate(value) {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10) === value;
+}
 
 function register(routes) {
   // --- Signal Types API ---
@@ -82,7 +89,9 @@ function register(routes) {
   // alpha_score_audience is returned + used for ORDER BY.
   routes['/api/signals'] = (req, res, parsed) => {
     const signalType = parsed.query.type || 'all';
-    const date = parsed.query.date || '';
+    const rawDate = parsed.query.date || '';
+    const date = rawDate ? normalizeDigestDate(rawDate) : '';
+    if (rawDate && !date) return sendError(res, 400, 'Invalid date: expected YYYY-MM-DD or YYYYMMDD');
     const sinceDays = parsed.query.sinceDays ? parseInt(parsed.query.sinceDays, 10) : null;
     const sortBy = parsed.query.sort || 'alpha_score';
     const audience = parsed.query.audience || '';
@@ -97,7 +106,7 @@ function register(routes) {
     }
 
     const signals = getSignals({ signalType, date, sinceDays, sortBy, audience, limit, offset, lens });
-    sendJSON(res, 200, { status: 'ok', signals, audience: audience || null, lens_active: !!lens });
+    sendJSON(res, 200, { status: 'ok', signals, audience: audience || null, lens_active: !!lens, score_scale: { alpha_score: '0-1', alpha_score_audience: '0-1' } });
   };
 
   // --- Personal Alpha Lens (PRD-5): user-defined signal-type weighting ---
@@ -158,9 +167,16 @@ function register(routes) {
   //   ?date=YYYYMMDD      → SCORE_SIGNALS: re-classify one date only (default today).
   //   ?limit=N            → cap per-date item count (single-date mode only).
   routes['/api/signals/rescore'] = async (req, res, parsed) => {
+    if (requireAdminPost(req, res)) return;
+    const concurrency = positiveInteger(parsed.query.concurrency, 4, 8);
+    const limit = positiveInteger(parsed.query.limit, 500, 1600);
+    if (concurrency === null) return sendError(res, 400, 'concurrency must be an integer between 1 and 8');
+    if (limit === null) return sendError(res, 400, 'limit must be an integer between 1 and 1600');
+    const date = normalizeDigestDate(parsed.query.date ?? todayDigestDate());
+    if (!date || !validDigestDate(date)) return sendError(res, 400, 'Invalid date: expected YYYY-MM-DD or YYYYMMDD');
     const all = parsed.query.all === 'true' || parsed.query.all === '1';
     if (all) {
-      const jobId = await runJob(JOB_TYPES.RESCORE_ALL, { concurrency: parseInt(parsed.query.concurrency || '0', 10) || undefined });
+      const jobId = await runJob(JOB_TYPES.RESCORE_ALL, { concurrency });
       return sendJSON(res, 200, {
         status: 'ok',
         job_id: jobId,
@@ -168,9 +184,7 @@ function register(routes) {
         message: `Full-corpus rescore queued. Poll /api/jobs/${jobId}.`,
       });
     }
-    const date = parsed.query.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const limit = parseInt(parsed.query.limit || '500', 10);
-    const jobId = await runJob(JOB_TYPES.SCORE_SIGNALS, { date, limit });
+    const jobId = await runJob(JOB_TYPES.SCORE_SIGNALS, { date, limit, concurrency });
     sendJSON(res, 200, {
       status: 'ok',
       job_id: jobId,

@@ -1,0 +1,31 @@
+{
+  "job": {
+    "id": "2fcc4959-fc6e-4b26-b077-c313b9fbadec",
+    "job_type": "build-digest",
+    "status": "completed",
+    "params": "{\"date\":\"20260907\"}",
+    "result": "{\"id\":\"7a924fa4-fceb-43e4-8765-0faf49f6ad18\",\"headline\":\"文本驱动的3D卡片与交互网页自动生成，显示生成式设计工具正向端到端创作流程演进。\",\"executive_summary\":\"EverettFish/holo-card-studio开源实现从文本或参考图生成3D卡片及交互网页，值得关注其对设计、原型和前端开发流程的潜在影响。\",\"top_signals\":[{\"title\":\"生成式AI覆盖3D与交互网页创作\",\"reason\":\"该项目将文本描述或上传参考图连接到3D卡片和交互网页生成流程，体现生成式工具从内容生成向可交互体验构建扩展。\",\"item_ids\":[\"0f9fe537-19e0-42df-b6cd-46cdf497ecd2\"]}],\"emerging_topics\":[{\"topic\":\"文本驱动的3D界面与网页原型生成\",\"why_now\":\"今日项目直接聚焦从自然语言或参考图生成3D卡片和交互网页，表明该方向已有开源实践，但其成熟度和实际生产效果暂不确定。\",\"item_ids\":[\"0f9fe537-19e0-42df-b6cd-46cdf497ecd2\"]}],\"repo_watch\":[{\"repo\":\"EverettFish/holo-card-studio\",\"why\":\"开源实现文本或参考图到3D卡片及交互网页的自动化生成流程，适合跟踪其生成质量、技术栈、可扩展性和社区活跃度。\",\"item_id\":\"0f9fe537-19e0-42df-b6cd-46cdf497ecd2\"}],\"paper_watch\":[],\"product_watch\":[],\"risk_watch\":[{\"risk\":\"生成结果的稳定性、可控性和生产可用性尚不明确\",\"evidence\":\"输入仅说明项目实现了从文本描述或参考图到3D卡片与交互网页的自动化流程，未提供质量评测、性能数据或实际部署证据。\",\"item_ids\":[\"0f9fe537-19e0-42df-b6cd-46cdf497ecd2\"]}],\"llm_metadata\":{\"provider\":\"claude\",\"endpoint_id\":\"lane-3\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":15236,\"usage\":{\"input_tokens\":295,\"output_tokens\":640},\"attempts\":1,\"trace_id\":\"9ddc88dc-c7c7-4e44-af71-de68b97b4930\"}}",
+    "error": null,
+    "created_at": "2026-09-09 04:30:46",
+    "started_at": "2026-09-09 04:30:46",
+    "completed_at": "2026-09-09 04:31:01"
+  },
+  "digest": {
+    "id": "7a924fa4-fceb-43e4-8765-0faf49f6ad18",
+    "digest_date": "20260907",
+    "headline": "文本驱动的3D卡片与交互网页自动生成，显示生成式设计工具正向端到端创作流程演进。",
+    "executive_summary": "EverettFish/holo-card-studio开源实现从文本或参考图生成3D卡片及交互网页，值得关注其对设计、原型和前端开发流程的潜在影响。",
+    "top_signals": "[{\"title\":\"生成式AI覆盖3D与交互网页创作\",\"reason\":\"该项目将文本描述或上传参考图连接到3D卡片和交互网页生成流程，体现生成式工具从内容生成向可交互体验构建扩展。\",\"item_ids\":[\"0f9fe537-19e0-42df-b6cd-46cdf497ecd2\"]}]",
+    "emerging_topics": "[{\"topic\":\"文本驱动的3D界面与网页原型生成\",\"why_now\":\"今日项目直接聚焦从自然语言或参考图生成3D卡片和交互网页，表明该方向已有开源实践，但其成熟度和实际生产效果暂不确定。\",\"item_ids\":[\"0f9fe537-19e0-42df-b6cd-46cdf497ecd2\"]}]",
+    "repo_watch": "[{\"repo\":\"EverettFish/holo-card-studio\",\"why\":\"开源实现文本或参考图到3D卡片及交互网页的自动化生成流程，适合跟踪其生成质量、技术栈、可扩展性和社区活跃度。\",\"item_id\":\"0f9fe537-19e0-42df-b6cd-46cdf497ecd2\"}]",
+    "paper_watch": "[]",
+    "product_watch": "[]",
+    "risk_watch": "[{\"risk\":\"生成结果的稳定性、可控性和生产可用性尚不明确\",\"evidence\":\"输入仅说明项目实现了从文本描述或参考图到3D卡片与交互网页的自动化流程，未提供质量评测、性能数据或实际部署证据。\",\"item_ids\":[\"0f9fe537-19e0-42df-b6cd-46cdf497ecd2\"]}]",
+    "ai_generated": 1,
+    "prompt_version": "v3.1-knowledge-card-graph-zh",
+    "model_name": "configured-model",
+    "item_count": 1,
+    "created_at": "2026-09-09 04:31:01",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-3\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":15236,\"usage\":{\"input_tokens\":295,\"output_tokens\":640},\"attempts\":1,\"trace_id\":\"9ddc88dc-c7c7-4e44-af71-de68b97b4930\"}"
+  }
+}

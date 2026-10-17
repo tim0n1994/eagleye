@@ -11,6 +11,13 @@ const { getDB } = require('../db/connection');
 const { runJob, JOB_TYPES } = require('../services/jobs');
 const { getTopicTimeline, getTopicGraphNeighborhood } = require('../services/topic-graph');
 const { sendJSON, sendError } = require('./_shared');
+const { requireAdminPost } = require('./_validation');
+const { normalizeDigestDate, todayDigestDate } = require('../services/date-contract');
+
+function validDigestDate(value) {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10) === value;
+}
 
 function register(routes) {
 
@@ -243,6 +250,7 @@ function register(routes) {
     if (req.method !== 'POST') {
       return sendError(res, 405, 'Method not allowed. Use POST to build tag hierarchy.');
     }
+    if (requireAdminPost(req, res)) return;
     const background = parsed.query.background !== 'false';
     if (background) {
       const jobId = await runJob(JOB_TYPES.BUILD_TAG_HIERARCHY, {});
@@ -273,7 +281,9 @@ function register(routes) {
 
   // --- Build Topic Graph (trigger) ---
   routes['/api/topics/build'] = async (req, res, parsed) => {
-    const date = parsed.query.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    if (requireAdminPost(req, res)) return;
+    const date = normalizeDigestDate(parsed.query.date ?? todayDigestDate());
+    if (!date || !validDigestDate(date)) return sendError(res, 400, 'Invalid date: expected YYYY-MM-DD or YYYYMMDD');
     const background = parsed.query.background !== 'false';
     const deep = parsed.query.deep === 'true' || parsed.query.deep === '1';
 
@@ -293,6 +303,7 @@ function register(routes) {
 
   // --- Topic Deep Research (§9.2): POST /api/topics/:slug/research ---
   routes['/api/topics/:slug/research'] = async (req, res, _parsed, params) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed; use POST');
     const slug = params?.slug || '';
     if (!slug) return sendError(res, 400, 'Topic slug required');
     try {
