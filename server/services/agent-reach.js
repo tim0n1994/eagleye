@@ -166,9 +166,10 @@ function twitterUserPosts(username, count = 10, opts = {}) {
  * NOTE: the `subreddit` subcommand names the upvote metric `upvotes`
  * (the `search` subcommand names it `score`). Connectors must read the right one.
  */
-function redditSubreddit(subreddit, { sort = 'hot', limit = 20 } = {}) {
+function redditSubreddit(subreddit, { sort = 'hot', limit = 20, signal } = {}) {
   return runReach('opencli', ['reddit', 'subreddit', String(subreddit).replace(/^r\//, ''), '--sort', sort, '--limit', String(limit), '-f', 'json'], {
     jsonMode: 'opencli-json',
+    signal,
   });
 }
 
@@ -176,9 +177,10 @@ function redditSubreddit(subreddit, { sort = 'hot', limit = 20 } = {}) {
  * Search XiaoHongShu notes via opencli. Each result carries a full `url`
  * containing the xsec_token required to read the full note later.
  */
-function xiaohongshuSearch(keyword, { limit = 20 } = {}) {
+function xiaohongshuSearch(keyword, { limit = 20, signal } = {}) {
   return runReach('opencli', ['xiaohongshu', 'search', String(keyword), '--limit', String(limit), '-f', 'json'], {
     jsonMode: 'opencli-json',
+    signal,
   });
 }
 
