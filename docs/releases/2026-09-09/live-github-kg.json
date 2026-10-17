@@ -1,0 +1,16 @@
+{
+  "phase": "done",
+  "run_id": "kgr_b22ae936b3dbd49b71f69ee4",
+  "processed": 447,
+  "tags": 5575,
+  "topics": 447,
+  "entities": 1341,
+  "edges": 7363,
+  "total": 447,
+  "selection": "source-balanced-pending",
+  "by_source": {
+    "github-trending": 447
+  },
+  "seconds": 4.432,
+  "items_per_sec": 100.86
+}

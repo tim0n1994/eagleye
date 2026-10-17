@@ -21,6 +21,7 @@
 
 const { getValue, setValue } = require('../db/user-data');
 const { getDB } = require('../db/connection');
+const { todayDigestDate } = require('./date-contract');
 
 const KEY = 'watchlist';
 const MAX_SUBS = 200;
@@ -86,7 +87,7 @@ function getFeed({ sinceDays = 7, limit = 100, userId } = {}) {
 
   const since = (() => {
     const d = new Date(); d.setDate(d.getDate() - sinceDays);
-    return d.toISOString().slice(0, 10).replace(/-/g, '');
+    return todayDigestDate(d);
   })();
 
   const seen = new Set();

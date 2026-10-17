@@ -11,7 +11,7 @@
  *    {ok,schema_version,data} envelope; opencli returns bare JSON arrays).
  *    This module normalizes them into one result object connectors can branch on.
  *
- * Result shape (runReach NEVER rejects — connectors check `result.ok`):
+ * Result shape (cancellation rejects; other failures use `result.ok`):
  *   { ok: true,  data: Array|Object, raw: <parsed>, stdout, stderr }
  *   { ok: false, code: 'AUTH_REQUIRED'|'NOT_FOUND'|'TIMEOUT'|'ENOENT'|
  *                   'BRIDGE_DOWN'|'PARSE_ERROR'|'EXIT_<n>', message, stdout, stderr }
@@ -28,6 +28,7 @@ const { spawn } = require('child_process');
 // absolute-path overrides for non-PATH environments.
 
 const TWITTER_BIN = process.env.AGENT_REACH_TWITTER_BIN || 'twitter';
+const RDT_BIN = process.env.AGENT_REACH_RDT_BIN || 'rdt';
 const OPENCLI_BIN = process.env.AGENT_REACH_OPENCLI_BIN || 'opencli';
 const REACH_BIN = process.env.AGENT_REACH_BIN || 'agent-reach';
 
@@ -46,7 +47,7 @@ function tail(text, length = 2000) {
  */
 function classifyError(stdout, stderr, exitCode, signal) {
   const blob = `${stdout}\n${stderr}`;
-  if (signal === 'SIGTERM' || /timeout|timed out/i.test(blob)) return { code: 'TIMEOUT', message: 'agent-reach command timed out' };
+  if (signal === 'SIGTERM' || signal === 'SIGKILL' || /timeout|timed out/i.test(blob)) return { code: 'TIMEOUT', message: 'agent-reach command timed out' };
   if (/AUTH_REQUIRED|not.*log(?:ged)?\s*in|login\s*(?:required|expired)|unauthor/i.test(blob)) {
     return { code: 'AUTH_REQUIRED', message: 'login required or session expired' };
   }
@@ -90,21 +91,24 @@ function parseJSON(stdout, jsonMode) {
 
 /**
  * Spawn an agent-reach backend command and resolve with a normalized result.
- * Never rejects — callers inspect `result.ok`.
+ * Cancellation rejects; other failures resolve with `result.ok` false.
  *
- * @param {'twitter'|'opencli'|'agent-reach'} cmd
+ * @param {'twitter'|'rdt'|'opencli'|'agent-reach'} cmd
  * @param {string[]} args
- * @param {{timeoutMs?: number, jsonMode?: 'cli-json'|'opencli-json'|'json'}} [opts]
+ * @param {{signal?: AbortSignal, timeoutMs?: number, jsonMode?: 'cli-json'|'opencli-json'|'json'}} [opts]
  */
-function runReach(cmd, args, opts = {}) {
-  const bin = cmd === 'twitter' ? TWITTER_BIN : cmd === 'opencli' ? OPENCLI_BIN : REACH_BIN;
+async function runReach(cmd, args, opts = {}) {
+  opts.signal?.throwIfAborted();
+  const bin = cmd === 'twitter' ? TWITTER_BIN : cmd === 'rdt' ? RDT_BIN : cmd === 'opencli' ? OPENCLI_BIN : REACH_BIN;
   const timeoutMs = opts.timeoutMs ?? (cmd === 'opencli' ? OPENCLI_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
   const jsonMode = opts.jsonMode || 'json';
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const proc = spawn(bin, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: timeoutMs,
+      signal: opts.signal,
+      killSignal: opts.signal ? 'SIGKILL' : 'SIGTERM',
       env: process.env,
     });
 
@@ -114,6 +118,7 @@ function runReach(cmd, args, opts = {}) {
     proc.stderr.on('data', (d) => { stderr += d; });
 
     proc.on('error', (err) => {
+      if (opts.signal?.aborted) return reject(opts.signal.reason);
       const enoent = err && err.code === 'ENOENT';
       resolve({
         ok: false,
@@ -125,6 +130,7 @@ function runReach(cmd, args, opts = {}) {
     });
 
     proc.on('close', (code, signal) => {
+      if (opts.signal?.aborted) return reject(opts.signal.reason);
       if (code === 0) {
         try {
           const parsed = parseJSON(stdout, jsonMode);
@@ -147,10 +153,11 @@ function runReach(cmd, args, opts = {}) {
  * Uses the stable `user-posts` command (search is documented-unstable).
  * @returns {Promise<{ok, data, code?, message?}>}
  */
-function twitterUserPosts(username, count = 10) {
+function twitterUserPosts(username, count = 10, opts = {}) {
   const handle = String(username).replace(/^@/, '');
   return runReach('twitter', ['user-posts', `@${handle}`, '-n', String(count), '--json'], {
     jsonMode: 'cli-json',
+    signal: opts.signal,
   });
 }
 
@@ -184,11 +191,12 @@ const DOCTOR_TTL_MS = parseInt(process.env.AGENT_REACH_DOCTOR_TTL_MS || '600000'
  * Return the agent-reach doctor map, cached for DOCTOR_TTL_MS.
  * Shape: { twitter: {status, active_backend, tier, backends[]}, reddit: {...}, ... }
  */
-async function doctorStatus() {
+async function doctorStatus(opts = {}) {
+  opts.signal?.throwIfAborted();
   if (doctorCache.data && Date.now() - doctorCache.ts < DOCTOR_TTL_MS) {
     return doctorCache.data;
   }
-  const result = await runReach('agent-reach', ['doctor', '--json'], { jsonMode: 'opencli-json', timeoutMs: 30000 });
+  const result = await runReach('agent-reach', ['doctor', '--json'], { jsonMode: 'opencli-json', timeoutMs: 30000, signal: opts.signal });
   if (result.ok && result.raw && typeof result.raw === 'object' && !Array.isArray(result.raw)) {
     doctorCache = { ts: Date.now(), data: result.raw };
     return result.raw;
@@ -203,8 +211,11 @@ async function doctorStatus() {
  * result.code of the actual call. Use this only to skip a backend that's clearly
  * absent (so a connector can fall back or no-op without a slow timeout).
  */
-async function isReachReady(platform) {
-  const status = await doctorStatus();
+async function isReachReady(platform, opts = {}) {
+  opts.signal?.throwIfAborted();
+  // Doctor deliberately leaves explicit Twitter credentials unverified; the live probe decides usability.
+  if (platform === 'twitter' && process.env.TWITTER_AUTH_TOKEN && process.env.TWITTER_CT0) return true;
+  const status = await doctorStatus(opts);
   if (!status || !status[platform]) return true; // unknown → be permissive, let the call decide
   const p = status[platform];
   return p.status === 'ok' && p.active_backend !== undefined && p.active_backend !== null;

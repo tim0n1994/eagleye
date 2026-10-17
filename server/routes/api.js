@@ -20,6 +20,7 @@ const registerDiscoveryRoutes = require('./discovery');
 const registerGraphRoutes = require('./graph');
 const registerItemsRoutes = require('./items');
 const registerJobsRoutes = require('./jobs');
+const registerMcpConfigRoutes = require('./mcp-config');
 const registerResearchRoutes = require('./research');
 const registerSettingsRoutes = require('./settings');
 const registerSourcesRoutes = require('./sources');
@@ -40,6 +41,7 @@ function registerRoutes(routes) {
   registerGraphRoutes(routes);
   registerItemsRoutes(routes);
   registerJobsRoutes(routes);
+  registerMcpConfigRoutes(routes);
   registerResearchRoutes(routes);
   registerSettingsRoutes(routes);
   registerSourcesRoutes(routes);

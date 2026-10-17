@@ -23,6 +23,7 @@
  */
 
 const { getDB } = require('../db/connection');
+const { normalizeDigestDate, todayDigestDate } = require('./date-contract');
 
 const STOPWORDS = new Set([
   'the', 'a', 'an', 'to', 'of', 'in', 'on', 'for', 'and', 'or', 'is', 'are',
@@ -169,12 +170,14 @@ function getStories({ date = '', sinceDays = 7, limit = 100 } = {}) {
   let dateFilter = '';
   const params = [];
   if (date) {
+    const digestDate = normalizeDigestDate(date);
+    if (!digestDate) return [];
     dateFilter = 'WHERE i.digest_date = ?';
-    params.push(date);
+    params.push(digestDate);
   } else if (sinceDays > 0) {
     const since = (() => {
       const d = new Date(); d.setDate(d.getDate() - sinceDays);
-      return d.toISOString().slice(0, 10).replace(/-/g, '');
+      return todayDigestDate(d);
     })();
     dateFilter = 'WHERE i.digest_date >= ?';
     params.push(since);

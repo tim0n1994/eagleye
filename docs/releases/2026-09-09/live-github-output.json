@@ -1,0 +1,42 @@
+[
+  {
+    "id": "0f9fe537-19e0-42df-b6cd-46cdf497ecd2",
+    "original_summary": "Turn the user's description or uploaded reference into a finished, editable Blender card and an interactive Three.js page. Preserve the requested subject, style, typography and destination. This skill contains code and text only; generated artwork belongs in the user's output project.",
+    "short_summary_zh": "该项目将用户描述或参考图转化为可编辑的Blender卡片和交互式Three.js页面，保留主题、风格、排版与目标。",
+    "model_name": "configured-model",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-5\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":15986,\"usage\":{\"input_tokens\":1188,\"output_tokens\":346,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0},\"attempts\":1,\"trace_id\":\"f262c08f-864d-4058-9888-420c0ce6b946\"}",
+    "alpha_score": 0.5497363761933537
+  },
+  {
+    "id": "32fbb17d-efef-4878-9624-7f8fce39027e",
+    "original_summary": "Open-source 3D anatomy explorer: 2,234 selectable BodyParts3D meshes, system layers, search, and exploded views.",
+    "short_summary_zh": "通过三维网格、系统分层和拆解视图探索人体结构。",
+    "model_name": "configured-model",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-4\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":22260,\"usage\":{\"input_tokens\":9050,\"output_tokens\":1634},\"attempts\":1,\"trace_id\":\"1fc9c11c-a978-4841-8364-896c2b904010\"}",
+    "alpha_score": 0.599736376244794
+  },
+  {
+    "id": "495008a4-e9cf-4a27-8d67-9642f9007fdb",
+    "original_summary": "Local-first WeChat intelligence system with a read-only CLI, Codex skills, searchable chat history, daily briefings, follow-ups and opportunity tracking.",
+    "short_summary_zh": "本地管理微信信息，支持检索、简报和机会跟踪。",
+    "model_name": "configured-model",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-4\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":22260,\"usage\":{\"input_tokens\":9050,\"output_tokens\":1634},\"attempts\":1,\"trace_id\":\"1fc9c11c-a978-4841-8364-896c2b904010\"}",
+    "alpha_score": 0.5622363762190739
+  },
+  {
+    "id": "54d7cc15-8bd5-4a67-992c-7dfb5cbaff1d",
+    "original_summary": "Open-source AI brand visibility and competitor reports",
+    "short_summary_zh": "用人工智能分析品牌可见度和竞争对手表现。",
+    "model_name": "configured-model",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-4\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":22260,\"usage\":{\"input_tokens\":9050,\"output_tokens\":1634},\"attempts\":1,\"trace_id\":\"1fc9c11c-a978-4841-8364-896c2b904010\"}",
+    "alpha_score": 0.5622363762190739
+  },
+  {
+    "id": "f319023e-77fd-41ca-9679-b23dc45c8e4a",
+    "original_summary": "Sketch Material 3 Expressive screens in the browser and turn them into vibe-coding prompts.",
+    "short_summary_zh": "在浏览器绘制界面，并将设计转为编程提示。",
+    "model_name": "configured-model",
+    "llm_metadata": "{\"provider\":\"claude\",\"endpoint_id\":\"lane-4\",\"protocol\":\"anthropic\",\"requested_model\":\"configured-model\",\"model\":\"configured-model\",\"latency_ms\":22260,\"usage\":{\"input_tokens\":9050,\"output_tokens\":1634},\"attempts\":1,\"trace_id\":\"1fc9c11c-a978-4841-8364-896c2b904010\"}",
+    "alpha_score": 0.5622363508589915
+  }
+]

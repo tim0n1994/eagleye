@@ -14,11 +14,19 @@ const BCRYPT_ROUNDS = 10;
 const SESSION_MAX_AGE_DAYS = 7;
 const VERIFICATION_CODE_EXPIRY_MINUTES = 10;
 
-// SQLite datetime('now') returns UTC strings like "2026-07-12 15:00:06".
-// JS new Date() parses those as LOCAL time — we must force UTC by appending 'Z'.
 function parseSqliteUTC(s) {
-  if (!s) return new Date(0);
-  return new Date(s.replace(' ', 'T') + 'Z');
+  if (typeof s !== 'string' || !s.trim()) return new Date(NaN);
+  const text = s.trim().replace(' ', 'T');
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/.test(text)) return new Date(NaN);
+  const day = new Date(`${text.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== text.slice(0, 10)
+    || Number(text.slice(11, 13)) > 23 || Number(text.slice(14, 16)) > 59 || Number(text.slice(17, 19)) > 59) return new Date(NaN);
+  return new Date(/(?:Z|[+-]\d{2}:\d{2})$/.test(text) ? text : `${text}Z`);
+}
+
+function hasExpired(value) {
+  const expires = parseSqliteUTC(value).getTime();
+  return !Number.isFinite(expires) || expires <= Date.now();
 }
 
 // ─── Password ────────────────────────────────────────────────────────────
@@ -98,7 +106,7 @@ function getSessionUser(req) {
   if (!row) return null;
 
   // Check expiry
-  if (parseSqliteUTC(row.expires_at) < new Date()) {
+  if (hasExpired(row.expires_at)) {
     db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
     return null;
   }
@@ -154,7 +162,7 @@ function verifyCode(email, code, purpose = 'register') {
   `).get(email, code, purpose);
 
   if (!row) return false;
-  if (parseSqliteUTC(row.expires_at) < new Date()) return false;
+  if (hasExpired(row.expires_at)) return false;
 
   db.prepare('UPDATE verification_codes SET used = 1 WHERE id = ?').run(row.id);
   return true;
@@ -279,7 +287,7 @@ function getApiKeyOwner(key) {
   `).get(key);
   if (!row) return null;
   if (row.status !== 'active') return null;
-  if (row.expires_at && parseSqliteUTC(row.expires_at) < new Date()) return null;
+  if (row.expires_at !== null && hasExpired(row.expires_at)) return null;
 
   // Update last_used_at (non-blocking, cheap)
   try { db.prepare('UPDATE api_keys SET last_used_at = datetime(\'now\') WHERE key = ?').run(key); } catch {}

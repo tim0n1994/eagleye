@@ -1,20 +1,4 @@
-const http = require('http');
-const https = require('https');
-
-const MAX_LLM_SOCKETS = Math.max(8, parseInt(process.env.LLM_MAX_SOCKETS || '64', 10));
-const HTTP_KEEP_ALIVE_AGENT = new http.Agent({
-  keepAlive: true,
-  maxSockets: MAX_LLM_SOCKETS,
-  maxFreeSockets: Math.min(MAX_LLM_SOCKETS, 16),
-  timeout: 300000,
-});
-const HTTPS_KEEP_ALIVE_AGENT = new https.Agent({
-  keepAlive: true,
-  maxSockets: MAX_LLM_SOCKETS,
-  maxFreeSockets: Math.min(MAX_LLM_SOCKETS, 16),
-  keepAliveMsecs: 30000,
-  timeout: 300000,
-});
+const { protocolName, isMasked } = require('./llm-pool-config');
 
 /**
  * Eagleye — LLM Provider Abstraction
@@ -31,18 +15,6 @@ const HTTPS_KEEP_ALIVE_AGENT = new https.Agent({
  *   const provider = getProvider();
  *   const text = await provider.call("Your prompt here", { temperature: 0.2 });
  */
-
-// Pick the right transport module based on the URL scheme so OpenAI-compatible
-// endpoints that speak plain HTTP (e.g. local routers / proxies) work as
-// configured via OPENAI_BASE_URL. This previously hard-coded `https`, which
-// silently downgraded http:// URLs to 127.0.0.1:443 and returned ECONNREFUSED.
-function _requestModule(parsedUrl) {
-  return parsedUrl.protocol === 'http:' ? http : https;
-}
-
-function _requestAgent(parsedUrl) {
-  return parsedUrl.protocol === 'http:' ? HTTP_KEEP_ALIVE_AGENT : HTTPS_KEEP_ALIVE_AGENT;
-}
 
 // ─── Runtime config store ───────────────────────────────────────────────
 
@@ -77,16 +49,22 @@ function getLLMConfig() {
 
 function saveLLMConfig(cfg) {
   if (!cfg || typeof cfg !== 'object') throw new Error('config object required');
-  const required = ['provider', 'api_key', 'base_url', 'model'];
+  const previous = getLLMConfig();
+  const apiKey = cfg.api_key === undefined || isMasked(cfg.api_key) ? previous?.api_key : cfg.api_key;
+  const required = ['provider', 'model'];
   for (const k of required) {
     if (!cfg[k]) throw new Error(`config.${k} is required`);
   }
+  if (!apiKey) throw new Error('config.api_key is required');
+  if (!cfg.base_url && !cfg.endpoint_url) throw new Error('config.endpoint_url or base_url is required');
+  const protocol = protocolName(cfg.protocol || cfg.provider, cfg.endpoint_url);
   const stored = {
-    ...cfg,
-    api_key: String(cfg.api_key),
-    base_url: String(cfg.base_url).replace(/\/+$/, ''),
+    api_key: String(apiKey),
+    base_url: String(cfg.base_url || '').replace(/\/+$/, ''),
+    ...(cfg.endpoint_url ? { endpoint_url: String(cfg.endpoint_url).trim() } : {}),
     model: String(cfg.model),
-    provider: String(cfg.provider).toLowerCase(),
+    provider: protocol === 'anthropic' ? 'claude' : protocol,
+    protocol,
     source: cfg.source || 'manual',
     updated_at: new Date().toISOString(),
   };
@@ -106,10 +84,7 @@ function clearLLMConfig() {
 }
 
 function maskSecret(secret) {
-  if (!secret) return '';
-  const s = String(secret);
-  if (s.length <= 4) return '••••';
-  return s.slice(0, 2) + '••••' + s.slice(-2);
+  return secret ? '••••' : '';
 }
 
 // ─── Parser for the user's pasted config format ────────────────────────
@@ -150,17 +125,18 @@ function _extractField(text, labels) {
 
 function _extractFromCurl(text) {
   // Find the URL inside the curl command
-  const urlMatch = text.match(/curl\s+['"]?([^\s'"]+)\/chat\/completions/i)
-    || text.match(/curl\s+['"]?([^\s'"]+)/i);
+  const urlMatch = text.match(/curl\s+(?:-X\s+POST\s+)?['"]?(https?:\/\/[^\s'"]+)/i);
   if (!urlMatch) return null;
   let url = urlMatch[1].trim();
-  if (!/\/chat\/completions/.test(url)) {
+  const protocol = /\/messages(?:-\d+)?(?:\?|$)/.test(url) ? 'claude' : 'openai';
+  if (!/\/(chat\/completions|messages(?:-\d+)?)(?:\?|$)/.test(url)) {
     url = url.replace(/\/+$/, '') + '/chat/completions';
   }
-  const baseUrl = url.replace(/\/chat\/completions.*$/i, '');
+  const baseUrl = url.replace(/\/(chat\/completions|messages(?:-\d+)?).*$/i, '');
   // Bearer token
   const authMatch = text.match(/-H\s+['"]?Authorization:\s*Bearer\s+([^'"\s]+)['"]?/i)
-    || text.match(/Authorization:\s*Bearer\s+([^\s'"]+)/i);
+    || text.match(/Authorization:\s*Bearer\s+([^\s'"]+)/i)
+    || text.match(/x-api-key:\s*([^\s'"]+)/i);
   const apiKey = authMatch ? authMatch[1].trim() : null;
   // Model from inline -d
   let model = null;
@@ -174,7 +150,8 @@ function _extractFromCurl(text) {
       if (m2) model = m2[1];
     }
   }
-  return { base_url: baseUrl, api_key: apiKey, model };
+  if (!model) model = text.match(/"model"\s*:\s*"([^"]+)"/)?.[1] || null;
+  return { base_url: baseUrl, endpoint_url: url, provider: protocol, api_key: apiKey, model };
 }
 
 function parsePastedLLMConfig(text) {
@@ -187,9 +164,9 @@ function parsePastedLLMConfig(text) {
   if (raw.startsWith('{')) {
     try {
       const obj = JSON.parse(raw);
-      const provider = (obj.provider || obj.type || 'openai').toString().toLowerCase();
+      const provider = (obj.protocol || obj.provider || obj.type || 'openai').toString().toLowerCase();
       const api_key = obj.api_key || obj.apiKey || obj.key || obj.token;
-      const base_url = (obj.base_url || obj.baseUrl || obj.endpoint || obj.url || '').toString().replace(/\/+$/, '');
+      const base_url = (obj.base_url || obj.baseUrl || obj.endpoint_url || obj.endpoint || obj.url || '').toString().replace(/\/+$/, '');
       const model = obj.model || obj.model_name || obj.modelName;
       if (!api_key) return { error: 'JSON config missing api_key' };
       if (!base_url) return { error: 'JSON config missing base_url' };
@@ -198,6 +175,7 @@ function parsePastedLLMConfig(text) {
         provider: _normaliseProvider(provider, raw),
         api_key: String(api_key),
         base_url: String(base_url),
+        ...(obj.endpoint_url ? { endpoint_url: String(obj.endpoint_url) } : /\/(messages(?:-\d+)?|chat\/completions)$/.test(base_url) ? { endpoint_url: base_url } : {}),
         model: String(model),
       };
     } catch {
@@ -210,9 +188,10 @@ function parsePastedLLMConfig(text) {
     const extracted = _extractFromCurl(raw);
     if (extracted && extracted.base_url && extracted.api_key && extracted.model) {
       return {
-        provider: _normaliseProvider('openai', raw),
+        provider: _normaliseProvider(extracted.provider, raw),
         api_key: extracted.api_key,
         base_url: extracted.base_url,
+        endpoint_url: extracted.endpoint_url,
         model: extracted.model,
       };
     }
@@ -266,23 +245,27 @@ function parsePastedLLMConfig(text) {
     provider: _normaliseProvider(isAnthropic ? 'claude' : 'openai', raw),
     api_key: api_key,
     base_url: base_url,
+    ...(messages_url || chat_url ? { endpoint_url: messages_url || chat_url } : /\/(messages(?:-\d+)?|chat\/completions)$/.test(base_url) ? { endpoint_url: base_url } : {}),
     model: model,
   };
 }
 
 function _normaliseProvider(guess, raw) {
-  const t = (raw || '').toLowerCase();
-  if (/claude|anthropic/.test(t)) return 'claude';
-  if (/gemini|google/.test(t)) return 'gemini';
-  if (/openai|chat\s*completions|aliyun|dashscope|ali\s*cloud|qwen|deepseek|moonshot|groq|together|fireworks|openrouter/.test(t)) {
-    return 'openai';
-  }
-  return (guess || 'openai').toLowerCase();
+  const declared = _extractField(raw || '', ['Protocol']);
+  const protocol = protocolName(declared || guess);
+  return protocol === 'anthropic' ? 'claude' : protocol;
 }
 
 // ─── Test the active config by sending a tiny "hi" prompt ──────────────
 
 async function testLLMConfig() {
+  const pool = require('./llm-pool');
+  const poolConfig = pool.getPoolConfig();
+  if (poolConfig?.enabled) {
+    const endpoint = poolConfig.endpoints.find(row => row.enabled);
+    if (!endpoint) return { ok: false, reachable: false, validated: false, message: 'No enabled endpoint' };
+    return pool.testPoolEndpoint(endpoint.id);
+  }
   const provider = getProvider();
   if (!provider) {
     return { ok: false, message: 'No active LLM provider. Save a config or set .env first.' };
@@ -290,16 +273,16 @@ async function testLLMConfig() {
   const info = getProviderInfo();
   const t0 = Date.now();
   try {
-    const text = await provider.call('Reply with the single word: pong', { temperature: 0, maxTokens: 32 });
+    const result = await provider.callWithMetadata('Hi', { temperature: 0, maxTokens: 1, probe: true });
     const ms = Date.now() - t0;
-    if (!text) return { ok: false, message: 'Provider returned empty response', provider: info.provider, model: info.model, latency_ms: ms };
     return {
       ok: true,
-      message: `LLM responded in ${ms}ms`,
+      reachable: true,
+      validated: false,
+      message: `LLM endpoint reachable in ${ms}ms`,
       provider: info.provider,
-      model: info.model,
+      model: result.metadata.model,
       latency_ms: ms,
-      sample: text.slice(0, 200),
     };
   } catch (err) {
     return { ok: false, message: err.message, provider: info.provider, model: info.model, latency_ms: Date.now() - t0 };
@@ -315,334 +298,66 @@ function describeProvider(name) {
   }
 }
 
-// ─── Provider Implementations ───────────────────────────────────────────
-
-class GeminiProvider {
-  constructor(apiKey) {
-    this.apiKey = apiKey;
-    this.name = 'gemini';
-    this.model = process.env.LLM_MODEL || 'gemini-2.0-flash';
-  }
-
-  async call(prompt, options = {}) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
-    const payload = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: options.temperature ?? 0.2,
-        maxOutputTokens: options.maxTokens || 4096,
-        topP: 0.95,
-      },
-    };
-
-    const text = await this._post(url, payload);
-    if (!text) return null;
-
-    try {
-      const response = JSON.parse(text);
-      return response.candidates?.[0]?.content?.parts?.[0]?.text || null;
-    } catch {
-      return null;
-    }
-  }
-
-  async _post(url, payload) {
-    return new Promise((resolve, reject) => {
-      const parsed = new URL(url);
-      const body = JSON.stringify(payload);
-      const mod = _requestModule(parsed);
-      const req = mod.request({
-        hostname: parsed.hostname,
-        port: parsed.port || undefined,
-        path: parsed.pathname + parsed.search,
-        method: 'POST',
-        agent: _requestAgent(parsed),
-        headers: {
-          'Content-Type': 'application/json',
-          'Connection': 'keep-alive',
-          'Content-Length': Buffer.byteLength(body),
-        },
-      }, (res) => {
-        let data = '';
-        res.on('data', c => data += c);
-        res.on('end', () => resolve(data));
-      });
-      req.on('error', reject);
-      req.setTimeout(300000, () => { req.destroy(); reject(new Error('LLM request timeout')); });
-      req.write(body);
-      req.end();
-    });
-  }
+function buildLegacyProvider(cfg) {
+  const protocol = cfg.protocol || (cfg.provider === 'claude' ? 'anthropic' : cfg.provider);
+  const base = String(cfg.base_url || '').replace(/\/+$/, '');
+  const endpoint = {
+    id: 'legacy', protocol, api_key: cfg.api_key, model: cfg.model,
+    endpoint_url: cfg.endpoint_url || (protocol === 'gemini'
+      ? `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent`
+      : `${base}/${protocol === 'anthropic' ? 'messages' : 'chat/completions'}`),
+  };
+  return {
+    name: protocol === 'anthropic' ? 'claude' : protocol, model: cfg.model, isPool: false,
+    async callWithMetadata(prompt, options = {}) {
+      const { sendLLMRequest } = require('./llm-transport');
+      const response = await sendLLMRequest(endpoint, prompt, options);
+      return { text: response.text, metadata: {
+        endpoint_id: 'legacy', protocol, provider: protocol === 'anthropic' ? 'claude' : protocol,
+        requested_model: cfg.model, model: response.model || cfg.model, latency_ms: response.latency_ms,
+        usage: response.usage, attempts: 1, trace_id: require('node:crypto').randomUUID(),
+      } };
+    },
+    async call(prompt, options = {}) { return (await this.callWithMetadata(prompt, options)).text; },
+  };
 }
 
-class OpenAIProvider {
-  constructor(opts = {}) {
-    // Accept either an apiKey string (legacy) or a full config object
-    if (typeof opts === 'string') {
-      this.apiKey = opts;
-      this.model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-      this.baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
-    } else {
-      this.apiKey = opts.apiKey || opts.api_key;
-      this.model = opts.model || process.env.OPENAI_MODEL || 'gpt-4o-mini';
-      this.baseUrl = (opts.baseUrl || opts.base_url || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
-    }
-    this.name = 'openai';
-  }
-
-  async call(prompt, options = {}) {
-    const url = `${this.baseUrl}/chat/completions`;
-    const payload = {
-      model: this.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: options.temperature ?? 0.2,
-      max_tokens: options.maxTokens || 4096,
-      enable_thinking: false,
-    };
-    // Request strict JSON output when the caller opts in (e.g. signal
-    // classification). Some local routers ignore this field, so callers must
-    // still parse defensively.
-    if (options.json === true) {
-      payload.response_format = { type: 'json_object' };
-    }
-
-    const text = await this._post(url, payload);
-    if (!text) {
-      console.warn('  ⚠  OpenAI API returned empty response');
-      return null;
-    }
-
-    try {
-      const response = JSON.parse(text);
-      if (response.error) {
-        console.warn(`  ⚠  OpenAI API error: ${response.error.message || JSON.stringify(response.error).slice(0, 200)}`);
-        return null;
-      }
-      const message = response.choices?.[0]?.message;
-      // Prefer standard `content`; fall back to `reasoning_content` (used by
-      // reasoning models routed through FCM / OpenRouter / DeepSeek).
-      const result = message?.content || message?.reasoning_content || null;
-      // Strip <｜end▁of▁thinking｜><｜end▁of▁thinking｜>
-      return result;
-    } catch {
-      return null;
-    }
-  }
-
-  async _post(url, payload, retries = 2) {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      const result = await new Promise((resolve, reject) => {
-        const parsed = new URL(url);
-        const body = JSON.stringify(payload);
-        const mod = _requestModule(parsed);
-        const req = mod.request({
-          hostname: parsed.hostname,
-          port: parsed.port || undefined,
-          path: parsed.pathname + parsed.search,
-          method: 'POST',
-          agent: _requestAgent(parsed),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Connection': 'keep-alive',
-            'Content-Length': Buffer.byteLength(body),
-          },
-        }, (res) => {
-          let data = '';
-          res.on('data', c => data += c);
-          res.on('end', () => resolve(data));
-        });
-        req.on('error', reject);
-        req.setTimeout(300000, () => { req.destroy(); reject(new Error('LLM request timeout')); });
-        req.write(body);
-        req.end();
-      }).catch(err => {
-        const isRetryable = err.message?.includes('ECONNRESET') || err.message?.includes('EOF') || err.message?.includes('EPIPE') || err.message?.includes('ETIMEDOUT');
-        if (isRetryable && attempt < retries) {
-          return null; // signal retry
-        }
-        throw err;
-      });
-
-      if (result !== null) return result;
-      await new Promise(r => setTimeout(r, 800 * attempt));
-    }
-  }
-}
-
-class ClaudeProvider {
-  constructor(opts = {}) {
-    // Accept either an apiKey string (legacy) or a full config object.
-    if (typeof opts === 'string') {
-      this.apiKey = opts;
-      this.model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
-      this.baseUrl = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1').replace(/\/+$/, '');
-    } else {
-      this.apiKey = opts.apiKey || opts.api_key;
-      this.model = opts.model || process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
-      this.baseUrl = (opts.baseUrl || opts.base_url || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1').replace(/\/+$/, '');
-    }
-    this.name = 'claude';
-  }
-
-  async call(prompt, options = {}) {
-    const url = `${this.baseUrl}/messages`;
-    const payload = {
-      model: this.model,
-      max_tokens: options.maxTokens || 4096,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: options.temperature ?? 0.2,
-    };
-
-    const text = await this._post(url, payload);
-    if (!text) return null;
-
-    try {
-      const response = JSON.parse(text);
-      return response.content?.[0]?.text || null;
-    } catch {
-      return null;
-    }
-  }
-
-  async _post(url, payload) {
-    return new Promise((resolve, reject) => {
-      const parsed = new URL(url);
-      const body = JSON.stringify(payload);
-      const mod = _requestModule(parsed);
-      const req = mod.request({
-        hostname: parsed.hostname,
-        port: parsed.port || undefined,
-        path: parsed.pathname + parsed.search,
-        method: 'POST',
-        agent: _requestAgent(parsed),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.apiKey,
-          'anthropic-version': '2023-06-01',
-          'Connection': 'keep-alive',
-          'Content-Length': Buffer.byteLength(body),
-        },
-      }, (res) => {
-        let data = '';
-        res.on('data', c => data += c);
-        res.on('end', () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(data);
-          } else {
-            const snippet = (data || '').slice(0, 300).replace(/\s+/g, ' ');
-            reject(new Error(`LLM HTTP ${res.statusCode}: ${snippet || '(empty body)'}`));
-          }
-        });
-      });
-      req.on('error', reject);
-      req.setTimeout(300000, () => { req.destroy(); reject(new Error('LLM request timeout')); });
-      req.write(body);
-      req.end();
-    });
-  }
-}
-
-// ─── Provider Registry ──────────────────────────────────────────────────
-
-function _buildFromRuntime() {
+function legacyConfig() {
   const cfg = getLLMConfig();
-  if (!cfg) return null;
-  if (cfg.provider === 'openai' && cfg.api_key && cfg.base_url && cfg.model) {
-    return new OpenAIProvider({ apiKey: cfg.api_key, baseUrl: cfg.base_url, model: cfg.model });
-  }
-  if (cfg.provider === 'gemini' && cfg.api_key && cfg.model) {
-    return new GeminiProvider(cfg.api_key);
-  }
-  if (cfg.provider === 'claude' && cfg.api_key && cfg.model) {
-    return new ClaudeProvider({ apiKey: cfg.api_key, baseUrl: cfg.base_url, model: cfg.model });
-  }
-  return null;
+  if (cfg?.api_key && cfg.model) return cfg;
+  const env = process.env;
+  const keys = { gemini: env.GEMINI_API_KEY || env.LLM_API_KEY, openai: env.OPENAI_API_KEY, claude: env.ANTHROPIC_API_KEY || env.CLAUDE_API_KEY };
+  const preferred = String(env.LLM_PROVIDER || '').toLowerCase();
+  const provider = keys[preferred] ? preferred : ['gemini', 'openai', 'claude'].find(name => keys[name]);
+  if (!provider) return null;
+  return {
+    provider, api_key: keys[provider], source: 'env',
+    model: provider === 'gemini' ? env.LLM_MODEL || 'gemini-2.0-flash' : provider === 'openai' ? env.OPENAI_MODEL || 'gpt-4o-mini' : env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+    base_url: provider === 'openai' ? env.OPENAI_BASE_URL || 'https://api.openai.com/v1' : provider === 'claude' ? env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1' : '',
+  };
 }
 
-function getProvider() {
-  // 1) Runtime override always wins (the user pasted it via the UI)
-  const fromRuntime = _buildFromRuntime();
-  if (fromRuntime) return fromRuntime;
-
-  // 2) Fall back to .env
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.LLM_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
-  const claudeKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
-
-  // Priority: explicit LLM_PROVIDER env var, then first available key, then gemini
-  const preferred = (process.env.LLM_PROVIDER || '').toLowerCase();
-
-  if (preferred === 'openai' && openaiKey) return new OpenAIProvider(openaiKey);
-  if (preferred === 'claude' && claudeKey) return new ClaudeProvider({ apiKey: claudeKey, baseUrl: process.env.ANTHROPIC_BASE_URL, model: process.env.CLAUDE_MODEL });
-  if (preferred === 'gemini' && geminiKey) return new GeminiProvider(geminiKey);
-
-  // Auto-detect based on available keys
-  if (geminiKey) return new GeminiProvider(geminiKey);
-  if (openaiKey) return new OpenAIProvider(openaiKey);
-  if (claudeKey) return new ClaudeProvider({ apiKey: claudeKey, baseUrl: process.env.ANTHROPIC_BASE_URL, model: process.env.CLAUDE_MODEL });
-
-  // Fallback: no provider available
-  return null;
+function getProvider(task = 'general') {
+  const pool = require('./llm-pool').getPoolProvider(task);
+  if (pool) return pool;
+  const cfg = legacyConfig();
+  return cfg ? buildLegacyProvider(cfg) : null;
 }
 
-/**
- * Provider for high-volume enrichment. Same endpoint/key as getProvider(),
- * but overrides the model via ENRICH_LLM_MODEL (e.g. glm-4.5-air) so the
- * heavy batch work doesn't overload the primary model (e.g. glm-5.2).
- * Falls back to getProvider() if ENRICH_LLM_MODEL is not set.
- */
 function getEnrichProvider() {
-  const enrichModel = process.env.ENRICH_LLM_MODEL;
-  if (!enrichModel) return getProvider();
-
-  // Reuse the active provider's type/key/base, just swap the model.
-  const cfg = getLLMConfig();
-  if (cfg) {
-    if (cfg.provider === 'openai') return new OpenAIProvider({ apiKey: cfg.api_key, baseUrl: cfg.base_url, model: enrichModel });
-    if (cfg.provider === 'claude') return new ClaudeProvider({ apiKey: cfg.api_key, baseUrl: cfg.base_url, model: enrichModel });
-    if (cfg.provider === 'gemini') return new GeminiProvider(cfg.api_key);
-  }
-
-  // .env fallback
-  const claudeKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (claudeKey) return new ClaudeProvider({ apiKey: claudeKey, baseUrl: process.env.ANTHROPIC_BASE_URL, model: enrichModel });
-  if (openaiKey) return new OpenAIProvider({ apiKey: openaiKey, baseUrl: process.env.OPENAI_BASE_URL, model: enrichModel });
-
-  return getProvider();
+  const pool = require('./llm-pool').getPoolProvider('enrich');
+  if (pool) return pool;
+  const cfg = legacyConfig();
+  if (!cfg) return null;
+  return buildLegacyProvider({ ...cfg, model: process.env.ENRICH_LLM_MODEL || cfg.model });
 }
 
 function getProviderInfo() {
-  // 1) Runtime
-  const cfg = getLLMConfig();
-  if (cfg && cfg.provider && cfg.model) {
-    return {
-      provider: cfg.provider,
-      model: cfg.model,
-      key_configured: !!cfg.api_key,
-      source: cfg.source || 'runtime',
-      base_url: cfg.base_url || '',
-    };
-  }
-
-  // 2) .env
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.LLM_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
-  const claudeKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
-  const preferred = (process.env.LLM_PROVIDER || '').toLowerCase();
-
-  let provider = 'none';
-  let model = 'none';
-
-  if (preferred === 'openai' && openaiKey) { provider = 'openai'; model = process.env.OPENAI_MODEL || 'gpt-4o-mini'; }
-  else if (preferred === 'claude' && claudeKey) { provider = 'claude'; model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514'; }
-  else if (preferred === 'gemini' && geminiKey) { provider = 'gemini'; model = process.env.LLM_MODEL || 'gemini-2.0-flash'; }
-  else if (geminiKey) { provider = 'gemini'; model = process.env.LLM_MODEL || 'gemini-2.0-flash'; }
-  else if (openaiKey) { provider = 'openai'; model = process.env.OPENAI_MODEL || 'gpt-4o-mini'; }
-  else if (claudeKey) { provider = 'claude'; model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514'; }
-
-  return { provider, model, key_configured: !!geminiKey || !!openaiKey || !!claudeKey, source: 'env' };
+  const cfg = require('./llm-pool').getPoolConfig();
+  if (cfg?.enabled) return { provider: 'pool', model: 'routed', key_configured: cfg.endpoints.some(endpoint => endpoint.enabled && endpoint.api_key), source: 'pool' };
+  const legacy = legacyConfig();
+  return legacy ? { provider: legacy.provider, model: legacy.model, key_configured: !!legacy.api_key, source: legacy.source || 'runtime', base_url: legacy.base_url || '', endpoint_url: legacy.endpoint_url || '' }
+    : { provider: 'none', model: 'none', key_configured: false, source: 'env' };
 }
 
 /**
@@ -654,6 +369,7 @@ function extractJSON(text) {
 
   // Strip markdown code fences
   const clean = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  try { return JSON.parse(clean); } catch {}
 
   // Try parsing as array
   const arrayMatch = clean.match(/\[[\s\S]*\]/);

@@ -1,28 +1,10 @@
-/**
- * Eagleye — XiaoHongShu Connector (via agent-reach opencli)
- *
- * Searches XiaoHongShu (小红书) for curated keywords using the agent-reach
- * opencli backend (browser bridge — requires Chrome logged into xiaohongshu.com).
- *
- * Backend notes (verified against live opencli output):
- *  - The search result's `url` contains the xsec_token required to read the
- *    full note later. We store that full URL as canonical_url — never a bare
- *    note_id, which cannot be re-read.
- *  - `likes` and `published_at` are emitted as STRINGS (e.g. "3574",
- *    "2026-06-20"). We coerce both here.
- *  - We do NOT fetch each note's full body (a second opencli call per note)
- *    because deep paging triggers captcha. The search result's title is enough
- *    for the LLM enrichment stage to expand on.
- *  - Rate-limit safety: 2-3s between search calls (per agent-reach guidance).
- */
+/** XiaoHongShu collector: REST when configured, otherwise OpenCLI. */
 
 const { BaseConnector } = require('./base');
 const reach = require('../services/agent-reach');
+const collectors = require('../services/server-collectors');
+const { setTimeout: sleep } = require('node:timers/promises');
 const { readXiaohongshuConfig } = require('../services/xiaohongshu-config');
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 /** Parse a "YYYY-MM-DD" (or partial) string into an ISO timestamp. */
 function parseXhsDate(value) {
@@ -70,36 +52,34 @@ class XiaoHongShuConnector extends BaseConnector {
     });
   }
 
-  async fetch(_date) {
+  async fetch(_date, { signal } = {}) {
+    signal?.throwIfAborted();
+    const serverBackend = Boolean(process.env.EAGLEYE_XHS_MCP_URL);
     const { keywords } = readXiaohongshuConfig();
     if (keywords.length === 0) {
       console.log('  ⚠ XiaoHongShu: no keywords configured (set XIAOHONGSHU_KEYWORDS env or config/xiaohongshu-keywords.txt)');
       return [];
     }
 
-    const ready = await reach.isReachReady('xiaohongshu').catch(() => true);
-    if (!ready) {
-      console.warn('  ⚠ XiaoHongShu: opencli backend not ready — skipping (open Chrome and log into xiaohongshu.com)');
-      return [];
+    if (!serverBackend && !await reach.isReachReady('xiaohongshu', { signal })) {
+      throw new Error('xiaohongshu: BACKEND_NOT_READY');
     }
 
     const limit = parseInt(process.env.XHS_NOTES_PER_KEYWORD || '20', 10) || 20;
     const delayMs = parseInt(process.env.XHS_POLITENESS_MS || '3000', 10) || 0; // 3s per agent-reach guidance
-    console.log(`  📕 XiaoHongShu: searching ${keywords.length} keywords via opencli...`);
+    console.log(`  📕 XiaoHongShu: searching ${keywords.length} keywords via ${serverBackend ? 'server' : 'opencli'}...`);
 
     const allItems = [];
     for (let i = 0; i < keywords.length; i++) {
       const kw = keywords[i];
-      const result = await reach.xiaohongshuSearch(kw, { limit });
+      signal?.throwIfAborted();
+      const result = await (serverBackend ? collectors : reach).xiaohongshuSearch(kw, { limit, signal });
       if (!result.ok) {
-        if (result.code === 'BRIDGE_DOWN' || result.code === 'AUTH_REQUIRED') {
-          console.warn(`  ⚠ XiaoHongShu: opencli ${result.code} — aborting remaining keywords (${result.message})`);
-          break;
-        }
-        console.warn(`  ⚠ XiaoHongShu "${kw}": ${result.code} — ${result.message}`);
+        throw new Error(`xiaohongshu: ${result.code || 'COLLECTION_FAILED'}`);
       } else {
         const seen = new Set();
-        const items = (result.data || [])
+        if (!Array.isArray(result.data)) throw new Error('SCHEMA_ERROR');
+        const items = result.data
           .filter(Boolean)
           .map(n => this._noteToItem(n))
           .filter(it => {
@@ -110,7 +90,7 @@ class XiaoHongShuConnector extends BaseConnector {
         allItems.push(...items);
         console.log(`  📕 XiaoHongShu "${kw}": ${items.length} notes`);
       }
-      if (delayMs > 0 && i < keywords.length - 1) await sleep(delayMs);
+      if (delayMs > 0 && i < keywords.length - 1) await sleep(delayMs, undefined, { signal });
     }
 
     console.log(`  📕 XiaoHongShu: ${allItems.length} notes from ${keywords.length} keywords`);

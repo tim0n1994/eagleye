@@ -26,6 +26,18 @@ describe('API', () => {
     });
   }
 
+  it('logout rejects an HTTP failure without treating the session as signed out', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 503 });
+    await expect(API.logout()).rejects.toThrow('Sign out failed (HTTP 503)');
+    expect(mockFetch).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' });
+  });
+
+  it('logout resolves only after the server accepts the request', async () => {
+    mockFetch.mockResolvedValue({ ok: true, status: 200 });
+    await expect(API.logout()).resolves.toBeUndefined();
+    expect(mockFetch).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' });
+  });
+
   // ─── fetchClassifiedItems ────────────────────────────────
 
   it('fetchClassifiedItems fetches from /api/items with default category', async () => {
@@ -128,20 +140,20 @@ describe('API', () => {
 
   // ─── fetchResearch ───────────────────────────────────────
 
-  it('fetchResearch fetches /api/research with encoded URL', async () => {
+  it('fetchResearch explicitly posts a generation request', async () => {
     mockFetch.mockResolvedValue(mockFetchResponse({ result: 'research data' }));
     const result = await API.fetchResearch('https://example.com/article');
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/research?url=https%3A%2F%2Fexample.com%2Farticle'
+      '/api/research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://example.com/article' }) }
     );
     expect(result).toEqual({ result: 'research data' });
   });
 
-  it('fetchResearch encodes special characters in URL', async () => {
+  it('fetchResearch preserves special URL characters in its JSON body', async () => {
     mockFetch.mockResolvedValue(mockFetchResponse({}));
     await API.fetchResearch('https://example.com/path?q=ai&lang=en');
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/research?url=https%3A%2F%2Fexample.com%2Fpath%3Fq%3Dai%26lang%3Den'
+      '/api/research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://example.com/path?q=ai&lang=en' }) }
     );
   });
 

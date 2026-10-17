@@ -8,6 +8,7 @@
 const { fetchAllSources, fetchSource } = require('../connectors/index');
 const { enrichItems } = require('./llm');
 const { isJobCancelled } = require('./jobs');
+const { todayDigestDate } = require('./date-contract');
 
 // Circular dependency: runJob/JOB_TYPES imported lazily inside runFullPipeline()
 
@@ -17,6 +18,7 @@ const DEFAULT_SYNC_ENRICH_BATCH = Math.max(1, parseInt(process.env.SYNC_ENRICH_B
  * Sync all sources for the current date, then enrich new items.
  */
 async function syncAllSources(opts = {}) {
+  opts.signal?.throwIfAborted();
   const { jobId, enrichBatchSize = DEFAULT_SYNC_ENRICH_BATCH, skipEnrich = false } = opts;
   const updateProgress = (progress) => {
     if (!jobId) return;
@@ -25,7 +27,7 @@ async function syncAllSources(opts = {}) {
   };
 
   console.log('📡 Starting full sync...');
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const date = todayDigestDate();
   updateProgress({ phase: 'starting', date, current_index: 0, total_sources: 0, results: [] });
 
   if (jobId && isJobCancelled(jobId)) {
@@ -34,9 +36,12 @@ async function syncAllSources(opts = {}) {
   }
 
   const results = await fetchAllSources(date, {
+    signal: opts.signal,
+    isCancelled: () => !!jobId && isJobCancelled(jobId),
     onProgress: (progress) => updateProgress({ date, ...progress }),
   });
   console.log(`📡 Sync results:`, results);
+  opts.signal?.throwIfAborted();
 
   if (jobId && isJobCancelled(jobId)) {
     console.log('  ⛔ syncAllSources cancelled after fetch, skipping enrich');
@@ -54,7 +59,7 @@ async function syncAllSources(opts = {}) {
 
   console.log(`📡 Auto-enriching new items... target batch ${targetBatchSize}`);
   updateProgress({ phase: 'enriching', date, results });
-  const enrichResult = await enrichItems(targetBatchSize, { jobId });
+  const enrichResult = await enrichItems(targetBatchSize, { jobId, signal: opts.signal });
   console.log(`📡 Enriched: ${enrichResult.enriched}/${enrichResult.total}`);
 
   return { fetch: results, enrich: enrichResult };
@@ -64,23 +69,29 @@ async function syncAllSources(opts = {}) {
  * Sync a single source by slug for a given date, then enrich.
  */
 async function syncSource(slug, date, opts = {}) {
-  const { jobId, enrichBatchSize = DEFAULT_SYNC_ENRICH_BATCH } = opts;
-  const dateStr = date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  opts.signal?.throwIfAborted();
+  const { jobId, enrichBatchSize = DEFAULT_SYNC_ENRICH_BATCH, limit, skipEnrich = limit !== undefined } = opts;
+  const returnDetails = skipEnrich || limit !== undefined || opts.returnDetails === true;
+  const dateStr = date || todayDigestDate();
   console.log(`📡 Syncing source: ${slug} for ${dateStr}`);
 
   if (jobId && isJobCancelled(jobId)) {
-    return { cancelled: true, items: [] };
+    return { cancelled: true, source: slug, date: dateStr, limit: limit ?? null, items: [], inserted: 0, existing: 0, failed: 0, skipped: 0 };
   }
 
-  const items = await fetchSource(slug, dateStr);
+  const fetched = await fetchSource(slug, dateStr, { limit, returnDetails, signal: opts.signal,
+    isCancelled: () => !!jobId && isJobCancelled(jobId) });
+  const items = returnDetails ? fetched.items : fetched;
+  opts.signal?.throwIfAborted();
   console.log(`📡 ${slug}: ${items.length} new items`);
 
   // Enrich any items that don't have summaries yet
-  if (items.length > 0) {
-    await enrichItems(Math.max(enrichBatchSize, items.length), { jobId });
+  const cancelled = jobId && isJobCancelled(jobId);
+  if (!skipEnrich && !cancelled && items.length > 0) {
+    await enrichItems(Math.max(enrichBatchSize, items.length), { jobId, signal: opts.signal });
   }
 
-  return items;
+  return returnDetails ? { ...fetched, enrichment_skipped: skipEnrich || !!cancelled, ...(cancelled ? { cancelled: true } : {}) } : items;
 }
 
 /**

@@ -7,6 +7,7 @@
 
 const { getDB } = require('../db/connection');
 const { sendJSON, sendError, cacheGet, cacheSet } = require('./_shared');
+const { normalizeDigestDate, todayDigestDate } = require('../services/date-contract');
 
 function register(routes) {
 
@@ -15,8 +16,10 @@ function register(routes) {
     const db = getDB();
     if (!db) return sendError(res, 500, 'Database not available');
 
-    const date = parsed.query.date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    
+    const rawDate = parsed.query.date || '';
+    const date = rawDate ? normalizeDigestDate(rawDate) : todayDigestDate();
+    if (rawDate && !date) return sendError(res, 400, 'Invalid date: expected YYYY-MM-DD or YYYYMMDD');
+
     // Get digest from daily_digests table or build on the fly
     const digest = db.prepare('SELECT * FROM daily_digests WHERE digest_date = ?').get(date);
     
@@ -111,11 +114,11 @@ function register(routes) {
     if (!db) return sendError(res, 500, 'Database not available');
     const year = String(params?.year || '').replace(/[^0-9]/g, '').slice(0, 4);
     if (!year) return sendError(res, 400, 'Year required');
-    const from = year + '0101';
-    const to = year + '1231';
+    const from = year + '-01-01';
+    const to = year + '-12-31';
 
     const byMonth = db.prepare(`
-      SELECT substr(digest_date, 5, 2) AS month, COUNT(*) AS items
+      SELECT substr(digest_date, 6, 2) AS month, COUNT(*) AS items
       FROM information_items WHERE digest_date >= ? AND digest_date <= ?
       GROUP BY month ORDER BY month
     `).all(from, to);

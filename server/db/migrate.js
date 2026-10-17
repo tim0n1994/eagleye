@@ -10,6 +10,20 @@ const { getDB } = require('./connection');
 
 const MIGRATIONS_TABLE = '_migrations';
 
+function applyMigration(db, file, sql) {
+  const foreignKeys = db.pragma('foreign_keys', { simple: true });
+  const changesForeignKeys = /PRAGMA\s+foreign_keys\s*=\s*OFF/i.test(sql);
+  try {
+    if (changesForeignKeys) db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(sql);
+      db.prepare(`INSERT INTO ${MIGRATIONS_TABLE} (name) VALUES (?)`).run(file);
+    })();
+  } finally {
+    if (changesForeignKeys) db.pragma(`foreign_keys = ${foreignKeys ? 'ON' : 'OFF'}`);
+  }
+}
+
 function ensureMigrationsTable() {
   const db = getDB();
   if (!db) return;
@@ -49,8 +63,7 @@ function runMigrations() {
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
 
     try {
-      db.exec(sql);
-      db.prepare(`INSERT INTO ${MIGRATIONS_TABLE} (name) VALUES (?)`).run(file);
+      applyMigration(db, file, sql);
       console.log(`  ✅ Applied: ${file}`);
     } catch (err) {
       console.error(`  ❌ Migration ${file} failed:`, err.message);
@@ -61,4 +74,4 @@ function runMigrations() {
   console.log(`  📋 Migrations complete. ${files.length} total, ${files.length - applied.size} new.`);
 }
 
-module.exports = { runMigrations };
+module.exports = { runMigrations, applyMigration };

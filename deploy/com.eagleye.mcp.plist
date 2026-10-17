@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Eagleye read-only MCP server (127.0.0.1:3020) — LaunchAgent artifact (R0-09).
+  Requires the DB path below to match the main app. NOT loaded by the R0-09 work.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.eagleye.mcp</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/user/.local/bin/node</string>
+    <string>/Users/user/Proj/eagleye/mcp/server.js</string>
+    <string>3020</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/user/Proj/eagleye</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>EAGLEYE_DB_PATH</key>
+    <string>/Users/user/Proj/eagleye/eagleye.db</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/user/Proj/eagleye/logs/com.eagleye.mcp.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/user/Proj/eagleye/logs/com.eagleye.mcp.err.log</string>
+</dict>
+</plist>

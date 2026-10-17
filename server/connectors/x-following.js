@@ -28,12 +28,9 @@ const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
 const { readXFollowingConfig } = require('../services/x-following-config');
 const reach = require('../services/agent-reach');
+const { setTimeout: sleep } = require('node:timers/promises');
 
 const CACHE = new Map(); // username -> { ts, posts }  (Jina path only)
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 function envInt(name, fallback, min, max) {
   const value = parseInt(process.env[name] || `${fallback}`, 10);
@@ -105,8 +102,10 @@ class XFollowingConnector extends BaseConnector {
    * if twitter-cli is structurally unavailable (not installed / auth missing)
    * — null signals the caller to fall back to Jina for the whole run.
    */
-  async _fetchUserTimelineTwitter(username, count) {
-    const result = await reach.twitterUserPosts(username, count);
+  async _fetchUserTimelineTwitter(username, count, signal) {
+    signal?.throwIfAborted();
+    const result = await reach.twitterUserPosts(username, count, { signal });
+    signal?.throwIfAborted();
     if (!result.ok) {
       // Structural failures mean twitter-cli can't serve this run at all:
       // fall back to Jina rather than retrying twitter-cli per-user.
@@ -359,7 +358,8 @@ class XFollowingConnector extends BaseConnector {
     return new Date(Date.UTC(yyyy, mm, dd, 12, 0, 0)).toISOString();
   }
 
-  async fetchUserTimelineJina(username, attempt = 1) {
+  async fetchUserTimelineJina(username, attempt = 1, signal) {
+    signal?.throwIfAborted();
     const ttl = parseInt(process.env.X_FOLLOWING_CACHE_TTL_MS || '1800000', 10);
     const cached = CACHE.get(username);
     if (cached && Date.now() - cached.ts < ttl) {
@@ -369,16 +369,19 @@ class XFollowingConnector extends BaseConnector {
     const timeoutMs = envInt('X_FOLLOWING_FETCH_TIMEOUT_MS', 8000, 2000, 30000);
     let md;
     try {
-      md = await fetchURL(url, { timeoutMs });
+      md = await fetchURL(url, { timeoutMs, signal });
+      signal?.throwIfAborted();
     } catch (err) {
+      signal?.throwIfAborted();
+      if (err.name === 'AbortError') throw err;
       const maxRetries = envInt('X_FOLLOWING_RETRIES', 2, 0, 5);
       const retryAfterMs = parseRetryAfterMs(err.message);
       const maxWaitMs = envInt('X_FOLLOWING_MAX_RETRY_MS', 45000, 1000, 120000);
       if (retryAfterMs > 0 && attempt <= maxRetries) {
         const waitMs = Math.min(retryAfterMs, maxWaitMs);
         console.warn(`  ⚠ Jina rate-limited @${username}, retry ${attempt}/${maxRetries} in ${Math.ceil(waitMs / 1000)}s`);
-        await sleep(waitMs);
-        return this.fetchUserTimelineJina(username, attempt + 1);
+        await sleep(waitMs, undefined, { signal });
+        return this.fetchUserTimelineJina(username, attempt + 1, signal);
       }
       console.warn(`  ⚠ Jina fetch failed for @${username}: ${err.message}`);
       // Network-level failures bubble up (tagged) so the fetch loop's circuit
@@ -400,7 +403,8 @@ class XFollowingConnector extends BaseConnector {
     return posts;
   }
 
-  async fetch(_date) {
+  async fetch(_date, { signal } = {}) {
+    signal?.throwIfAborted();
     const users = this.loadUserList();
     if (users.length === 0) {
       console.log('  ⚠ X Following: no users configured (set X_FOLLOWING_USERS env or ~/.eagleye/x-following.txt)');
@@ -414,12 +418,17 @@ class XFollowingConnector extends BaseConnector {
     // Decide backend: probe twitter-cli with the first user. If structurally
     // unavailable (null), switch the entire run to Jina fallback.
     let useTwitter = true;
-    const ready = await reach.isReachReady('twitter').catch(() => true);
+    const ready = await reach.isReachReady('twitter', { signal }).catch(err => {
+      signal?.throwIfAborted();
+      if (err.name === 'AbortError') throw err;
+      return true;
+    });
+    signal?.throwIfAborted();
     if (!ready) {
       useTwitter = false;
       console.log('  🐦 X Following: twitter backend not ready, using Jina fallback');
     } else {
-      const probe = await this._fetchUserTimelineTwitter(users[0], perUser);
+      const probe = await this._fetchUserTimelineTwitter(users[0], perUser, signal);
       if (probe === null) {
         useTwitter = false;
         console.log('  🐦 X Following: twitter-cli unavailable (not installed / no auth), using Jina fallback');
@@ -439,16 +448,18 @@ class XFollowingConnector extends BaseConnector {
     let backend = useTwitter ? 'twitter' : 'jina';
 
     const fetchOneTwitter = async (username) => {
-      const posts = await this._fetchUserTimelineTwitter(username, perUser);
-      if (posts === null) return []; // structural failure already flipped backend
+      const posts = await this._fetchUserTimelineTwitter(username, perUser, signal);
+      if (posts === null) {
+        backend = 'jina';
+        return [];
+      }
       if (posts.length === 0) {
         // Empty result: could be a genuine empty timeline OR a transient
         // twitter-cli failure (EXIT_1 ClientTransaction, NOT_FOUND, etc.).
         // Track consecutive empties; if they pile up, twitter-cli has degraded
         // and we should switch the remaining users to Jina.
         consecutiveFailures++;
-        if (!circuitTripped && consecutiveFailures >= circuitThreshold) {
-          circuitTripped = true;
+        if (backend === 'twitter' && consecutiveFailures >= circuitThreshold) {
           backend = 'jina';
           console.warn(`  🛑 X Following: twitter-cli degraded (${consecutiveFailures} consecutive empty/failure) — switching remaining users to Jina fallback`);
         }
@@ -459,17 +470,9 @@ class XFollowingConnector extends BaseConnector {
     };
 
     const fetchOneJina = async (username) => {
-      if (circuitTripped && backend === 'twitter') {
-        // twitter→jina mid-run switch: un-trip so Jina gets a fresh attempt.
-        circuitTripped = false;
-        consecutiveFailures = 0;
-        console.log(`  🐦 X Following: now fetching @${username} via Jina fallback`);
-      } else if (circuitTripped) {
-        // Jina's own breaker tripped (network unreachable) — skip remaining.
-        return [];
-      }
+      if (circuitTripped) return [];
       try {
-        const posts = await this.fetchUserTimelineJina(username);
+        const posts = await this.fetchUserTimelineJina(username, 1, signal);
         consecutiveFailures = 0; // a success resets the breaker
         return posts.map(p => {
           const cleanedText = (p.text || '')
@@ -501,7 +504,9 @@ class XFollowingConnector extends BaseConnector {
             popularity: { views: p.views, likes: p.likes, retweets: p.retweets, replies: p.replies },
           });
         });
-      } catch {
+      } catch (err) {
+        signal?.throwIfAborted();
+        if (err.name === 'AbortError') throw err;
         // Only network errors bubble out of fetchUserTimelineJina.
         consecutiveFailures++;
         if (consecutiveFailures >= circuitThreshold && !circuitTripped) {
@@ -512,17 +517,19 @@ class XFollowingConnector extends BaseConnector {
       }
     };
 
-    // Dispatch by live `backend` so a mid-run twitter→jina switch takes effect.
-    const fetchOne = (username) => (backend === 'twitter' ? fetchOneTwitter(username) : fetchOneJina(username));
-
     for (let i = 0; i < users.length; i += concurrency) {
+      signal?.throwIfAborted();
       if (circuitTripped && backend === 'jina') break; // Jina fully down — abort
       const chunk = users.slice(i, i + concurrency);
+      const batchBackend = backend;
+      const fetchOne = batchBackend === 'twitter' ? fetchOneTwitter : fetchOneJina;
       const results = await Promise.all(chunk.map(fetchOne));
+      signal?.throwIfAborted();
+      if (batchBackend !== backend) consecutiveFailures = 0;
       for (const items of results) allItems.push(...items);
       console.log(`  🐦 X Following: ${Math.min(i + chunk.length, users.length)}/${users.length} users, ${allItems.length} posts (${backend})`);
       if (i + concurrency < users.length && delayMs > 0) {
-        await sleep(delayMs);
+        await sleep(delayMs, undefined, { signal });
       }
     }
 

@@ -5,10 +5,31 @@
  * Split out of pages.js; render functions are unchanged.
  */
 
-import { $, escapeAttr, escapeHtml, localDateStr } from '../utils.js';
+import { $, escapeAttr, escapeHtml, localDateStr, normalizeDateStr } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
+import { router } from '../router.js';
 import { API_BASE, fetchJSON, pickZh, showError, showLoader, trustBadge } from './shared.js';
 
+const SIGNAL_LIMIT = 2000;
+const scoreValue = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
+const scorePercent = value => scoreValue(value) === null ? '—' : (value * 100).toFixed(0);
+const scoreWidth = value => scoreValue(value) === null ? 0 : Math.max(0, Math.min(100, value * 100));
+let pageVersion = 0;
+
+function beginSignalPage() {
+  const version = ++pageVersion;
+  let active = true;
+  router.onCleanup(() => { active = false; });
+  return () => active && pageVersion === version;
+}
+
+function signalHref({ type = 'all', audience = '', range = '7' }) {
+  const query = new URLSearchParams();
+  if (type !== 'all') query.set('type', type);
+  if (audience) query.set('audience', audience);
+  if (range !== '7') query.set('range', range);
+  return `/signals${query.size ? '?' + query.toString() : ''}`;
+}
 
 // ─── Signal Inbox ─────────────────────────────────────────
 
@@ -21,6 +42,7 @@ async function loadSignalTypes() {
 
 export async function renderSignals(_params) {
   const container = $('#pageContent');
+  const isCurrent = beginSignalPage();
   showLoader(container, 'LOADING SIGNALS...');
 
   try {
@@ -28,31 +50,25 @@ export async function renderSignals(_params) {
     const selectedType = _params?.type || 'all';
     const selectedAudience = _params?.audience || '';
     const urlSearch = new URLSearchParams(window.location.search);
-    const selectedRange = urlSearch.get('range') || '7';
+    const requestedRange = _params?.range || urlSearch.get('range') || '7';
+    const selectedRange = ['1', '7', '30', '9999'].includes(requestedRange) ? requestedRange : '7';
+    const filterHref = changes => signalHref({ type: selectedType, audience: selectedAudience, range: selectedRange, ...changes });
 
     // Audience lens (Phase 2): fetch the weight definitions for the tab bar.
     const audiences = await loadRadarAudiences();
 
-    // "All" shows the last 7 days (digest_date >= today-7) so users see the
-    // broader picture instead of just today's 200-cap. Specific types hit the
-    // same 7-day window for consistency — otherwise the sidebar counts
-    // (today_count > 1000) would never match the visible list.
-    // When an audience is active, signals are re-ranked by that lens; the base
-    // alpha_score is preserved on the row as alpha_score_base.
-    const params = new URLSearchParams({ sinceDays: selectedRange, limit: '2000' });
+    const params = new URLSearchParams({ sinceDays: selectedRange, limit: String(SIGNAL_LIMIT) });
     if (selectedType !== 'all') params.set('type', selectedType);
     if (selectedAudience) params.set('audience', selectedAudience);
     const signalData = await fetchJSON(`${API_BASE}/signals?${params.toString()}`);
 
     const signals = signalData.signals || [];
-    const total = signalData.total || signals.length;
-    const date = signalData.date || '';
-    const fallback = signalData.fallback || false;
     const filteredSignals = signals;
+    const cardScore = s => scoreValue(selectedAudience ? s.alpha_score_audience : s.alpha_score);
+    const scores = signals.map(cardScore).filter(value => value !== null);
 
-    // Weekly summary stats: compute from loaded signals.
-    const avgAlpha = signals.length > 0 ? signals.reduce((s, x) => s + (x.alpha_score || 0), 0) / signals.length : 0;
-    const topAlpha = signals.length > 0 ? Math.max(...signals.map(s => s.alpha_score || 0)) : 0;
+    const avgAlpha = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null;
+    const topAlpha = scores.length ? Math.max(...scores) : null;
     const typeCounts = {};
     for (const s of signals) { if (s.signal_type) typeCounts[s.signal_type] = (typeCounts[s.signal_type] || 0) + 1; }
     const topTypes = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -60,10 +76,11 @@ export async function renderSignals(_params) {
     // Velocity trend sparkline: avg velocity per day over the loaded window.
     const dayMap = {};
     for (const s of signals) {
-      if (!s.digest_date) continue;
-      if (!dayMap[s.digest_date]) dayMap[s.digest_date] = { count: 0, velSum: 0 };
-      dayMap[s.digest_date].count++;
-      dayMap[s.digest_date].velSum += (s.velocity_score || 0);
+      if (!s.digest_date || scoreValue(s.velocity_score) === null) continue;
+      const dayKey = normalizeDateStr(s.digest_date);
+      if (!dayMap[dayKey]) dayMap[dayKey] = { count: 0, velSum: 0 };
+      dayMap[dayKey].count++;
+      dayMap[dayKey].velSum += s.velocity_score;
     }
     const dayEntries = Object.entries(dayMap).sort((a, b) => a[0].localeCompare(b[0]));
     const velSparkHtml = dayEntries.length >= 3
@@ -81,41 +98,31 @@ export async function renderSignals(_params) {
         })()
       : '';
     // Quality trend: compare today's avg alpha to the window avg.
-    const todaySignals = signals.filter(s => s.digest_date === localDateStr());
-    const todayAvgAlpha = todaySignals.length > 0 ? todaySignals.reduce((s, x) => s + (x.alpha_score || 0), 0) / todaySignals.length : 0;
-    const trendArrow = todayAvgAlpha > avgAlpha + 0.02 ? '▲▲' : todayAvgAlpha > avgAlpha - 0.02 ? '●' : '▼';
-    const trendColor = todayAvgAlpha > avgAlpha + 0.02 ? '#34d399' : todayAvgAlpha > avgAlpha - 0.02 ? 'var(--fg-mute)' : '#f87171';
-    const trendText = todayAvgAlpha > avgAlpha + 0.02 ? (zh ? '今日上升' : 'Rising today') : todayAvgAlpha > avgAlpha - 0.02 ? (zh ? '平稳' : 'Stable') : (zh ? '今日下降' : 'Declining today');
+    const todayKey = normalizeDateStr(localDateStr());
+    const todayScores = signals.filter(s => normalizeDateStr(s.digest_date) === todayKey).map(cardScore).filter(value => value !== null);
+    const todayAvgAlpha = todayScores.length ? todayScores.reduce((sum, value) => sum + value, 0) / todayScores.length : null;
+    const trendArrow = todayAvgAlpha === null ? '—' : todayAvgAlpha > avgAlpha + 0.02 ? '▲▲' : todayAvgAlpha >= avgAlpha - 0.02 ? '●' : '▼';
+    const trendColor = trendArrow === '▲▲' ? '#34d399' : trendArrow === '▼' ? '#f87171' : 'var(--fg-mute)';
+    const trendText = todayAvgAlpha === null ? (zh ? '今日暂无可评分样本' : 'No scored sample today') : trendArrow === '▲▲' ? (zh ? '今日上升' : 'Rising today') : trendArrow === '●' ? (zh ? '平稳' : 'Stable') : (zh ? '今日下降' : 'Declining today');
 
     // Rising entities (Phase 2): the entity currently accelerating fastest.
     // Ranked by acceleration on the 7d window; falls back to zscore.
     const risingData = await fetchJSON(`${API_BASE}/entities/momentum?window=7d&sort=acceleration&limit=8`).catch(() => ({ entities: [] }));
     const rising = risingData.entities || [];
 
-    // The score shown on each card: the audience-adjusted score when a lens is
-    // active, otherwise the raw alpha_score.
-    const cardScore = s => selectedAudience && typeof s.alpha_score_audience === 'number'
-      ? s.alpha_score_audience
-      : s.alpha_score;
-
     // Audience tab bar — switches the reweight lens for the whole page.
-    const rangeSuffix = (range) => range !== '7' ? `&range=${range}` : '';
     const rangeTabs = `
       <div class="range-tabs">
         ${[['1', '24h'], ['7', '7d'], ['30', '30d'], ['9999', 'All']].map(([val, label]) => {
           const active = selectedRange === val;
-          const typeParam = selectedType !== 'all' ? `type=${encodeURIComponent(selectedType)}&` : '';
-          const audParam = selectedAudience ? `audience=${encodeURIComponent(selectedAudience)}&` : '';
-          const rParam = val !== '7' ? `range=${val}` : '';
-          const qs = typeParam + audParam + rParam;
-          return `<a href="/signals${qs ? '?' + qs : ''}" class="range-tab ${active ? 'active' : ''}">${label}</a>`;
+          return `<a href="${escapeAttr(filterHref({ range: val }))}" class="range-tab ${active ? 'active' : ''}">${label}</a>`;
         }).join('')}
       </div>`;
     const audienceTabs = `
       <div class="audience-tabs">
-        <a href="/signals${typeSuffix(selectedType)}${rangeSuffix(selectedRange)}" class="audience-tab ${selectedAudience === '' ? 'active' : ''}">All</a>
+        <a href="${escapeAttr(filterHref({ audience: '' }))}" class="audience-tab ${selectedAudience === '' ? 'active' : ''}">All</a>
         ${audiences.map(a => `
-          <a href="/signals?type=${encodeURIComponent(selectedType)}&audience=${encodeURIComponent(a.key)}${rangeSuffix(selectedRange)}"
+          <a href="${escapeAttr(filterHref({ audience: a.key }))}"
              class="audience-tab ${selectedAudience === a.key ? 'active' : ''}"
              title="${escapeAttr(pickZh(a.description, a.description_zh))}">
             ${escapeHtml(pickZh(a.label, a.label_zh))}
@@ -124,14 +131,13 @@ export async function renderSignals(_params) {
       </div>
       ${rangeTabs}`;
 
-    const exportParams = new URLSearchParams({ sinceDays: selectedRange, limit: '200' });
-    if (selectedType !== 'all') exportParams.set('type', selectedType);
-    if (selectedAudience) exportParams.set('audience', selectedAudience);
+    const exportParams = params;
 
     // Alpha distribution mini-histogram: computed before the template to avoid nesting.
     const alphaBuckets = [0, 0, 0, 0];
     for (const s of filteredSignals) {
-      const a = cardScore(s) || 0;
+      const a = cardScore(s);
+      if (a === null) continue;
       if (a < 0.5) alphaBuckets[0]++;
       else if (a < 0.7) alphaBuckets[1]++;
       else if (a < 0.85) alphaBuckets[2]++;
@@ -181,35 +187,38 @@ export async function renderSignals(_params) {
     const html = `
       <section class="page-section signals-layout">
         ${audienceTabs}
-        <a href="${API_BASE}/signals?${exportParams.toString()}" download="signals.json" class="action-link" style="font-size:11px;margin:4px 0;display:inline-block">⬇ Export JSON</a>
+        <a href="${API_BASE}/signals?${escapeAttr(exportParams.toString())}" download="signals.json" class="action-link" style="font-size:11px;margin:4px 0;display:inline-block">⬇ Export JSON</a>
+        <p class="subtle signal-sample-note">${zh ? `已加载 ${signals.length} 条（最多 ${SIGNAL_LIMIT} 条）；统计及导出基于当前筛选样本。` : `Loaded ${signals.length} signals (limit ${SIGNAL_LIMIT}); statistics and export use the current filtered sample.`}${signals.length >= SIGNAL_LIMIT ? (zh ? ' 已达到上限，可能还有更多结果。' : ' Limit reached; more results may exist.') : ''} ${zh ? `可评分 ${scores.length} 条，缺分 ${signals.length - scores.length} 条。` : `${scores.length} scored, ${signals.length - scores.length} missing scores.`}</p>
         ${alphaHistHtml}
         ${signals.length > 0 ? `<div style="display:flex;gap:16px;flex-wrap:wrap;margin:4px 0 12px;font-size:11px;font-family:var(--font-mono);color:var(--fg-mute)">
-          <span>${zh ? '总计' : 'Total'}: <strong style="color:var(--fg)">${signals.length}</strong></span>
-          <span>${zh ? '平均 α' : 'Avg α'}: <strong style="color:var(--accent)">${avgAlpha.toFixed(2)}</strong></span>
-          <span>${zh ? '最高 α' : 'Top α'}: <strong style="color:var(--accent)">${topAlpha.toFixed(2)}</strong></span>
-          <span title="${trendText}">质量趋势: <strong style="color:${trendColor}">${trendArrow}</strong> <small style="color:var(--fg-mute)">${trendText}</small>${velSparkHtml}</span>
+          <span>${zh ? '已加载' : 'Loaded'}: <strong style="color:var(--fg)">${signals.length}</strong></span>
+          <span>${zh ? '平均 α' : 'Avg α'}: <strong class="signal-avg-alpha" style="color:var(--accent)">${avgAlpha === null ? '—' : avgAlpha.toFixed(2)}</strong></span>
+          <span>${zh ? '最高 α' : 'Top α'}: <strong class="signal-top-alpha" style="color:var(--accent)">${topAlpha === null ? '—' : topAlpha.toFixed(2)}</strong></span>
+          <span class="signal-quality-trend" title="${zh ? '今日样本均分与当前加载窗口均分比较' : 'Today’s sample mean compared with the loaded window mean'}">${zh ? '样本质量趋势' : 'Sample quality trend'}: <strong style="color:${trendColor}">${trendArrow}</strong> <small style="color:var(--fg-mute)">${trendText}</small>${velSparkHtml}</span>
           ${topTypes.length > 0 ? `<span>${zh ? '热门类型' : 'Top types'}: ${topTypes.map(([t, c]) => escapeHtml(t.replace(/_/g, ' ')) + '(' + c + ')').join(', ')}</span>` : ''}
         </div>` : ''}
         ${typeDonutHtml}
         <div class="signals-left">
           <div class="signals-type-filter">
             <h3 class="signals-filter-title">SIGNAL TYPES</h3>
-            <a href="/signals${audienceSuffix(selectedAudience)}" class="signal-type-item ${selectedType === 'all' ? 'active' : ''}">
+            <p class="subtle">${zh ? '计数：当前加载样本' : 'Counts: current loaded sample'}</p>
+            <a href="${escapeAttr(filterHref({ type: 'all' }))}" class="signal-type-item ${selectedType === 'all' ? 'active' : ''}">
               <span class="st-icon">🔄</span>
               <span class="st-name">All Signals</span>
               <span class="st-count">${signals.length}</span>
             </a>
             ${typesData.map(t => `
-              <a href="/signals?type=${escapeAttr(t.slug)}${audienceSuffix(selectedAudience)}" class="signal-type-item ${selectedType === t.slug ? 'active' : ''}">
+              <a href="${escapeAttr(filterHref({ type: t.slug }))}" class="signal-type-item ${selectedType === t.slug ? 'active' : ''}">
                 <span class="st-icon">${escapeHtml(t.icon || '📡')}</span>
                 <span class="st-name">${escapeHtml(pickZh(t.name, t.name_zh))}</span>
-                <span class="st-count">${t.today_count || signals.filter(s => s.signal_type === t.slug).length}</span>
+                <span class="st-count">${selectedType !== 'all' && selectedType !== t.slug ? '—' : typeCounts[t.slug] || 0}</span>
               </a>
             `).join('')}
           </div>
           <div class="signals-rising">
-            <h3 class="signals-filter-title">RISING ENTITIES</h3>
-            ${rising.length === 0 ? `<p class="empty-state-sm">No momentum data yet.</p>` : ''}
+            <h3 class="signals-filter-title">${zh ? '已保存实体动量' : 'Stored entity momentum'}</h3>
+            <p class="subtle">${zh ? '已保存的 7 日窗口指标；更新时间未知。' : 'Saved 7-day window metrics; update time unavailable.'}</p>
+            ${rising.length === 0 ? `<p class="empty-state-sm">${zh ? '暂无已保存的动量数据。' : 'No stored momentum data available.'}</p>` : ''}
             ${rising.map((e, i) => `
               <div class="rising-row">
                 <span class="rising-rank">${i + 1}</span>
@@ -220,7 +229,7 @@ export async function renderSignals(_params) {
           </div>
         </div>
         <div class="signals-mid" id="signalsMid">
-          ${filteredSignals.length === 0 ? `<p class="empty-state">No signals yet. Run enrichment to generate signal scores.</p>` : ''}
+          ${filteredSignals.length === 0 ? `<div class="empty-state signal-empty-state"><p>${zh ? '当前筛选条件下没有信号。' : 'No signals match the current filters.'}</p><a class="action-link" href="${escapeAttr(filterHref({ range: '9999' }))}">${zh ? '查看全部时间' : 'View all time'}</a> · <a class="action-link" href="/settings">${zh ? '查看设置' : 'Open settings'}</a></div>` : ''}
           ${filteredSignals.map(s => {
             const st = typesData.find(t => t.slug === s.signal_type) || {};
             const score = cardScore(s);
@@ -228,7 +237,7 @@ export async function renderSignals(_params) {
               <article class="signal-card" data-signal-id="${escapeAttr(s.item_id)}">
                 <div class="signal-card-top">
                   <span class="signal-type-badge" data-type="${escapeAttr(s.signal_type)}">${escapeHtml(st.icon || '📡')} ${escapeHtml(pickZh(st.name, st.name_zh) || s.signal_type)}</span>
-                  <span class="signal-alpha" title="${selectedAudience ? `Audience score (base ${(s.alpha_score*100).toFixed(0)})` : 'Alpha Score'}">${(score * 100).toFixed(0)}</span>
+                  <span class="signal-alpha" title="${selectedAudience ? `Audience score (base ${scorePercent(s.alpha_score)})` : 'Alpha Score'}">${scorePercent(score)}</span>
                 </div>
                 <h4 class="signal-card-title">
                   <a href="${escapeAttr(s.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(s.ai_title || s.title || '')}</a>
@@ -237,11 +246,11 @@ export async function renderSignals(_params) {
                 <div class="signal-card-meta">
                   <span class="signal-source">${escapeHtml(s.source_label || '')}${trustBadge(s.source_type, s.noise_rate)}</span>
                   <span class="signal-scores">
-                    N:${(s.novelty_score * 100).toFixed(0)} V:${(s.velocity_score * 100).toFixed(0)} CS:${(s.cross_source_score * 100).toFixed(0)} SQ:${(s.source_quality_score * 100).toFixed(0)}
+                    N:${scorePercent(s.novelty_score)} V:${scorePercent(s.velocity_score)} CS:${scorePercent(s.cross_source_score)} SQ:${scorePercent(s.source_quality_score)}
                   </span>
                 </div>
-                <div class="signal-alpha-bar" title="Alpha score ${(score * 100).toFixed(0)}">
-                  <div class="signal-alpha-fill" style="width:${Math.round(score * 100)}%;background:${score >= 0.85 ? 'var(--accent)' : score >= 0.7 ? '#facc15' : 'var(--fg-mute)'}"></div>
+                <div class="signal-alpha-bar" title="Alpha score ${scorePercent(score)}">
+                  <div class="signal-alpha-fill" style="width:${scoreWidth(score)}%;background:${score >= 0.85 ? 'var(--accent)' : score >= 0.7 ? '#facc15' : 'var(--fg-mute)'}"></div>
                 </div>
                 <div class="signal-card-actions">
                   <button class="signal-pin-btn" data-item-id="${escapeAttr(s.item_id)}" title="${getLanguage() === 'zh' ? '收藏' : 'Save'}">🔖</button>
@@ -259,14 +268,18 @@ export async function renderSignals(_params) {
       </section>
     `;
 
+    if (!isCurrent()) return;
     container.innerHTML = html;
+    let detailRequest = 0;
 
     // Click handler for signal cards
     container.querySelectorAll('.signal-card').forEach(card => {
       card.addEventListener('click', async (e) => {
+        if (e.target.closest('a, button') || !isCurrent()) return;
         const itemId = card.dataset.signalId;
         const detail = $('#signalsDetail');
         if (!detail || !itemId) return;
+        const request = ++detailRequest;
 
         detail.innerHTML = '<div class="spinner"></div>';
         container.querySelectorAll('.signal-card').forEach(c => c.classList.remove('selected'));
@@ -274,9 +287,10 @@ export async function renderSignals(_params) {
 
         try {
           const data = await fetchJSON(`${API_BASE}/signals/${encodeURIComponent(itemId)}`);
+          if (!isCurrent() || request !== detailRequest || !detail.isConnected) return;
           renderSignalDetailPane(detail, data.signal || data, typesData);
         } catch (err) {
-          detail.innerHTML = `<p class="error">Error: ${err.message}</p>`;
+          if (isCurrent() && request === detailRequest && detail.isConnected) detail.innerHTML = `<p class="error">Error: ${escapeHtml(err.message)}</p>`;
         }
       });
     });
@@ -302,13 +316,9 @@ export async function renderSignals(_params) {
     if (firstCard) firstCard.click();
 
   } catch (err) {
-    showError(container, err.message);
+    if (isCurrent()) showError(container, err.message);
   }
 }
-
-// Query-string suffixes that preserve the other filter when switching lenses.
-function typeSuffix(type) { return type && type !== 'all' ? `?type=${encodeURIComponent(type)}` : ''; }
-function audienceSuffix(audience) { return audience ? `${typeSuffix('all') ? '&' : '?'}audience=${encodeURIComponent(audience)}` : ''; }
 
 async function loadRadarAudiences() {
   try {
@@ -326,7 +336,7 @@ function renderSignalDetailPane(container, signal, typesData) {
     <div class="signal-detail-inner">
       <div class="signal-detail-header">
         <span class="signal-type-badge large" data-type="${escapeAttr(signal.signal_type)}">${escapeHtml(st.icon || '📡')} ${escapeHtml(pickZh(st.name, st.name_zh) || signal.signal_type)}</span>
-        <span class="signal-alpha large">Alpha: ${(signal.alpha_score * 100).toFixed(0)}</span>
+        <span class="signal-alpha large">Base Alpha: ${scorePercent(signal.alpha_score)}</span>
       </div>
       <h3 class="signal-detail-title">
         <a href="${escapeAttr(signal.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(signal.ai_title || signal.title || '')}</a>
@@ -336,12 +346,10 @@ function renderSignalDetailPane(container, signal, typesData) {
       <div class="signal-score-breakdown">
         <h4>Score Breakdown</h4>
         <div class="score-bars">
-          <div class="score-row"><span>Novelty</span><span class="score-bar-wrap"><span class="score-bar" style="width:${(signal.novelty_score * 100).toFixed(0)}%"></span></span><span>${(signal.novelty_score * 100).toFixed(0)}</span></div>
-          <div class="score-row"><span>Velocity</span><span class="score-bar-wrap"><span class="score-bar" style="width:${(signal.velocity_score * 100).toFixed(0)}%"></span></span><span>${(signal.velocity_score * 100).toFixed(0)}</span></div>
-          <div class="score-row"><span>Cross-Source</span><span class="score-bar-wrap"><span class="score-bar" style="width:${(signal.cross_source_score * 100).toFixed(0)}%"></span></span><span>${(signal.cross_source_score * 100).toFixed(0)}</span></div>
-          <div class="score-row"><span>Source Quality</span><span class="score-bar-wrap"><span class="score-bar" style="width:${(signal.source_quality_score * 100).toFixed(0)}%"></span></span><span>${(signal.source_quality_score * 100).toFixed(0)}</span></div>
-          <div class="score-row"><span>Thesis Match</span><span class="score-bar-wrap"><span class="score-bar thesis" style="width:${(signal.thesis_match_score * 100).toFixed(0)}%"></span></span><span>${(signal.thesis_match_score * 100).toFixed(0)}</span></div>
-          <div class="score-row penalty"><span>Consensus Penalty</span><span class="score-bar-wrap"><span class="score-bar penalty" style="width:${(signal.consensus_penalty * 100).toFixed(0)}%"></span></span><span>-${(signal.consensus_penalty * 100).toFixed(0)}</span></div>
+          ${[['Novelty', 'novelty_score'], ['Velocity', 'velocity_score'], ['Cross-Source', 'cross_source_score'], ['Source Quality', 'source_quality_score'], ['Thesis Match', 'thesis_match_score'], ['Consensus Penalty', 'consensus_penalty']].map(([label, key]) => {
+            const penalty = key === 'consensus_penalty';
+            return `<div class="score-row ${penalty ? 'penalty' : ''}"><span>${label}</span><span class="score-bar-wrap"><span class="score-bar ${penalty ? 'penalty' : key === 'thesis_match_score' ? 'thesis' : ''}" style="width:${scoreWidth(signal[key])}%"></span></span><span>${penalty && scoreValue(signal[key]) !== null ? '-' : ''}${scorePercent(signal[key])}</span></div>`;
+          }).join('')}
         </div>
       </div>
 
@@ -371,12 +379,12 @@ function renderSignalDetailPane(container, signal, typesData) {
       ${(() => {
         // SVG radar chart for the 6 score dimensions.
         const dims = [
-          { label: 'Novelty', val: signal.novelty_score || 0 },
-          { label: 'Velocity', val: signal.velocity_score || 0 },
-          { label: 'Cross-Src', val: signal.cross_source_score || 0 },
-          { label: 'Source-Q', val: signal.source_quality_score || 0 },
-          { label: 'Thesis', val: signal.thesis_match_score || 0 },
-          { label: 'Action', val: signal.actionability_score || 0 },
+          { label: 'Novelty', val: scoreValue(signal.novelty_score) },
+          { label: 'Velocity', val: scoreValue(signal.velocity_score) },
+          { label: 'Cross-Src', val: scoreValue(signal.cross_source_score) },
+          { label: 'Source-Q', val: scoreValue(signal.source_quality_score) },
+          { label: 'Thesis', val: scoreValue(signal.thesis_match_score) },
+          { label: 'Action', val: scoreValue(signal.actionability_score) },
         ];
         const cx = 80, cy = 80, r = 55;
         const angleStep = (Math.PI * 2) / dims.length;
@@ -405,11 +413,11 @@ function renderSignalDetailPane(container, signal, typesData) {
         return `<div style="display:flex;gap:16px;align-items:center;margin:12px 0">` +
           `<svg viewBox="0 0 160 160" style="width:140px;height:140px;flex-shrink:0">` +
           grid +
-          `<polygon points="${dataPts}" fill="var(--accent)" fill-opacity="0.2" stroke="var(--accent)" stroke-width="1.5"/>` +
+          (dims.every(d => d.val !== null) ? `<polygon points="${dataPts}" fill="var(--accent)" fill-opacity="0.2" stroke="var(--accent)" stroke-width="1.5"/>` : '') +
           labels +
           `</svg>` +
           `<div style="font-size:11px;font-family:var(--font-mono);color:var(--fg-mute);line-height:1.8">` +
-          dims.map(d => `${d.label}: <strong style="color:var(--fg)">${(d.val * 100).toFixed(0)}</strong>`).join('<br/>') +
+          dims.map(d => `${d.label}: <strong style="color:var(--fg)">${scorePercent(d.val)}</strong>`).join('<br/>') +
           `</div></div>`;
       })()}
 
@@ -442,6 +450,7 @@ function renderSignalDetailPane(container, signal, typesData) {
 
 export async function renderSignalDetail(params) {
   const container = $('#pageContent');
+  const isCurrent = beginSignalPage();
   const itemId = params?.id || params?.slug || '';
 
   showLoader(container, `LOADING SIGNAL ${itemId}...`);
@@ -463,6 +472,7 @@ export async function renderSignalDetail(params) {
       </section>
     `;
 
+    if (!isCurrent()) return;
     container.innerHTML = html;
 
     const detailEl = container.querySelector('#signalDetailFull');
@@ -471,6 +481,7 @@ export async function renderSignalDetail(params) {
     // Async: load related signals (same signal_type, high alpha, different item).
     if (signal.signal_type && signal.signal_type !== 'uncategorized') {
       fetchJSON(`${API_BASE}/signals?type=${encodeURIComponent(signal.signal_type)}&sinceDays=7&limit=10`).then(relData => {
+        if (!isCurrent()) return;
         const related = (relData.signals || []).filter(s => s.item_id !== signal.item_id).slice(0, 5);
         if (related.length === 0) return;
         const relDiv = document.createElement('div');
@@ -480,7 +491,7 @@ export async function renderSignalDetail(params) {
           `<h3 class="metrics-block-title">${getLanguage() === 'zh' ? '相关信号' : 'Related Signals'}</h3>` +
           `<ul class="story-members">` +
           related.map(r => `<li class="story-member">` +
-            `<span class="story-member-src">α${(r.alpha_score || 0).toFixed(2)}</span>` +
+            `<span class="story-member-src">α${scoreValue(r.alpha_score) === null ? '—' : r.alpha_score.toFixed(2)}</span>` +
             `<a href="/signals/${escapeAttr(r.item_id)}">${escapeHtml((r.ai_title || r.title || '').slice(0, 80))}</a>` +
             `</li>`).join('') +
           `</ul>`;
@@ -489,6 +500,6 @@ export async function renderSignalDetail(params) {
     }
 
   } catch (err) {
-    showError(container, err.message);
+    if (isCurrent()) showError(container, err.message);
   }
 }

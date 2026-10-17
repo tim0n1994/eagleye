@@ -88,7 +88,7 @@ a:hover { color: var(--accent); }
 .header {
   height: 60px;
   border-bottom: 1px solid var(--rule);
-  background: rgba(10, 10, 15, 0.8);
+  background: var(--bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   position: sticky;
@@ -6183,6 +6183,37 @@ body.auth-page #mainFooter { display: none !important; }
    show a ring for that programmatic move. */
 #pageContent:focus {
   outline: none;
+}
+
+.llm-pool { min-width: 0; max-width: 100%; }
+.llm-pool .llm-pool-endpoints { overflow-x: auto; }
+.llm-pool .llm-pool-cell-label { display: none; }
+.llm-pool .llm-pool-endpoint { min-width: 180px; max-width: 360px; white-space: normal; overflow-wrap: anywhere; }
+.llm-pool .llm-pool-concurrency input { width: 75px; }
+.llm-pool .llm-pool-task-options label { display: block; }
+.llm-pool .llm-pool-state { min-width: 180px; }
+
+@media (max-width: 680px) {
+  .llm-pool .settings-card-body { padding: 14px; min-width: 0; }
+  .llm-pool .settings-card-actions { padding: 0; gap: 8px; flex-wrap: wrap; }
+  .llm-pool .settings-card-actions .action-btn { flex: 1 1 120px; white-space: normal; }
+  .llm-pool .llm-pool-endpoints { overflow: visible; min-width: 0; }
+  .llm-pool .llm-pool-table { display: block; width: 100%; }
+  .llm-pool .llm-pool-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .llm-pool .llm-pool-table tbody { display: grid; gap: 14px; }
+  .llm-pool .llm-pool-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg-card); }
+  .llm-pool .llm-pool-table td { display: block; min-width: 0; max-width: none; padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+  .llm-pool .llm-pool-cell-label { display: block; margin-bottom: 6px; font-weight: 600; color: var(--fg-mute); font-size: 11px; }
+  .llm-pool .llm-pool-endpoint { order: -1; grid-column: 1 / -1; }
+  .llm-pool .llm-pool-tasks, .llm-pool .llm-pool-state { grid-column: 1 / -1; }
+  .llm-pool .llm-pool-task-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; }
+  .llm-pool .llm-pool-task-options label { display: flex; align-items: center; gap: 5px; }
+  .llm-pool .llm-pool-task-options input { flex: 0 0 auto; }
+  .llm-pool .llm-pool-state-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; margin-bottom: 10px; }
+  .llm-pool .llm-pool-state-metrics p { margin: 0; font-size: 11px; line-height: 1.5; }
+  .llm-pool [data-probe] { width: 100%; }
+  .llm-pool [data-probe-result] { margin-bottom: 0; }
+  .llm-pool #llmPoolSaveConfig { width: 100%; margin-top: 12px; white-space: normal; }
 }
 
 /* Respect the OS "reduce motion" setting. There are five keyframe animations

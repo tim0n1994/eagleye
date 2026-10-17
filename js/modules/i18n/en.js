@@ -240,6 +240,14 @@ export const en = {
   'settings.enrich_hint': 'Run enrichment with the new endpoint:',
   'settings.digest_hint': 'Rebuild today\u2019s digest:',
   'settings.empty': 'No endpoint configured yet. Paste one above or use the direct fields.',
+  'settings.mcp_title': 'MCP Server',
+  'settings.mcp_description': 'Read-only MCP data service for external AI clients. Enabled by default.',
+  'settings.mcp_enable': 'Enable MCP server',
+  'settings.mcp_status': 'Current state: {state}',
+  'settings.mcp_state_on': 'enabled',
+  'settings.mcp_state_off': 'disabled',
+  'settings.mcp_saved': '✓ Saved and reloaded.',
+  'settings.mcp_save_failed': 'Save failed: {msg}',
 
   // ── Operations card (data ingestion) ──
   'ops.title': 'DATA OPERATIONS',

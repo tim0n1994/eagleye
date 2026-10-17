@@ -227,6 +227,14 @@ export const zh = {
   'settings.enrich_hint': '使用新接口运行 enrichment：',
   'settings.digest_hint': '重建今日简报：',
   'settings.empty': '尚未配置接口。请粘贴配置或直接填写字段。',
+  'settings.mcp_title': 'MCP 服务',
+  'settings.mcp_description': '供外部 AI 客户端只读访问的 MCP 数据服务开关，默认开启。',
+  'settings.mcp_enable': '启用 MCP 服务',
+  'settings.mcp_status': '当前状态：{state}',
+  'settings.mcp_state_on': '已启用',
+  'settings.mcp_state_off': '已关闭',
+  'settings.mcp_saved': '✓ 已保存并重新读取。',
+  'settings.mcp_save_failed': '保存失败：{msg}',
 
   // ── Operations card (数据操作) ──
   'ops.title': '数据操作',

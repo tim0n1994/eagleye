@@ -18,6 +18,7 @@ function register(routes) {
   routes['/api/auth/register'] = async (req, res, parsed) => {
     if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
     if (authThrottled(req, res)) return;
+    if (!process.env.RESEND_API_KEY) return sendError(res, 503, 'Email registration is unavailable. Contact the administrator for access.');
     try {
       const { email, password } = await readBody(req);
       if (!email || !password) return sendError(res, 400, 'Email and password required');
@@ -34,13 +35,30 @@ function register(routes) {
       try {
         await auth.sendVerificationEmail(email, code);
       } catch (e) {
-        console.warn('  ⚠  Failed to send verification email:', e.message);
-        // Continue — user can still see the code in server logs (dev mode)
+        return sendError(res, 503, 'Verification email could not be sent. Use resend to try again later.');
       }
 
       sendJSON(res, 200, { status: 'ok', message: 'Verification code sent', email, isFirstUser: user.isFirstUser });
     } catch (err) {
       sendError(res, 500, err.message);
+    }
+  };
+
+  routes['/api/auth/resend'] = async (req, res) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
+    if (authThrottled(req, res)) return;
+    if (!process.env.RESEND_API_KEY) return sendError(res, 503, 'Email registration is unavailable. Contact the administrator for access.');
+    try {
+      const { email } = await readBody(req);
+      if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return sendError(res, 400, 'Valid email required');
+      const user = auth.getUserByEmail(email);
+      if (user && !user.email_verified && user.status === 'active') {
+        const code = auth.storeVerificationCode(email, 'register');
+        await auth.sendVerificationEmail(email, code);
+      }
+      return sendJSON(res, 200, { status: 'ok', message: 'If registration is pending, a verification email has been sent.' });
+    } catch {
+      return sendError(res, 503, 'Verification email could not be sent. Try again later.');
     }
   };
 
@@ -102,6 +120,7 @@ function register(routes) {
 
   // POST /api/auth/logout — clear session
   routes['/api/auth/logout'] = async (req, res, parsed) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
     const cookieHeader = req.headers?.cookie || '';
     const match = cookieHeader.match(/(?:^|;\s*)session=([a-f0-9]+)/);
     auth.clearSession(res, match?.[1]);
@@ -171,7 +190,7 @@ function register(routes) {
 
   // DELETE /api/auth/keys/:key — revoke an API key
   routes['/api/auth/keys/:key'] = async (req, res, parsed, params) => {
-    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
+    if (!['POST', 'DELETE'].includes(req.method)) return sendError(res, 405, 'Method not allowed');
     // Revoking is destructive, so it must be your own key (or you an admin).
     // Without this any account could disable a key belonging to anyone else.
     const owned = auth.listApiKeys(req.user.id).some(k => k.key === params.key);

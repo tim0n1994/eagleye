@@ -318,7 +318,7 @@ async function handleRequest(req, res) {
   const pathname = parsed.pathname;
   const method = req.method;
 
-  console.log(`[${new Date().toISOString()}] ${method} ${req.url}`);
+  console.log(`[${new Date().toISOString()}] ${method} ${pathname.replace(/(\/api\/auth\/keys\/).+$/, '$1[REDACTED]')}`);
 
   try {
     // --- API Routes ---
@@ -353,7 +353,7 @@ async function handleRequest(req, res) {
 
       // ─── Auth gate: all /api/ routes require login except auth endpoints ───
       const AUTH_WHITELIST = new Set([
-        '/api/auth/login', '/api/auth/register', '/api/auth/verify', '/api/auth/me', '/api/auth/logout',
+        '/api/auth/login', '/api/auth/register', '/api/auth/resend', '/api/auth/verify', '/api/auth/me', '/api/auth/logout',
       ]);
       if (!AUTH_WHITELIST.has(pathname)) {
         const auth = require('./server/services/auth');
@@ -428,7 +428,7 @@ async function handleRequest(req, res) {
         const match = pathname.match(pattern);
         if (match && routeMap[handlerName]) {
           const decoded = decodeURIComponent(match[1]);
-          const params = { slug: decoded, id: decoded, year: decoded, source: decoded };
+          const params = { slug: decoded, id: decoded, year: decoded, source: decoded, key: decoded };
           if (routeMap[handlerName].constructor.name === 'AsyncFunction') {
             await routeMap[handlerName](req, res, parsed, params);
           } else {
@@ -623,7 +623,7 @@ process.on('unhandledRejection', (reason) => {
   console.warn('  ⚠  Unhandled promise rejection (non-fatal):', reason?.message || reason);
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, process.env.EAGLEYE_HOST || undefined, () => {
   const addr = `http://localhost:${PORT}`;
   console.log('');
   console.log('  🦅 Eagleye Bot (Orangebot Edition)');
@@ -638,6 +638,12 @@ server.listen(PORT, () => {
   // Migrate legacy data from old items table
   const { run: migrateLegacy } = require('./server/migrations/002_migrate_legacy');
   migrateLegacy();
+
+  const { backfillPublishedProvenance } = require('./server/services/date-contract');
+  const publishedBackfill = backfillPublishedProvenance(getDB());
+  if (publishedBackfill.scanned > 0) {
+    console.log(`  🗓  Published-date contract: ${publishedBackfill.scanned} scanned, ${publishedBackfill.ok} parsed, ${publishedBackfill.unparseable} unparseable, ${publishedBackfill.missing} missing`);
+  }
 
   // Apply static i18n translations (sources, topics)
   const { applyStaticTranslations } = require('./server/i18n/translations');
@@ -666,9 +672,33 @@ server.listen(PORT, () => {
 });
 
 // Handle graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\n  Shutting down...');
-  const { closeDB } = require('./server/db/connection');
-  closeDB();
-  server.close(() => process.exit(0));
-});
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  require('./server/services/scheduler').stop();
+  require('./server/services/kg-worker').stopKGWorkers();
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    try {
+      require('./server/services/jobs').markInterruptedJobs();
+    } finally {
+      require('./server/db/connection').closeDB();
+      process.exit(0);
+    }
+  };
+  const deadline = setTimeout(() => {
+    server.closeAllConnections();
+    finish();
+  }, 10000);
+  deadline.unref();
+  const closed = new Promise(resolve => server.close(resolve));
+  server.closeIdleConnections();
+  await Promise.allSettled([closed, require('./server/services/llm-pool').shutdownPool()]);
+  clearTimeout(deadline);
+  finish();
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

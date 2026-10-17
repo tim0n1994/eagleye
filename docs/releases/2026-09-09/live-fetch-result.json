@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "job": {
+    "id": "1b0ac515-f4d3-4d8c-bee0-4eb5d37b7d6a",
+    "job_type": "fetch-source",
+    "status": "failed",
+    "params": "{\"slug\":\"hacker-news\",\"date\":\"20260909\",\"limit\":20}",
+    "result": null,
+    "error": "Client network socket disconnected before secure TLS connection was established",
+    "created_at": "2026-09-09 03:45:02",
+    "started_at": "2026-09-09 03:45:02",
+    "completed_at": "2026-09-09 03:45:07"
+  }
+}

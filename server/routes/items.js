@@ -9,6 +9,7 @@ const { generateDeployPlan, checkDeployEligibility } = require('../services/depl
 const { generateItemResearch, getResearchReport, answerItemResearchChat } = require('../services/research');
 const { getDB } = require('../db/connection');
 const { sendJSON, sendError } = require('./_shared');
+const { normalizeDigestDate } = require('../services/date-contract');
 
 function register(routes) {
 
@@ -20,7 +21,12 @@ function register(routes) {
 
     const category = parsed.query.category;
     const source = parsed.query.source;
-    const date = parsed.query.date;
+    const rawDate = parsed.query.date;
+    let date;
+    if (rawDate) {
+      date = normalizeDigestDate(rawDate);
+      if (!date) return sendError(res, 400, 'Invalid date: expected YYYY-MM-DD or YYYYMMDD');
+    }
     const limit = parseInt(parsed.query.limit || '50', 10);
     const offset = parseInt(parsed.query.offset || '0', 10);
 
@@ -113,7 +119,7 @@ function register(routes) {
       };
     });
 
-    sendJSON(res, 200, { status: 'ok', items: enriched, total: countRow.c, page_count: enriched.length });
+    sendJSON(res, 200, { status: 'ok', items: enriched, total: countRow.c, page_count: enriched.length, score_scale: { score: 'unbounded-legacy' } });
   };
 
   // --- Papers API ---
@@ -320,6 +326,7 @@ function register(routes) {
 
   // --- Trigger Research API (§13: POST /api/items/:id/research) ---
   routes['/api/items/:id/research'] = async (req, res, _parsed, params) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
     const itemId = params?.id || '';
     if (!itemId) return sendError(res, 400, 'Item ID required');
     const force = _parsed?.query?.force === 'true' || _parsed?.query?.force === '1';
@@ -327,7 +334,7 @@ function register(routes) {
     // Check for existing completed research
     const db = getDB();
     const existing = !force
-      ? db?.prepare('SELECT * FROM research_reports WHERE item_id = ? AND status = ? ORDER BY created_at DESC LIMIT 1').get(itemId, 'completed')
+      ? db?.prepare("SELECT * FROM research_reports WHERE item_id = ? AND status = ? AND LENGTH(TRIM(COALESCE(report_markdown, ''), char(9) || char(10) || char(13) || ' ')) > 0 ORDER BY created_at DESC LIMIT 1").get(itemId, 'completed')
       : null;
     if (existing) {
       return sendJSON(res, 200, { status: 'ok', report: existing, cached: true });
@@ -346,6 +353,7 @@ function register(routes) {
 
   // --- Research Chat API (§13: POST /api/items/:id/research/chat) ---
   routes['/api/items/:id/research/chat'] = (req, res, _parsed, params) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
     const itemId = params?.id || '';
     if (!itemId) return sendError(res, 400, 'Item ID required');
 
@@ -371,6 +379,7 @@ function register(routes) {
 
   // --- Trigger Deployment Plan API (§13: POST /api/items/:id/deployment-plan) ---
   routes['/api/items/:id/deployment-plan'] = async (req, res, _parsed, params) => {
+    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
     const itemId = params?.id || '';
     if (!itemId) return sendError(res, 400, 'Item ID required');
 

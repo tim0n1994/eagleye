@@ -1,0 +1,16 @@
+{
+  "phase": "done",
+  "run_id": "kgr_b534b00e44e6979c6de67725",
+  "processed": 2625,
+  "tags": 21021,
+  "topics": 2625,
+  "entities": 2807,
+  "edges": 26453,
+  "total": 2625,
+  "selection": "source-balanced-pending",
+  "by_source": {
+    "hacker-news": 2625
+  },
+  "seconds": 15.388,
+  "items_per_sec": 170.59
+}

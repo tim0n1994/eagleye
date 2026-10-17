@@ -1,0 +1,81 @@
+{
+  "start": {
+    "status": "queued",
+    "job_id": "056b11ca-1b15-4ff7-84b5-879273e2ea80",
+    "message": "Backfill queued (github-trending, batch: 1, force: true). Cancel via POST /api/jobs/056b11ca-1b15-4ff7-84b5-879273e2ea80/cancel.",
+    "total_translated": 40999,
+    "batch_size": 1,
+    "all": false,
+    "source": "github-trending"
+  },
+  "active_before": {
+    "scope": "process",
+    "enabled": true,
+    "active": 1,
+    "queued": 0,
+    "global_concurrency": 5,
+    "queue_limit": 100,
+    "endpoints": [
+      {
+        "id": "lane-1",
+        "active": 0,
+        "queued": 0,
+        "state": "ready",
+        "cooldown_until": null,
+        "last_success_at": "2026-09-09T04:05:36.987Z",
+        "last_failure_at": "2026-09-09T03:55:10.248Z",
+        "last_error_code": null,
+        "last_latency_ms": 15943
+      },
+      {
+        "id": "lane-2",
+        "active": 0,
+        "queued": 0,
+        "state": "ready",
+        "cooldown_until": null,
+        "last_success_at": "2026-09-09T04:07:59.465Z",
+        "last_failure_at": null,
+        "last_error_code": null,
+        "last_latency_ms": 17245
+      },
+      {
+        "id": "lane-3",
+        "active": 1,
+        "queued": 0,
+        "state": "ready",
+        "cooldown_until": null,
+        "last_success_at": "2026-09-09T03:57:18.906Z",
+        "last_failure_at": null,
+        "last_error_code": null,
+        "last_latency_ms": 5302
+      },
+      {
+        "id": "lane-4",
+        "active": 0,
+        "queued": 0,
+        "state": "ready",
+        "cooldown_until": null,
+        "last_success_at": "2026-09-09T04:05:20.854Z",
+        "last_failure_at": null,
+        "last_error_code": null,
+        "last_latency_ms": 22259
+      },
+      {
+        "id": "lane-5",
+        "active": 0,
+        "queued": 0,
+        "state": "ready",
+        "cooldown_until": null,
+        "last_success_at": "2026-09-09T04:05:14.582Z",
+        "last_failure_at": null,
+        "last_error_code": null,
+        "last_latency_ms": 15986
+      }
+    ]
+  },
+  "cancelled": {
+    "status": "ok",
+    "job_id": "056b11ca-1b15-4ff7-84b5-879273e2ea80",
+    "cancelled": true
+  }
+}

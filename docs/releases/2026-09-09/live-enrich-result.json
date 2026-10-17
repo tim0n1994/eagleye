@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "job": {
+    "id": "4d994757-b291-4b2a-9a49-b8b11ece1677",
+    "job_type": "enrich-items",
+    "status": "failed",
+    "params": "{\"batchSize\":4,\"priorityOnly\":false,\"resetAttempts\":false}",
+    "result": "{\"enriched\":0,\"failed\":4,\"successful_item_ids\":[],\"entities\":0,\"topics\":0,\"total\":4,\"batch_items\":4,\"workers\":1,\"priority_sources\":[\"x-following\",\"hacker-news\",\"github-trending\",\"hugging-face\"],\"priority_only\":false}",
+    "error": "4 item(s) failed",
+    "created_at": "2026-09-09 03:54:16",
+    "started_at": "2026-09-09 03:54:16",
+    "completed_at": "2026-09-09 03:55:10"
+  }
+}
