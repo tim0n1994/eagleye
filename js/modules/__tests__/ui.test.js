@@ -10,9 +10,6 @@ describe('UI', () => {
       <div id="categoryList"></div>
       <div id="lastUpdated"></div>
       <div id="searchInput"></div>
-      <div id="researchModal" style="display:none;"></div>
-      <div id="researchTitle"></div>
-      <div id="researchBody"></div>
       <div id="graphOverlay"></div>
       <div id="graphCanvas"></div>
       <button id="showGraph"></button>
@@ -36,9 +33,6 @@ describe('UI', () => {
     expect(UI.dom.lastUpdated).toBeTruthy();
     expect(UI.dom.syncBtn).toBeTruthy();
     expect(UI.dom.searchInput).toBeTruthy();
-    expect(UI.dom.researchModal).toBeTruthy();
-    expect(UI.dom.researchTitle).toBeTruthy();
-    expect(UI.dom.researchBody).toBeTruthy();
     expect(UI.dom.graphOverlay).toBeTruthy();
     expect(UI.dom.showGraph).toBeTruthy();
     expect(UI.dom.closeGraph).toBeTruthy();
@@ -49,7 +43,6 @@ describe('UI', () => {
     UI.cacheDom();
     expect(UI.dom.itemsGrid.id).toBe('itemsGrid');
     expect(UI.dom.categoryList.id).toBe('categoryList');
-    expect(UI.dom.researchModal.id).toBe('researchModal');
     expect(UI.dom.graphCanvas.id).toBe('graphCanvas');
   });
 
@@ -202,7 +195,7 @@ describe('UI', () => {
 
     UI.renderModules(items, 'ML');
     const html = UI.dom.itemsGrid.innerHTML;
-    expect(html).toContain('ML Update');
+    expect(html).toMatch(/<mark[^>]*>ML<\/mark>\s*Update/);
     expect(html).not.toContain('AI News');
   });
 
@@ -257,50 +250,5 @@ describe('UI', () => {
     UI.cacheDom();
     const row = UI.createItemRow({ title: 'Searchable Title', summary: '', source: 'Src', url: '#', created_at: new Date().toISOString(), tags: [] }, 'Searchable');
     expect(row.innerHTML).toContain('<mark');
-  });
-
-  it('createItemRow includes research button', () => {
-    UI.cacheDom();
-    const row = UI.createItemRow({ title: 'Test', summary: '', source: 'Src', url: 'https://example.com', created_at: new Date().toISOString(), tags: [] }, '');
-    expect(row.querySelector('.research-btn')).toBeTruthy();
-  });
-
-  it('createItemRow sets data attributes on research button', () => {
-    UI.cacheDom();
-    const row = UI.createItemRow({ title: 'Test Title', summary: '', source: 'Src', url: 'https://example.com/article', created_at: new Date().toISOString(), tags: [] }, '');
-    const btn = /** @type {HTMLElement} */ (row.querySelector('.research-btn'));
-    expect(btn.dataset.url).toBe('https://example.com/article');
-    expect(btn.dataset.title).toBe('Test Title');
-  });
-
-  // ─── showResearch ───────────────────────────────────────
-
-  it('showResearch displays the modal with title and content', () => {
-    UI.cacheDom();
-    UI.showResearch('Test Title', 'Research content here');
-
-    expect(UI.dom.researchTitle.textContent).toBe('Test Title');
-    expect(UI.dom.researchBody.innerHTML).toContain('Research content here');
-    expect(UI.dom.researchModal.style.display).toBe('block');
-  });
-
-  it('showResearch formats markdown-style content', () => {
-    UI.cacheDom();
-    UI.showResearch('Title', '# Heading\n\n**bold**\n\n> quote');
-
-    const html = UI.dom.researchBody.innerHTML;
-    expect(html).toContain('<h1>');
-    expect(html).toContain('Heading');
-    expect(html).toContain('<strong>');
-    expect(html).toContain('bold');
-    expect(html).toContain('<blockquote>');
-    expect(html).toContain('quote');
-  });
-
-  it('showResearch handles empty content', () => {
-    UI.cacheDom();
-    UI.showResearch('Empty', '');
-    expect(UI.dom.researchBody.innerHTML).toBe('');
-    expect(UI.dom.researchModal.style.display).toBe('block');
   });
 });

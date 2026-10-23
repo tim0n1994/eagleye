@@ -1,0 +1,3 @@
+#!/bin/sh
+# argus secret gate (installed 2026-10-21) — bypassing git hooks for pushes is prohibited
+exec /home/user/.local/share/argus/hooks/pre-push-gate "$@"

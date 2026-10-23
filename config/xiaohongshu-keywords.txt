@@ -1,6 +1,15 @@
 # XiaoHongShu (小红书) search keywords crawled by the eagleye XiaoHongShu connector.
 # One keyword per line (comma-separated also works). Lines starting with # are ignored.
-AI
-大模型
-AI Agent
-具身智能
+#
+# [停用 disabled 2026-10-20 · Round 1 D5] The collection backend login state
+# expired (argus-eagleye-xhs on 127.0.0.1:18060 is no longer authenticated),
+# so the xiaohongshu source is disabled: sources.is_active=0 is set by
+# migration 042_xiaohongshu_disable.sql, and every keyword below is commented
+# out as a soft-disable double-insurance (the connector returns zero items
+# when no keywords are configured). Connector code is kept registered for
+# manual testing. Uncomment the keywords and re-enable the source after the
+# collector login is restored.
+# AI
+# 大模型
+# AI Agent
+# 具身智能

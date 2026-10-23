@@ -109,7 +109,6 @@ export async function renderPapers(_params) {
           ${categories ? `<div class="mini-card-bottom">${categories}</div>` : ''}
           ${tags ? `<div class="card-tags paper-tags">${tags}</div>` : ''}
           <div class="mini-card-actions">
-            <button class="mini-action research-btn" data-item-id="${escapeAttr(paper.id)}" data-title="${escapeAttr(title)}">🔍 ${escapeHtml(getLanguage() === 'zh' ? '研究' : 'Research')}</button>
             ${bibtexBtn}
             ${pdf}
             <a class="mini-action mini-action-link" href="${escapeAttr(paper.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(getLanguage() === 'zh' ? '原文' : 'Source')} ↗</a>

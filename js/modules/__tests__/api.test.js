@@ -138,25 +138,6 @@ describe('API', () => {
     expect(result.ok).toBe(true);
   });
 
-  // ─── fetchResearch ───────────────────────────────────────
-
-  it('fetchResearch explicitly posts a generation request', async () => {
-    mockFetch.mockResolvedValue(mockFetchResponse({ result: 'research data' }));
-    const result = await API.fetchResearch('https://example.com/article');
-    expect(mockFetch).toHaveBeenCalledWith(
-      '/api/research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://example.com/article' }) }
-    );
-    expect(result).toEqual({ result: 'research data' });
-  });
-
-  it('fetchResearch preserves special URL characters in its JSON body', async () => {
-    mockFetch.mockResolvedValue(mockFetchResponse({}));
-    await API.fetchResearch('https://example.com/path?q=ai&lang=en');
-    expect(mockFetch).toHaveBeenCalledWith(
-      '/api/research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://example.com/path?q=ai&lang=en' }) }
-    );
-  });
-
   // ─── fetchGraph ──────────────────────────────────────────
 
   it('fetchGraph fetches /api/graph', async () => {

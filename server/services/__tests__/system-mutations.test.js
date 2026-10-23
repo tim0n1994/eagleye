@@ -33,12 +33,12 @@ describe('system mutation boundaries', () => {
       '../services/llm': { enrichItems: effect, generateDailyDigest: effect },
       '../services/translate': { translateItems: effect },
       '../services/signals': {}, '../services/utils': { escapeXML: value => value },
-      '../services/research': { generateTopicResearch: effect }, '../services/topic-graph': {},
+      '../services/topic-graph': {},
       '../services/date-contract': require('../../services/date-contract'),
       '../services/elasticsearch': { esReindex: effect, esIncrementalSync: effect },
       '../services/es-rag': {}, '../services/es-ai-setup': { setupAI: effect },
     };
-    for (const file of ['jobs.js', 'signals.js', 'taxonomy.js', 'elasticsearch.js']) {
+    for (const file of ['jobs.js', 'signals.js', 'taxonomy.js']) {
       const filename = path.resolve(__dirname, '../../routes', file);
       const subject = new Module(filename, module);
       subject.filename = filename;
@@ -62,7 +62,7 @@ describe('system mutation boundaries', () => {
 
   const mutations = ['/api/sync', '/api/enrich', '/api/enrich/reenrich', '/api/digest/build', '/api/pipeline',
     '/api/jobs/:id/cancel', '/api/translate/backfill', '/api/jobs/fetch-source', '/api/signals/rescore',
-    '/api/tags/build-hierarchy', '/api/topics/build', '/api/es/reindex', '/api/es/sync', '/api/es/setup-ai'];
+    '/api/tags/build-hierarchy', '/api/topics/build'];
 
   it.each(mutations)('rejects ordinary users and wrong methods before side effects: %s', async route => {
     expect((await call(route, 'POST', 'user')).status).toBe(403);
@@ -113,13 +113,6 @@ describe('system mutation boundaries', () => {
       expect((await call(route, 'POST', 'admin', { date, slug: 'hacker-news' })).status).toBe(400);
     }
     expect(runJob).not.toHaveBeenCalled();
-  });
-
-  it('keeps personal topic research available to ordinary users through POST only', async () => {
-    expect((await call('/api/topics/:slug/research', 'GET', 'user')).status).toBe(405);
-    expect(effect).not.toHaveBeenCalled();
-    expect((await call('/api/topics/:slug/research', 'POST', 'user')).status).toBe(200);
-    expect(effect).toHaveBeenCalledWith('ai');
   });
 
   it('keeps job reads available with bounded limits and no mutation methods', async () => {

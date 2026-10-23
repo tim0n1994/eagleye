@@ -60,6 +60,83 @@ function todayDigestDate(now = new Date()) {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+// ---------------------------------------------------------------------------
+// D2 fetch-window contract (decision D2, Round 1): "new" is a time window,
+// not a calendar-day equality. The daily 01:00 Asia/Shanghai pipeline used to
+// require digest_date (local calendar) == the item's UTC calendar day, which
+// skipped every cross-UTC-day item. Items are new when their publish time
+// falls inside [now - LOOKBACK, now + future tolerance] (closed interval).
+// ---------------------------------------------------------------------------
+
+const HOUR_MS = 3600e3;
+const DEFAULT_FETCH_LOOKBACK_HOURS = 36;
+const DEFAULT_FETCH_FUTURE_HOURS = 1;
+// Repo convention for source-fetch tuning knobs follows SOURCE_TIMEOUT_MS,
+// so the lookback override is SOURCE_LOOKBACK_HOURS (positive number).
+const LOOKBACK_HOURS_ENV = 'SOURCE_LOOKBACK_HOURS';
+
+function envPositiveHours(name) {
+  const raw = process.env ? process.env[name] : undefined;
+  if (raw === undefined || raw === '') return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/** Default lookback (hours), overridable via SOURCE_LOOKBACK_HOURS. */
+function fetchLookbackHours() {
+  return envPositiveHours(LOOKBACK_HOURS_ENV) ?? DEFAULT_FETCH_LOOKBACK_HOURS;
+}
+
+/**
+ * Resolve a publish timestamp to epoch milliseconds. Accepts epoch
+ * milliseconds (number), 'YYYYMMDD' compact strings (resolved to that day's
+ * UTC midnight), plus any Date.parse-able string and Date-like objects.
+ * @param {number | string | Date | null | undefined} published
+ * @returns {number | null} epoch ms, or null when missing/unparseable
+ */
+function resolvePublishedMs(published) {
+  if (typeof published === 'number') return Number.isFinite(published) ? published : null;
+  if (typeof published === 'string') {
+    const text = published.trim();
+    if (!text) return null;
+    if (COMPACT_DATE.test(text)) {
+      return Date.UTC(Number(text.slice(0, 4)), Number(text.slice(4, 6)) - 1, Number(text.slice(6, 8)));
+    }
+    const ts = Date.parse(text);
+    return Number.isFinite(ts) ? ts : null;
+  }
+  if (published && typeof published.getTime === 'function') {
+    const ts = published.getTime();
+    return Number.isFinite(ts) ? ts : null;
+  }
+  return null;
+}
+
+/**
+ * D2 time-window freshness test. An item is "new" when its publish time is
+ * within the closed interval [now - lookbackHours, now + futureHours]
+ * (defaults 36h back / 1h ahead). Missing or unparseable input is always
+ * outside the window. All connectors share this single implementation.
+ *
+ * @param {number | string | Date | null | undefined} published epoch ms,
+ *        'YYYYMMDD'/'YYYY-MM-DD' string, or Date-like
+ * @param {{ now?: number, lookbackHours?: number, futureHours?: number }} [options]
+ * @returns {boolean}
+ */
+function isWithinFetchWindow(published, options) {
+  const opts = options || {};
+  const now = Number.isFinite(opts.now) ? opts.now : Date.now();
+  const lookbackHours = Number.isFinite(opts.lookbackHours) && opts.lookbackHours > 0
+    ? opts.lookbackHours
+    : fetchLookbackHours();
+  const futureHours = Number.isFinite(opts.futureHours) && opts.futureHours > 0
+    ? opts.futureHours
+    : DEFAULT_FETCH_FUTURE_HOURS;
+  const ts = resolvePublishedMs(published);
+  if (ts === null) return false;
+  return ts >= now - lookbackHours * HOUR_MS && ts <= now + futureHours * HOUR_MS;
+}
+
 /**
  * Boot-time backfill for rows written before the contract existed. Idempotent:
  * only rows without a parse status are touched, and the original string is
@@ -94,4 +171,12 @@ function backfillPublishedProvenance(db) {
   return tally;
 }
 
-module.exports = { parsePublishedDate, normalizeDigestDate, compactDigestDate, todayDigestDate, backfillPublishedProvenance };
+module.exports = {
+  parsePublishedDate,
+  normalizeDigestDate,
+  compactDigestDate,
+  todayDigestDate,
+  backfillPublishedProvenance,
+  isWithinFetchWindow,
+  fetchLookbackHours,
+};

@@ -18,11 +18,9 @@ export { showLoader, showError, renderItemCard, markItemSeen } from './pages/sha
 export * from './pages/home.js';
 export * from './pages/digest.js';
 export * from './pages/sources.js';
-export * from './pages/research.js';
 export * from './pages/topics.js';
 export * from './pages/signals.js';
 export * from './pages/papers.js';
-export * from './pages/catalog.js';
 export * from './pages/intelligence.js';
 export * from './pages/settings.js';
 export * from './pages/tags.js';

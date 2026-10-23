@@ -10,6 +10,7 @@ describe('durable daily scheduling', () => {
   let scheduler;
   let runJob;
   let getJob;
+  let findCompensationJob;
   let load;
   let testSwitches;
   beforeEach(() => {
@@ -21,6 +22,7 @@ describe('durable daily scheduling', () => {
     db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)');
     runJob = vi.fn(async () => 'job-1');
     getJob = vi.fn(() => ({ status: 'completed' }));
+    findCompensationJob = vi.fn(() => null);
     load = () => {
       const filename = path.resolve(__dirname, '../scheduler.js');
       const subject = new Module(filename, module);
@@ -30,7 +32,7 @@ describe('durable daily scheduling', () => {
           getValue: key => JSON.parse(db.prepare('SELECT value FROM settings WHERE key=?').get(key)?.value || 'null'),
           setValue: (key, value) => db.prepare('INSERT OR REPLACE INTO settings VALUES (?,?)').run(key, JSON.stringify(value)),
         }; }
-        if (id === './jobs') return { runJob, getJob, JOB_TYPES: { FULL_PIPELINE: 'full-pipeline', RESCORE_ALL: 'rescore-all' } };
+        if (id === './jobs') return { runJob, getJob, findCompensationJob, JOB_TYPES: { FULL_PIPELINE: 'full-pipeline', RESCORE_ALL: 'rescore-all' } };
         if (id === '../services/runtime-switches') return { getSwitches: () => testSwitches || { collect: true, enrich: true, digest: true } };
         throw new Error(`Unexpected dependency: ${id}`);
       };
@@ -45,7 +47,7 @@ describe('durable daily scheduling', () => {
   it('catches up only today once, persists identity across module restart and exposes actual job status', async () => {
     await scheduler.tick();
     expect(runJob).toHaveBeenCalledTimes(1);
-    expect(scheduler.getConfig()).toMatchObject({ lastRun: '2026-09-09 04:01', last_job_id: 'job-1', last_outcome: 'queued', last_job_status: 'completed' });
+    expect(scheduler.getConfig()).toMatchObject({ lastRun: '2026-09-09 04:01', last_job_id: 'job-1', last_outcome: 'completed', last_job_status: 'completed' });
     scheduler = load();
     await scheduler.tick();
     expect(runJob).toHaveBeenCalledTimes(1);
@@ -133,6 +135,33 @@ describe('durable daily scheduling', () => {
     testSwitches = { collect: true, enrich: true, digest: true };
     await scheduler.tick();
     expect(runJob).toHaveBeenCalledTimes(1);
-    expect(scheduler.getConfig().last_outcome).toBe('queued');
+    expect(scheduler.getConfig().last_outcome).toBe('completed');
+  });
+
+  it('follows a failed root through its recovery chain before reporting scheduler status', async () => {
+    await scheduler.tick();
+    getJob.mockImplementation(id => ({
+      'job-1': {
+        id: 'job-1',
+        status: 'failed',
+        error: 'Server restarted before this background job completed',
+        result: JSON.stringify({ recovery: { compensation_job_id: 'job-1-recovery' } }),
+      },
+      'job-1-recovery': { id: 'job-1-recovery', status: 'completed' },
+    })[id]);
+
+    const config = scheduler.getConfig();
+
+    expect(config).toMatchObject({
+      last_job_id: 'job-1',
+      effective_job_id: 'job-1-recovery',
+      last_job_status: 'completed',
+      last_outcome: 'completed',
+      last_error: null,
+    });
+    expect(config.last_job_chain).toEqual([
+      { id: 'job-1', status: 'failed' },
+      { id: 'job-1-recovery', status: 'completed' },
+    ]);
   });
 });

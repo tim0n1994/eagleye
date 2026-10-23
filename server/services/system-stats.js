@@ -31,18 +31,19 @@ function getSystemStats(db, { now = new Date(), dbPath = getDBPath() } = {}) {
       MAX(NULLIF(i.digest_date, '')) AS latest_digest_date,
       MAX(strftime('%Y-%m-%dT%H:%M:%fZ', i.fetched_at)) AS latest_item_fetched_at
     FROM information_items i LEFT JOIN summary_items a ON a.item_id = i.id
+    WHERE i.duplicate_of IS NULL
   `).get();
   Object.assign(stats, db.prepare(`SELECT
     (SELECT COUNT(*) FROM ai_summaries) AS summary_rows,
-    (SELECT COUNT(DISTINCT ss.item_id) FROM signal_scores ss JOIN information_items i ON i.id = ss.item_id) AS scored,
-    (SELECT COUNT(DISTINCT ss.item_id) FROM signal_scores ss JOIN information_items i ON i.id = ss.item_id WHERE ss.signal_type = 'uncategorized') AS uncategorized,
+    (SELECT COUNT(DISTINCT ss.item_id) FROM signal_scores ss JOIN information_items i ON i.id = ss.item_id WHERE i.duplicate_of IS NULL) AS scored,
+    (SELECT COUNT(DISTINCT ss.item_id) FROM signal_scores ss JOIN information_items i ON i.id = ss.item_id WHERE i.duplicate_of IS NULL AND ss.signal_type = 'uncategorized') AS uncategorized,
     (SELECT COUNT(*) FROM research_reports WHERE status = 'completed') AS research_reports,
     (SELECT COUNT(*) FROM saved_items) AS saved_items,
     (SELECT COUNT(*) FROM seen_items) AS seen_items,
     (SELECT COUNT(*) FROM canonical_entities) AS entities,
     (SELECT COUNT(*) FROM dynamic_topics) AS dynamic_topics,
-    (SELECT COUNT(DISTINCT f.item_id) FROM item_features f JOIN information_items i ON i.id = f.item_id) AS kg_features,
-    (SELECT COUNT(DISTINCT v.item_id) FROM item_vectors v JOIN information_items i ON i.id = v.item_id) AS vector_items
+    (SELECT COUNT(DISTINCT f.item_id) FROM item_features f JOIN information_items i ON i.id = f.item_id WHERE i.duplicate_of IS NULL) AS kg_features,
+    (SELECT COUNT(DISTINCT v.item_id) FROM item_vectors v JOIN information_items i ON i.id = v.item_id WHERE i.duplicate_of IS NULL) AS vector_items
   `).get());
   stats.enrichment_success = stats.summaries;
   stats.enrichment_exhausted = stats.poisoned_items;
@@ -50,6 +51,7 @@ function getSystemStats(db, { now = new Date(), dbPath = getDBPath() } = {}) {
   stats.kg_feature_coverage = stats.total_items ? stats.kg_features / stats.total_items : null;
   stats.vector_models = db.prepare(`SELECT v.vector_type, v.model_name, COUNT(DISTINCT v.item_id) AS items
     FROM item_vectors v JOIN information_items i ON i.id = v.item_id
+    WHERE i.duplicate_of IS NULL
     GROUP BY v.vector_type, v.model_name ORDER BY items DESC, v.model_name`).all().map(row => ({
     ...row,
     kind: /hash/i.test(`${row.vector_type} ${row.model_name}`) ? 'hash' : ['semantic', 'semantic-fastembed'].includes(row.vector_type) ? 'semantic' : 'unknown',
@@ -68,7 +70,7 @@ function getSystemStats(db, { now = new Date(), dbPath = getDBPath() } = {}) {
       COALESCE(SUM(CASE WHEN i.digest_date BETWEEN ? AND ? THEN 1 ELSE 0 END), 0) AS items_7d,
       MAX(NULLIF(i.digest_date, '')) AS latest_digest_date,
       MAX(strftime('%Y-%m-%dT%H:%M:%fZ', i.fetched_at)) AS latest_item_fetched_at
-    FROM sources s LEFT JOIN information_items i ON i.source_id = s.id
+    FROM sources s LEFT JOIN information_items i ON i.source_id = s.id AND i.duplicate_of IS NULL
     WHERE s.is_active = 1 GROUP BY s.id ORDER BY items_7d DESC, s.slug`).all(since, stats.server_date)
     .map(row => ({ ...row, data_freshness: dateState(row.latest_digest_date, row.total_items, now) }));
   const job = db.prepare(`SELECT id, status, created_at, completed_at, error, result FROM background_jobs

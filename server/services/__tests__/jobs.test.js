@@ -66,6 +66,23 @@ describe('durable full-pipeline outcomes', () => {
     throw new Error('Mock pipeline did not reach a terminal state');
   }
 
+  function progressOf(stages, { date = '2026-10-23', fetchResults = [] } = {}) {
+    const next = stages.map(stage => stage.key === 'fetch' ? {
+      ...stage,
+      detail: {
+        ...(stage.detail || {}),
+        date,
+        ...(Array.isArray(fetchResults) ? { results: fetchResults } : {}),
+      },
+    } : stage);
+    return { pipeline: true, completed: false, current_stage: 'fetch', stages: next };
+  }
+
+  function insertInterrupted(id, jobType, progress) {
+    db.prepare("INSERT INTO background_jobs (id,job_type,status,result) VALUES (?,?,'running',?)")
+      .run(id, jobType, JSON.stringify(progress));
+  }
+
   const run = async () => terminal(await jobs.runJob(jobs.JOB_TYPES.FULL_PIPELINE));
 
   it('persists successful results, covers all active sources, and rescores after KG and momentum', async () => {
@@ -90,18 +107,54 @@ describe('durable full-pipeline outcomes', () => {
     expect(row.parsed.summary.hierarchy.domains).toBe(1);
   });
 
-  it('reports returned per-source, per-item, topic, nested KG and digest failures', async () => {
-    mocks['./sync'].syncAllSources.mockResolvedValue({ fetch: [{ source: 'broken', error: 'timeout' }] });
-    mocks['./llm'].enrichItems.mockResolvedValue({ enriched: 1, failed: 2, total: 3 });
+  it('degrades partial fetch failure, continues downstream, and reports later stage failures', async () => {
+    mocks['./sync'].syncAllSources.mockResolvedValue({
+      fetch: [
+        { source: 'available', items: 2 },
+        { source: 'broken', error: 'timeout' },
+      ],
+    });
+    // R3 partial-failure semantics (EAGLEYE_R3_PARTIAL_FAIL, default-on): an
+    // enrich batch where items succeeded is a partial success, so pin the
+    // per-item clause with a fully dead batch instead (partial batches are
+    // covered by enrich-partial-failure.test.js / job-enrich-partial-fail.test.js).
+    mocks['./llm'].enrichItems.mockResolvedValue({ enriched: 0, failed: 2, total: 2 });
     mocks['./translate'].translateItems.mockResolvedValue({ translated: 0, failed: 1, total: 1 });
     mocks['./topic-graph'].buildTopicGraph.mockResolvedValue({ status: 'error', message: 'graph failed' });
     mocks['./kg-worker'].runKGFullPipeline.mockResolvedValue({ extract: { failed: 1 } });
     mocks['./llm'].generateDailyDigest.mockResolvedValue(null);
     const row = await run();
     expect(row.status).toBe('failed');
-    expect(row.parsed.failed_stages).toEqual(['fetch', 'enrich', 'translate', 'topic_graph', 'kg_worker', 'digest']);
+    expect(row.parsed.failed_stages).toEqual(['enrich', 'translate', 'topic_graph', 'kg_worker', 'digest']);
+    expect(row.parsed.degraded_stages).toEqual(['fetch']);
+    expect(row.parsed.stages.find(stage => stage.key === 'fetch').status).toBe('degraded');
+    expect(row.parsed.stages.find(stage => stage.key === 'fetch').detail).toMatchObject({
+      warning: '1 source(s) failed; continuing downstream with 1 available source(s)',
+      failed_sources: ['broken'],
+    });
     expect(row.parsed.summary.digest).toMatchObject({ generated: false });
-    expect(row.parsed.stages.find(stage => stage.key === 'fetch').detail.error).toContain('broken: timeout');
+  });
+
+  it('fails the whole pipeline when every fetched source errors', async () => {
+    mocks['./sync'].syncAllSources.mockResolvedValue({
+      fetch: [
+        { source: 'first', error: 'upstream 503' },
+        { source: 'second', error: 'timeout' },
+      ],
+    });
+    const row = await run();
+    expect(row.status).toBe('failed');
+    expect(row.error).toContain('first: upstream 503');
+    expect(row.error).toContain('second: timeout');
+    expect(row.parsed.failed_stages).toEqual(['fetch']);
+    expect(row.parsed.degraded_stages).toEqual([]);
+    expect(row.parsed.stages.filter(stage => stage.key !== 'fetch').every(stage => stage.status === 'skipped')).toBe(true);
+    expect(row.parsed.stages.find(stage => stage.key === 'fetch').detail.error).toBe('first: upstream 503; second: timeout');
+    // The stage helper records completed work; fetch deliberately throws after
+    // persisting the all-source failure, so no downstream stage may complete.
+    expect(mocks['./sync'].syncAllSources).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual([]);
+    expect(mocks['./llm'].enrichItems).not.toHaveBeenCalled();
   });
 
   it('marks a requested embedding backend fallback as failed while retaining hash outputs', async () => {
@@ -127,7 +180,7 @@ describe('durable full-pipeline outcomes', () => {
     expect(row.parsed.completed).toBe(true);
   });
 
-  it('persists all-stage failure without a false partial-success flag', async () => {
+  it('aborts when fetch work throws and skips every downstream stage', async () => {
     for (const dependency of Object.values(mocks)) {
       for (const fn of Object.values(dependency)) {
         if (vi.isMockFunction(fn)) fn.mockImplementation(() => { throw new Error('unavailable'); });
@@ -136,8 +189,13 @@ describe('durable full-pipeline outcomes', () => {
     const row = await run();
     expect(row.status).toBe('failed');
     expect(row.parsed).toMatchObject({ completed: false, partial: false });
-    expect(row.parsed.failed_stages).toHaveLength(9);
-    expect(row.parsed.stages.every(stage => stage.status === 'failed')).toBe(true);
+    // fetch is the pipeline gate: a synchronous fetch throw aborts before any
+    // downstream work, so only fetch is reached and later stages are skipped.
+    expect(row.parsed.failed_stages).toEqual(['fetch']);
+    expect(row.parsed.stages.find(stage => stage.key === 'fetch').status).toBe('failed');
+    expect(row.parsed.stages.filter(stage => stage.key !== 'fetch').every(stage => stage.status === 'skipped')).toBe(true);
+    expect(mocks['./sync'].syncAllSources).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual([]);
   });
 
   it('records unavailable enrichment as failure but an empty-date digest as an intentional skip', async () => {
@@ -202,7 +260,7 @@ describe('durable full-pipeline outcomes', () => {
     expect(JSON.parse(jobs.getJob('legacy').result)).toMatchObject({ previous_result: 'old progress text', cancelled: true });
   });
 
-  it('reconciles interrupted stages without deleting completed outputs or replaying work', () => {
+  it('reconciles interrupted stages without deleting completed outputs', () => {
     const progress = { pipeline: true, completed: false, summary: { fetch: { items: 3 } }, stages: [
       { key: 'fetch', status: 'completed', result: { items: 3 }, completed_at: '2026-09-08T00:00:00Z' },
       { key: 'enrich', status: 'running', detail: { processed: 2 } },
@@ -224,13 +282,129 @@ describe('durable full-pipeline outcomes', () => {
     expect(calls).toEqual([]);
   });
 
+  it('persists the recovery date and resumes from the first unfinished stage', async () => {
+    insertInterrupted('resume-me', 'full-pipeline', progressOf([
+      { key: 'fetch', status: 'completed', result: { fetched: 4 } },
+      { key: 'enrich', status: 'completed', result: { enriched: 4 } },
+      { key: 'translate', status: 'running' },
+      { key: 'topic_graph', status: 'pending' },
+      { key: 'kg_worker', status: 'pending' },
+      { key: 'entity_momentum', status: 'pending' },
+      { key: 'source_profiles', status: 'pending' },
+      { key: 'digest', status: 'pending' },
+      { key: 'hierarchy', status: 'pending' },
+    ]));
+    await expect(jobs.markInterruptedJobs({ recover: true })).resolves.toBe(1);
+    let compensation = null;
+    for (let i = 0; i < 100 && !compensation; i++) {
+      compensation = db.prepare("SELECT * FROM background_jobs WHERE id != 'resume-me'").get() || null;
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    expect(compensation).toBeTruthy();
+    expect(JSON.parse(compensation.params)).toMatchObject({
+      date: '2026-10-23',
+      resume_of: 'resume-me',
+      resume_from_stage: 'translate',
+    });
+    const row = await terminal(compensation.id);
+    expect(calls).not.toContain('fetch');
+    expect(calls).not.toContain('enrich');
+    expect(row.parsed.stages.find(stage => stage.key === 'fetch')).toMatchObject({ status: 'completed', result: { fetched: 4 } });
+    expect(row.parsed.resumed_from_stage).toBe('translate');
+    expect(row.parsed.resume_of).toBe('resume-me');
+  });
+
+  it('resumes a failed stage from itself when its completed prefix is checkpointed', async () => {
+    insertInterrupted('failed-prefix', 'full-pipeline', progressOf([
+      { key: 'fetch', status: 'completed', result: { fetched: 4 } },
+      { key: 'enrich', status: 'failed', detail: { error: 'provider unavailable' }, result: { enriched: 0 } },
+      { key: 'translate', status: 'skipped' },
+      { key: 'topic_graph', status: 'skipped' },
+      { key: 'kg_worker', status: 'skipped' },
+      { key: 'entity_momentum', status: 'skipped' },
+      { key: 'source_profiles', status: 'skipped' },
+      { key: 'digest', status: 'skipped' },
+      { key: 'hierarchy', status: 'skipped' },
+    ]));
+    await expect(jobs.markInterruptedJobs({ recover: true })).resolves.toBe(1);
+    const compensation = db.prepare("SELECT * FROM background_jobs WHERE id != 'failed-prefix'").get();
+    expect(JSON.parse(compensation.params)).toMatchObject({
+      date: '2026-10-23',
+      resume_of: 'failed-prefix',
+      resume_from_stage: 'enrich',
+    });
+    const row = await terminal(compensation.id);
+    expect(row.status).toBe('completed');
+    expect(calls[0]).toBe('enrich');
+    expect(calls).not.toContain('fetch');
+    expect(row.parsed.stages.find(stage => stage.key === 'fetch')).toMatchObject({
+      status: 'completed',
+      result: { fetched: 4 },
+    });
+    expect(row.parsed.resumed_from_stage).toBe('enrich');
+  });
+
+  it('refuses fetch recovery when the running stage has no per-source checkpoint', async () => {
+    insertInterrupted('mid-fetch', 'full-pipeline', progressOf([
+      { key: 'fetch', status: 'running' },
+      { key: 'enrich', status: 'pending' },
+    ], { fetchResults: null }));
+    expect(jobs.markInterruptedJobs({ recover: true })).toBe(1);
+    const result = JSON.parse(jobs.getJob('mid-fetch').result);
+    expect(result.recovery).toMatchObject({ action: 'resume_refused', reason: 'fetch-checkpoint-missing' });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM background_jobs WHERE id != 'mid-fetch' AND job_type = 'full-pipeline'").get().n).toBe(0);
+  });
+
+  it('finalizes an interrupted job whose stages were all persisted', () => {
+    insertInterrupted('all-done', 'full-pipeline', progressOf([
+      { key: 'fetch', status: 'completed', result: {} },
+      { key: 'enrich', status: 'completed', result: {} },
+      { key: 'translate', status: 'completed', result: {} },
+      { key: 'topic_graph', status: 'completed', result: {} },
+      { key: 'kg_worker', status: 'completed', result: {} },
+      { key: 'entity_momentum', status: 'completed', result: {} },
+      { key: 'source_profiles', status: 'completed', result: {} },
+      { key: 'digest', status: 'completed', result: {} },
+      { key: 'hierarchy', status: 'completed', result: {} },
+    ]));
+    expect(jobs.markInterruptedJobs({ recover: true })).toBe(1);
+    const row = jobs.getJob('all-done');
+    expect(row.status).toBe('completed');
+    expect(row.error).toBeNull();
+    expect(JSON.parse(row.result).recovery).toMatchObject({ action: 'finalized' });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM background_jobs').get().n).toBe(1);
+  });
+
+  it('records a failed non-paused enqueue instead of claiming recovery was scheduled', async () => {
+    insertInterrupted('cannot-enqueue', 'full-pipeline', progressOf([
+      { key: 'fetch', status: 'completed', result: {} },
+      { key: 'enrich', status: 'running' },
+      { key: 'translate', status: 'skipped' },
+      { key: 'topic_graph', status: 'skipped' },
+      { key: 'kg_worker', status: 'skipped' },
+      { key: 'entity_momentum', status: 'skipped' },
+      { key: 'source_profiles', status: 'skipped' },
+      { key: 'digest', status: 'skipped' },
+      { key: 'hierarchy', status: 'skipped' },
+    ]));
+    db.exec("CREATE TRIGGER refuse_recovery_insert BEFORE INSERT ON background_jobs WHEN NEW.id != 'cannot-enqueue' BEGIN SELECT RAISE(ABORT, 'intake unavailable'); END");
+    await expect(jobs.markInterruptedJobs({ recover: true })).resolves.toBe(1);
+    for (let i = 0; i < 100; i++) {
+      const progress = JSON.parse(jobs.getJob('cannot-enqueue').result);
+      if (progress.recovery?.action === 'resume_enqueue_failed') break;
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    const progress = JSON.parse(jobs.getJob('cannot-enqueue').result);
+    expect(progress.recovery).toMatchObject({ action: 'resume_enqueue_failed', error: expect.stringContaining('intake unavailable') });
+  });
+
   it('caps automatic work independently of fetched volume and does not fan out research', async () => {
     mocks['./sync'].syncAllSources.mockResolvedValue({ fetch: [{ source: 'test-source', items: 99999 }] });
     const row = await terminal(await jobs.runJob(jobs.JOB_TYPES.FULL_PIPELINE, { enrichBatchSize: 7 }));
     expect(row.status).toBe('completed');
     expect(mocks['./llm'].enrichItems).toHaveBeenCalledWith(7, { jobId: row.id, signal: expect.any(AbortSignal) });
     expect(mocks['./translate'].translateItems).toHaveBeenCalledWith({ jobId: row.id, signal: expect.any(AbortSignal), batchSize: 7 });
-    expect(mocks['./signals'].scoreSignals.mock.calls[0][1]).toMatchObject({ autoResearch: false });
+    expect(mocks['./signals'].scoreSignals.mock.calls[0][1]).not.toHaveProperty('autoResearch');
   });
 
   it('rejects unbounded programmatic jobs before creating records', async () => {

@@ -1,5 +1,9 @@
 const http = require('node:http');
 const https = require('node:https');
+// 案2 fix-morning-1022: pool credentials are stored redacted; env references
+// (${LLM_API_KEY}) are resolved here at request time. Plaintext values from
+// legacy pre-fix rows keep working unchanged.
+const { resolveSecret } = require('./secret-redaction');
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
@@ -172,14 +176,14 @@ async function sendLLMRequest(endpoint, prompt, options = {}) {
   const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream' };
   let payload;
   if (protocol === 'anthropic') {
-    headers['x-api-key'] = endpoint.api_key || '';
+    headers['x-api-key'] = resolveSecret(endpoint.api_key || '');
     headers['anthropic-version'] = '2023-06-01';
     payload = { model: endpoint.model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature };
   } else if (protocol === 'openai') {
-    headers.authorization = `Bearer ${endpoint.api_key || ''}`;
+    headers.authorization = `Bearer ${resolveSecret(endpoint.api_key || '')}`;
     payload = { model: endpoint.model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature };
   } else {
-    headers['x-goog-api-key'] = endpoint.api_key || '';
+    headers['x-goog-api-key'] = resolveSecret(endpoint.api_key || '');
     payload = { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: maxTokens, temperature } };
     if (options.json) payload.generationConfig.responseMimeType = 'application/json';
   }
