@@ -134,6 +134,35 @@ function failureValue(store) {
   return store.get('x_following_failure') || null;
 }
 
+// Node's production AbortSignal exposes listeners but no signal.abort(); only
+// AbortController can cancel. Vitest's DOM environment can expose a different
+// signal shape, so pin this test to the runtime shape that crashed production.
+class ProductionShapedAbortController {
+  constructor() {
+    this.signal = {
+      aborted: false,
+      reason: undefined,
+      _listeners: new Set(),
+      addEventListener(type, listener) {
+        if (type === 'abort') this._listeners.add(listener);
+      },
+      removeEventListener(type, listener) {
+        if (type === 'abort') this._listeners.delete(listener);
+      },
+      throwIfAborted() {
+        if (this.aborted) throw this.reason;
+      },
+    };
+  }
+
+  abort(reason) {
+    if (this.signal.aborted) return;
+    this.signal.aborted = true;
+    this.signal.reason = reason;
+    for (const listener of this.signal._listeners) listener({ type: 'abort' });
+  }
+}
+
 describe('x-following strict feed budget and checkpoint behavior', () => {
   let dbDirectory;
   let db;
@@ -379,17 +408,25 @@ describe('x-following strict feed budget and checkpoint behavior', () => {
   it('aborts a hung feed page before the pipeline budget and ignores its late result', async () => {
     vi.useFakeTimers();
     setEnv('X_FOLLOWING_FEED_TOTAL_TIMEOUT_MS', '5000');
-    setEnv('X_FOLLOWING_FEED_PAGE_TIMEOUT_MS', '5000');
+    setEnv('X_FOLLOWING_FEED_PAGE_TIMEOUT_MS', '4000');
     setEnv('X_FOLLOWING_FAILURE_COOLDOWN_MS', '0');
     const harness = buildHarness({ hangFeed: true });
 
-    const run = harness.connector.fetchViaFeed(['alice']);
-    await vi.advanceTimersByTimeAsync(5001);
-    const result = await run;
+    const originalAbortController = globalThis.AbortController;
+    globalThis.AbortController = ProductionShapedAbortController;
+    let result;
+    try {
+      const run = harness.connector.fetchViaFeed(['alice']);
+      await vi.advanceTimersByTimeAsync(4001);
+      result = await run;
+    } finally {
+      globalThis.AbortController = originalAbortController;
+    }
 
     expect(result).toEqual([]);
     expect(feedArgs(harness.runReach)[0]).toEqual(expect.arrayContaining(['-t', 'following', '-n', '200']));
     const upstreamSignal = harness.runReach.mock.calls[0][2]?.signal;
+    expect(typeof upstreamSignal?.abort).toBe('undefined');
     expect(upstreamSignal?.aborted).toBe(true);
     expect(upstreamSignal?.reason?.name).toBe('TimeoutError');
     expect(cursorValue(harness.getUserData())).toBeNull();
