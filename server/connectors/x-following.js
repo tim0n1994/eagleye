@@ -405,6 +405,7 @@ class XFollowingConnector extends BaseConnector {
     try {
       await this._fetchViaFeedInner(users, {
         signal: runSignal,
+        controller: runController,
         callerSignal: signal,
         deadline,
         state,
@@ -421,7 +422,7 @@ class XFollowingConnector extends BaseConnector {
     }
   }
 
-  async _fetchViaFeedInner(users, { signal, callerSignal, deadline, state }) {
+  async _fetchViaFeedInner(users, { signal, controller, callerSignal, deadline, state }) {
     // Case-insensitive following set: config handles → canonical spelling.
     const following = new Map();
     for (const u of users) {
@@ -512,7 +513,7 @@ class XFollowingConnector extends BaseConnector {
       if (nextToken) args.push('--cursor', nextToken);
       const pageError = new Error('X Following feed page exceeded ' + pageBudgetMs + 'ms deadline');
       pageError.name = 'TimeoutError';
-      const pageTimer = setTimeout(() => signal.abort(pageError), pageBudgetMs);
+      const pageTimer = setTimeout(() => controller.abort(pageError), pageBudgetMs);
       let result;
       try {
         result = await withHardDeadline(
