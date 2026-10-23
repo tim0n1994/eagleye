@@ -1,12 +1,10 @@
 /**
  * Eagleye — Items routes
  *
- * Item listing, papers, per-item detail actions (summary, research, deploy plan, save) and the saved list.
+ * Item listing, papers, per-item detail actions (summary, deploy plan, save) and the saved list.
  * Split out of api.js; handlers are unchanged.
  */
 
-const { generateDeployPlan, checkDeployEligibility } = require('../services/deploy');
-const { generateItemResearch, getResearchReport, answerItemResearchChat } = require('../services/research');
 const { getDB } = require('../db/connection');
 const { sendJSON, sendError } = require('./_shared');
 const { normalizeDigestDate } = require('../services/date-contract');
@@ -242,24 +240,6 @@ function register(routes) {
     sendJSON(res, 200, { status: 'ok', categories });
   };
 
-  // --- Deploy Plan API ---
-  routes['/api/deployment-plans/:id'] = (req, res, _parsed, params) => {
-    const db = getDB();
-    if (!db) return sendError(res, 500, 'Database not available');
-    
-    const plan = db.prepare('SELECT * FROM deployment_plans WHERE id = ?').get(params?.id || '');
-    if (!plan) return sendError(res, 404, 'Plan not found');
-    
-    try {
-      plan.commands = JSON.parse(plan.commands || '[]');
-      plan.env_vars = JSON.parse(plan.env_vars || '{}');
-      plan.detected_stack = JSON.parse(plan.detected_stack || '{}');
-      plan.risk_notes = JSON.parse(plan.risk_notes || '[]');
-    } catch {}
-    
-    sendJSON(res, 200, { status: 'ok', plan });
-  };
-
   // ────────────────────────────────────────────────────────────────────────
   // §13: Missing API Endpoints
   // ────────────────────────────────────────────────────────────────────────
@@ -302,13 +282,9 @@ function register(routes) {
       WHERE itg.item_id = ?
     `).all(itemId);
 
-    // Get deploy eligibility
-    const deployInfo = checkDeployEligibility(itemId);
-
     sendJSON(res, 200, {
       status: 'ok',
       item: { ...item, ai_summary: summary, topics, tags },
-      deploy: deployInfo,
     });
   };
 
@@ -322,74 +298,6 @@ function register(routes) {
     if (!summary) return sendError(res, 404, 'Summary not found for this item');
 
     sendJSON(res, 200, { status: 'ok', summary });
-  };
-
-  // --- Trigger Research API (§13: POST /api/items/:id/research) ---
-  routes['/api/items/:id/research'] = async (req, res, _parsed, params) => {
-    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
-    const itemId = params?.id || '';
-    if (!itemId) return sendError(res, 400, 'Item ID required');
-    const force = _parsed?.query?.force === 'true' || _parsed?.query?.force === '1';
-
-    // Check for existing completed research
-    const db = getDB();
-    const existing = !force
-      ? db?.prepare("SELECT * FROM research_reports WHERE item_id = ? AND status = ? AND LENGTH(TRIM(COALESCE(report_markdown, ''), char(9) || char(10) || char(13) || ' ')) > 0 ORDER BY created_at DESC LIMIT 1").get(itemId, 'completed')
-      : null;
-    if (existing) {
-      return sendJSON(res, 200, { status: 'ok', report: existing, cached: true });
-    }
-
-    // Generate new research
-    try {
-      const result = await generateItemResearch(itemId);
-      if (result.error) return sendError(res, 500, result.error);
-      const report = getResearchReport(result.id);
-      sendJSON(res, 200, { status: 'ok', report, cached: false });
-    } catch (err) {
-      sendError(res, 500, `Research failed: ${err.message}`);
-    }
-  };
-
-  // --- Research Chat API (§13: POST /api/items/:id/research/chat) ---
-  routes['/api/items/:id/research/chat'] = (req, res, _parsed, params) => {
-    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
-    const itemId = params?.id || '';
-    if (!itemId) return sendError(res, 400, 'Item ID required');
-
-    let body = '';
-    req.on('data', chunk => { body += chunk; if (body.length > 1048576) req.destroy(); });
-    req.on('end', async () => {
-      let payload;
-      try {
-        payload = body ? JSON.parse(body) : {};
-      } catch {
-        return sendError(res, 400, 'Invalid JSON body');
-      }
-
-      try {
-        const result = await answerItemResearchChat(itemId, payload.message, payload.history || []);
-        if (result?.error) return sendError(res, 400, result.error);
-        sendJSON(res, 200, { status: 'ok', ...result });
-      } catch (err) {
-        sendError(res, 500, `Research chat failed: ${err.message}`);
-      }
-    });
-  };
-
-  // --- Trigger Deployment Plan API (§13: POST /api/items/:id/deployment-plan) ---
-  routes['/api/items/:id/deployment-plan'] = async (req, res, _parsed, params) => {
-    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
-    const itemId = params?.id || '';
-    if (!itemId) return sendError(res, 400, 'Item ID required');
-
-    try {
-      const result = await generateDeployPlan(itemId);
-      if (result.error) return sendError(res, 500, result.error);
-      sendJSON(res, 200, { status: 'ok', plan_id: result.id, eligibility: result.eligibility, plan: result.plan });
-    } catch (err) {
-      sendError(res, 500, `Deploy plan failed: ${err.message}`);
-    }
   };
 
   // --- Save Item API ---

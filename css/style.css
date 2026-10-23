@@ -2579,84 +2579,6 @@ a:hover { color: var(--accent); }
   user-select: none;
 }
 
-/* --- In-Modal Agent Progress (visible during research loading) --- */
-.research-agent-progress {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 24px;
-  max-width: 480px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.research-agent-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--rule);
-  background: var(--bg);
-  transition: all var(--transition);
-}
-
-.research-agent-item.running {
-  border-color: var(--accent-glow);
-  background: var(--accent-dim);
-}
-
-.research-agent-item.completed {
-  border-color: rgba(46, 213, 115, 0.3);
-  background: rgba(46, 213, 115, 0.06);
-}
-
-.research-agent-item.waiting {
-  opacity: 0.4;
-}
-
-.ra-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.research-agent-item.running .ra-dot {
-  background: var(--accent);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-.research-agent-item.completed .ra-dot {
-  background: #2ed573;
-}
-
-.research-agent-item.waiting .ra-dot {
-  background: var(--fg-mute);
-}
-
-.ra-name {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg);
-}
-
-.ra-status {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--fg-mute);
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
-
-.research-agent-item.completed .ra-status {
-  color: #2ed573;
-}
-
-.research-agent-item.running .ra-status {
-  color: var(--accent);
-}
-
 /* --- Spinner --- */
 .spinner {
   width: 24px; height: 24px;
@@ -2765,7 +2687,6 @@ a:hover { color: var(--accent); }
   .tag { padding: 2px 6px; font-size: 9px; }
   .item-meta-bottom { font-size: 9px; }
   .item-actions { gap: 8px; }
-  .research-btn { padding: 4px 10px; font-size: 9px; }
   .deploy-btn { padding: 4px 10px; font-size: 9px; }
   .source-detail-grid { grid-template-columns: 1fr; }
   .source-info-card { margin-bottom: 16px; }
@@ -2789,7 +2710,7 @@ a:hover { color: var(--accent); }
   .item-summary { font-size: 12px; line-height: 1.4; }
   .item-meta-bottom { font-size: 9px; margin-top: 6px; }
   .item-actions { gap: 6px; }
-  .research-btn, .deploy-btn { padding: 3px 8px; font-size: 8px; }
+  .deploy-btn { padding: 3px 8px; font-size: 8px; }
   .status-bar { padding: 8px; }
   .search-input-minimal { font-size: 12px; padding: 6px 10px; }
   .sync-btn { padding: 6px 10px; font-size: 12px; }
@@ -2906,8 +2827,6 @@ a:hover { color: var(--accent); }
 .tag { font-family: var(--font-mono); font-size: 10px; color: var(--fg-mute); background: var(--bg-side); padding: 2px 8px; }
 .item-meta-bottom { display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-family: var(--font-mono); color: var(--fg-mute); margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--rule); }
 .item-actions { display: flex; gap: 12px; margin-top: auto; padding-top: 16px; border-top: 1px solid var(--rule); }
-.research-btn { background: var(--accent-dim); border: 1px solid var(--accent-glow); color: var(--accent); padding: 6px 14px; font-size: 10px; font-weight: 800; font-family: var(--font-mono); text-transform: uppercase; cursor: pointer; transition: all var(--transition); display: flex; align-items: center; gap: 6px; }
-.research-btn:hover { background: var(--accent); color: #000; }
 
 /* ─── Settings page (LLM endpoint) ─────────────────────────── */
 .settings-grid {
@@ -3936,116 +3855,8 @@ select.form-input { cursor: pointer; }
   }
 }
 
-.research-page {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-.research-page-header {
-  gap: 10px;
-}
-.research-page-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.research-back-link,
-.research-source-pill,
-.research-deploy-badge,
-.research-topic-chip,
-.research-tag-chip {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-decoration: none;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border: 1px solid var(--rule);
-  padding: 4px 8px;
-}
-.research-back-link:hover,
-.research-topic-chip:hover {
-  color: var(--accent);
-  border-color: var(--accent-glow);
-  background: var(--accent-dim);
-}
-.research-deploy-badge {
-  color: var(--accent);
-  border-color: var(--accent-glow);
-  background: var(--accent-dim);
-}
-.research-page-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.8fr);
-  gap: 18px;
-  align-items: start;
-}
-.research-main-col,
-.research-side-col {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.research-summary-card,
-.research-report-card,
-.research-context-card,
-.research-chat-card {
-  border: 1px solid var(--rule);
-  background: var(--bg-panel);
-  padding: 16px;
-}
-.research-card-head,
-.research-summary-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-.research-card-head h3 {
-  font-size: 14px;
-  margin: 0;
-}
-.research-summary-source,
-.research-summary-time,
-.research-chat-status,
-.research-context-meta label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  color: var(--fg-mute);
-}
-.research-one-liner {
-  font-size: 16px;
-  line-height: 1.45;
-  font-weight: 700;
-  margin: 0 0 10px;
-}
-.research-short-summary,
-.research-why {
-  margin: 0 0 10px;
-  color: var(--fg-dim);
-  line-height: 1.65;
-}
-.research-key-points {
-  margin: 0 0 12px 18px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.research-key-points li {
-  color: var(--fg);
-  line-height: 1.55;
-}
-.research-summary-links {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.research-report-body {
-  min-height: 320px;
-}
+/* --- Markdown container (kept after the research module sunset: markdown.js
+       renders generic markdown output here) --- */
 .research-markdown {
   color: var(--fg);
   line-height: 1.7;
@@ -4064,89 +3875,6 @@ select.form-input { cursor: pointer; }
   font-size: 12px;
   padding: 1px 4px;
   background: var(--bg-side);
-}
-.research-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.research-context-meta {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-.research-context-meta div {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.research-chat-messages {
-  min-height: 240px;
-  max-height: 520px;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-right: 4px;
-}
-.research-chat-empty {
-  border: 1px dashed var(--rule);
-  padding: 14px;
-  color: var(--fg-mute);
-  line-height: 1.6;
-}
-.research-chat-msg {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.research-chat-role {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  color: var(--fg-mute);
-}
-.research-chat-bubble {
-  border: 1px solid var(--rule);
-  padding: 12px;
-  background: var(--bg-side);
-}
-.research-chat-user .research-chat-bubble {
-  border-color: var(--accent-glow);
-  background: var(--accent-dim);
-}
-.research-chat-bubble p {
-  margin: 0;
-  line-height: 1.65;
-}
-.research-chat-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
-}
-.research-chat-input {
-  width: 100%;
-  resize: vertical;
-  min-height: 96px;
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--rule);
-  padding: 12px;
-  font: inherit;
-  line-height: 1.55;
-}
-.research-chat-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-@media (max-width: 980px) {
-  .research-page-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ============================================

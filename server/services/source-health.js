@@ -63,10 +63,12 @@ function expectedIntervalHoursFromCron(cron) {
 //
 // Semantics:
 // - "success/content" = newer of last_success_at / last_new_content_at.
-// - healthy   -> within healthyLimit = max(expectedInterval*1.5, 48h)
+// - healthy   -> within healthyLimit = max(expectedInterval*1.5, 48h),
+//                and no unresolved last_error_class
 // - failing   -> beyond 14 days, OR attempted but never succeeded,
 //                OR an error is recorded and the source is also overdue
-// - stale     -> in between (overdue but < 14 days, no recorded error)
+// - stale     -> in between (overdue but < 14 days with no recorded error),
+//                or fresh but the last round's error has not been cleared
 // - unknown   -> nothing observed at all
 function evaluateHealth(input = {}) {
   const {
@@ -96,6 +98,13 @@ function evaluateHealth(input = {}) {
   const ageHours = Math.max(0, (nowMs - succeededAt) / 3600000);
 
   if (ageHours <= healthyLimit) {
+    // A recent success proves the transport can work, but a retained error
+    // means the latest observed round did not end cleanly. Keep the severity
+    // visible without escalating a fresh success to failing.
+    if (lastErrorClass) {
+      return { status: 'stale', reason: 'last success/content ' + round1(ageHours) +
+        'h ago; unresolved last error ' + lastErrorClass };
+    }
     return { status: 'healthy', reason: 'last success/content ' + round1(ageHours) + 'h ago' };
   }
   if (lastErrorClass) {

@@ -7,19 +7,15 @@ import { t, getLanguage, toggleLanguage, onLanguageChange, applyI18n } from './i
 import {
   renderHome, renderDigest, renderDigestDate,
   renderSources, renderSourceDetail,
-  renderResearchPage,
   renderSignals, renderSignalDetail,
   renderPapers,
   renderPhysicalAI, renderIntelligence, renderIndustryMetrics,
-  renderTools, renderToolDetail,
-  renderSkills, renderSkillDetail,
   renderSettings, renderTopics, renderTopicDetailPage,
   renderTags, renderTagDetail, renderSaved, renderStories, renderEntityTrajectory, renderWatchlist, renderLens, renderForYou, markItemSeen,
-  renderYearArchive, renderYearDetail, renderCompare, renderSearch, renderHelp, renderCompareEntities, renderReports, renderDiscover,
+  renderYearArchive, renderYearDetail, renderCompare, renderSearch, renderHelp, renderCompareEntities, renderDiscover,
   renderLogin, renderRegister,
 } from './pages.js';
 import { renderKG3D } from './kg3d.js';
-import { renderESSearch } from './es-search-v2.js';
 import { renderMarkdown } from './markdown.js';
 
   const NAV_LINKS = [
@@ -30,9 +26,6 @@ import { renderMarkdown } from './markdown.js';
   { path: '/digest',       i18n: 'nav.digest',      icon: '📋' },
   { path: '/sources',      i18n: 'nav.sources',     icon: '🔗' },
   { path: '/discover',     i18n: 'nav.discover',    icon: '🔍' },
-  { path: '/es-search',    i18n: 'nav.es_search',   icon: '🔎' },
-  { path: '/tools',        i18n: 'nav.tools',       icon: '🛠️' },
-  { path: '/skills',       i18n: 'nav.skills',      icon: '⚡' },
   { path: '/kg3d',        i18n: 'nav.kg3d',        icon: '🧠' },
   { path: '/physical-ai',  i18n: 'nav.physical_ai', icon: '🤖' },
   { path: '/intelligence', i18n: 'nav.intelligence',icon: '📊' },
@@ -84,11 +77,8 @@ function renderFooter() {
       </div>
       <div class="footer-group">
         <h4>${t('footer.make')}</h4>
-        <a href="/tools">${t('nav.tools')}</a>
-        <a href="/skills">${t('nav.skills')}</a>
         <a href="/watchlist">${t('nav.watchlist')}</a>
         <a href="/compare">${t('nav.compare')}</a>
-        <a href="/reports">Reports</a>
         <a href="/saved" id="savedLink">${t('footer.saved')}</a>
       </div>
       <div class="footer-group">
@@ -211,7 +201,6 @@ export async function initApp() {
   router.register(/^\/digest\/(\d{8})$/, renderDigestDate);
   router.register('/sources', renderSources);
   router.register(/^\/sources\/(.+)$/, renderSourceDetail);
-  router.register(/^\/research\/(.+)$/, renderResearchPage);
   router.register('/topics', renderTopics);
   router.register(/^\/topics\/(.+)$/, renderTopicDetailPage);
   router.register('/signals', renderSignals);
@@ -220,10 +209,6 @@ export async function initApp() {
   router.register('/physical-ai', renderPhysicalAI);
   router.register('/intelligence', renderIntelligence);
   router.register('/industry-metrics', renderIndustryMetrics);
-  router.register('/tools', renderTools);
-  router.register(/^\/tools\/(.+)$/, renderToolDetail);
-  router.register('/skills', renderSkills);
-  router.register(/^\/skills\/(.+)$/, renderSkillDetail);
   router.register('/settings', renderSettings);
   router.register('/saved', renderSaved);
   router.register('/stories', renderStories);
@@ -236,9 +221,7 @@ export async function initApp() {
   router.register('/search', renderSearch);
   router.register('/help', renderHelp);
   router.register('/compare-entities', renderCompareEntities);
-  router.register('/reports', renderReports);
   router.register('/discover', renderDiscover);
-  router.register('/es-search', renderESSearch);
   router.register('/kg3d', renderKG3D);
   router.register('/tags', renderTags);
   router.register(/^\/tags\/(.+)$/, renderTagDetail);
@@ -326,15 +309,12 @@ export async function initApp() {
     '/for-you': 'nav.foryou',
     '/digest': 'nav.digest',
     '/sources': 'nav.sources',
-    '/research': 'nav.sources',
     '/topics': 'nav.topics',
     '/signals': 'nav.signals',
     '/papers': 'nav.papers',
     '/physical-ai': 'nav.physical_ai',
     '/intelligence': 'nav.intelligence',
     '/industry-metrics': 'nav.industry',
-    '/tools': 'nav.tools',
-    '/skills': 'nav.skills',
     '/tags': 'nav.tags',
     '/trajectory': 'nav.tags',
     '/settings': 'nav.settings',
@@ -347,9 +327,7 @@ export async function initApp() {
     '/compare-entities': 'nav.compare',
     '/search': 'nav.search',
     '/help': 'footer.about',
-    '/reports': 'title.reports',
     '/discover': 'nav.discover',
-    '/es-search': 'nav.es_search',
     '/kg3d': 'nav.kg3d',
     '/login': 'auth.signin',
     '/register': 'auth.register',
@@ -440,8 +418,8 @@ export async function initApp() {
   let gKeyTimer = null;
   const navMap = {
     f: '/for-you', n: '/', p: '/papers', s: '/signals', d: '/digest',
-    o: '/sources', t: '/tools', k: '/skills', y: '/year', c: '/compare',
-    w: '/watchlist', l: '/lens', i: '/intelligence', h: '/help', r: '/reports', e: '/compare-entities',
+    o: '/sources', y: '/year', c: '/compare',
+    w: '/watchlist', l: '/lens', i: '/intelligence', h: '/help', e: '/compare-entities',
   };
   document.addEventListener('keydown', (e) => {
     // Ctrl/Cmd+K: open command palette (works even in inputs).
@@ -525,8 +503,6 @@ export async function initApp() {
       { label: 'Signals', icon: '📡', url: '/signals', kw: 'signals radar' },
       { label: 'Digest', icon: '📋', url: '/digest', kw: 'digest daily' },
       { label: 'Sources', icon: '🔗', url: '/sources', kw: 'sources connectors' },
-      { label: 'Tools', icon: '🛠️', url: '/tools', kw: 'tools utilities' },
-      { label: 'Skills', icon: '⚡', url: '/skills', kw: 'skills claude' },
       { label: 'Search', icon: '🔍', url: '/search', kw: 'search find' },
       { label: 'Watchlist', icon: '🔔', url: '/watchlist', kw: 'watchlist subscribe' },
       { label: 'Saved', icon: '🔖', url: '/saved', kw: 'saved bookmarks' },
@@ -537,7 +513,6 @@ export async function initApp() {
       { label: 'Intelligence', icon: '🧠', url: '/intelligence', kw: 'intelligence entities momentum' },
       { label: 'Industry Metrics', icon: '📈', url: '/industry-metrics', kw: 'industry metrics dashboard' },
       { label: 'KG 3D', icon: '🌐', url: '/kg3d', kw: 'kg3d knowledge graph 3d' },
-      { label: 'Reports', icon: '🔬', url: '/reports', kw: 'reports research' },
       { label: 'Help', icon: '❓', url: '/help', kw: 'help faq shortcuts' },
       { label: 'Settings', icon: '⚙️', url: '/settings', kw: 'settings scheduler llm' },
       { label: 'Stories', icon: '📚', url: '/stories', kw: 'stories clusters dedup' },
@@ -582,69 +557,6 @@ export async function initApp() {
 }
 
 function wireLegacyInteractions() {
-  document.addEventListener('click', async (e) => {
-    const btn = (/** @type {Element} */ (e.target)).closest('.research-btn');
-    if (!btn) return;
-
-    const itemId = (/** @type {HTMLElement} */ (btn)).dataset.itemId;
-    if (!itemId) return;
-    UI.log(`Open research page: ${itemId}`, 'agent');
-    window.open(`/research/${encodeURIComponent(itemId)}`, '_blank', 'noopener');
-  });
-
-  document.addEventListener('click', async (e) => {
-    const btn = (/** @type {Element} */ (e.target)).closest('.deploy-btn');
-    if (!btn) return;
-
-    const itemId = (/** @type {HTMLElement} */ (btn)).dataset.itemId;
-    if (!itemId) {
-      alert(t('common.deploy_unavailable'));
-      return;
-    }
-
-    UI.dom.researchTitle.textContent = t('common.deploy_generating');
-    UI.dom.researchBody.innerHTML = `<div class="spinner"></div><p style="text-align:center; font-family:var(--font-mono);">${t('common.deploy_feasibility')}</p>`;
-    UI.dom.researchModal.style.display = 'block';
-
-    try {
-      const res = await fetch(`/api/items/${encodeURIComponent(itemId)}/deployment-plan`, { method: 'POST' });
-      const data = await res.json();
-
-      if (data.error) {
-        UI.dom.researchBody.innerHTML = `<p style="color:red">${escapeHtml(data.error)}</p>`;
-        return;
-      }
-
-      const plan = data.plan || 'No plan generated.';
-      const eligibility = data.eligibility || {};
-
-      UI.dom.researchBody.innerHTML = `
-        <div style="padding: 20px; max-width: 720px; margin: 0 auto;">
-          <div style="margin-bottom: 16px; display:flex; gap:12px; align-items:center;">
-            <span style="padding:4px 12px; border-radius:4px; font-size:12px; font-family:var(--font-mono);
-              background:${eligibility.eligibility === 'deployable' ? 'var(--accent)' : '#666'};
-              color:${eligibility.eligibility === 'deployable' ? '#000' : '#fff'};">
-              ${(eligibility.eligibility || 'unknown').toUpperCase()}
-            </span>
-            <span style="color:var(--fg-mute); font-size:13px;">${escapeHtml(eligibility.reason || '')}</span>
-          </div>
-          <div class="markdown-body">${formatDeployPlan(plan)}</div>
-        </div>
-      `;
-    } catch (_err) {
-      UI.dom.researchBody.innerHTML = `<p style="color:red">${t('common.error')}: ${_err.message}</p>`;
-    }
-  });
-
-  $('.close-modal')?.addEventListener('click', () => {
-    UI.dom.researchModal.style.display = 'none';
-  });
-
-  window.addEventListener('click', (e) => {
-    if (e.target === UI.dom.researchModal) {
-      UI.dom.researchModal.style.display = 'none';
-    }
-  });
 
   const showGraph = $('#showGraph');
   const closeGraph = $('#closeGraph');

@@ -32,13 +32,6 @@ export function renderMarkdownLite(md) {
   return renderMarkdown(md, t('common.empty'));
 }
 
-export function getResearchChatState(itemId) {
-  const root = /** @type {any} */ (window);
-  if (!root.__researchChatState) root.__researchChatState = {};
-  if (!root.__researchChatState[itemId]) root.__researchChatState[itemId] = [];
-  return root.__researchChatState[itemId];
-}
-
 export function localizedDate(d, opts) {
   try {
     return d.toLocaleDateString(getLanguage() === 'zh' ? 'zh-CN' : 'en-US', opts);
@@ -141,15 +134,6 @@ export function getItemDisplayTitle(item) {
   const localized = firstText(pickZh(enTitle, zhTitle), zhTitle, enTitle);
   if (!isLowSignalTitle(localized)) return localized;
   return buildFallbackTitle(item);
-}
-
-function getItemResearchTitle(item) {
-  const summary = item?.ai_summary || {};
-  return firstText(
-    pickZh(summary.ai_title || item?.title, summary.ai_title_zh || item?.title_zh),
-    getItemDisplayTitle(item),
-    item?.title
-  );
 }
 
 export function orderedSourceEntries(bySourceMap, sources) {
@@ -324,7 +308,6 @@ export function renderItemCard(item) {
   const deployable = payload.stars >= 5000 ? 'deployable' : (payload.stars >= 1000 ? 'maybe' : 'no');
   const deployLabel = deployable === 'deployable' ? (getLanguage() === 'zh' ? '一键部署' : '1-Click Deploy') : (deployable === 'maybe' ? (getLanguage() === 'zh' ? '部署分析' : 'Deploy Analysis') : '');
   const showDeploy = deployable !== 'no';
-  const researchLabel = getLanguage() === 'zh' ? '深度研究' : 'Deep Research';
   const originalLabel = getLanguage() === 'zh' ? '原文' : 'Original';
   const confidenceLabel = getLanguage() === 'zh' ? 'AI 置信度' : 'AI Confidence';
 
@@ -350,9 +333,6 @@ export function renderItemCard(item) {
       <div class="card-topics">${topics}</div>
       ${tagChips ? `<div class="card-tags">${tagChips}</div>` : ''}
       <div class="card-actions">
-        <button class="action-btn research-btn" data-item-id="${escapeAttr(item.id)}" data-title="${escapeAttr(getItemResearchTitle(item))}">
-          🔍 ${escapeHtml(researchLabel)}
-        </button>
         ${showDeploy ? `<button class="action-btn deploy-btn" data-item-id="${escapeAttr(item.id)}">🚀 ${escapeHtml(deployLabel)}</button>` : ''}
         <a href="${escapeAttr(item.canonical_url || '#')}" target="_blank" rel="noopener" class="action-link">
           ${escapeHtml(originalLabel)} ↗
@@ -399,7 +379,6 @@ export function renderItemMiniCard(item) {
     `<a href="/topics/${escapeAttr(t.slug)}" class="mini-topic">${escapeHtml(pickZh(t.name, t.name_zh))}</a>`
   ).join('');
 
-  const researchLabel = getLanguage() === 'zh' ? '研究' : 'Research';
   const originalLabel = getLanguage() === 'zh' ? '原文' : 'Source';
   const lang = item.source_payload?.language || item.language ? `<span class="mini-lang">${escapeHtml(item.source_payload?.language || item.language || '')}</span>` : '';
 
@@ -427,7 +406,6 @@ export function renderItemMiniCard(item) {
       </div>
       ${topics ? `<div class="mini-card-bottom">${topics}</div>` : ''}
       <div class="mini-card-actions">
-        <button class="mini-action research-btn" data-item-id="${escapeAttr(item.id)}" data-title="${escapeAttr(getItemResearchTitle(item))}">🔍 ${escapeHtml(researchLabel)}</button>
         <a class="mini-action mini-action-link" href="${escapeAttr(item.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(originalLabel)} ↗</a>
       </div>
     </article>

@@ -55,14 +55,14 @@ async function generateDailyDigest(date, opts = {}) {
     FROM information_items i
     JOIN sources s ON i.source_id = s.id
     LEFT JOIN ai_summaries a ON i.id = a.item_id
-    WHERE i.digest_date = ?
+    WHERE i.digest_date = ? AND i.duplicate_of IS NULL
     ORDER BY i.score DESC
     LIMIT ${digestLimit}
   `).all(date);
 
   if (items.length === 0) {
     // 区分"这天完全没有 items"和"有 items 但全部无摘要"，便于定位
-    const totalCount = db.prepare('SELECT COUNT(*) as c FROM information_items WHERE digest_date = ?').get(date).c;
+    const totalCount = db.prepare('SELECT COUNT(*) as c FROM information_items WHERE digest_date = ? AND duplicate_of IS NULL').get(date).c;
     const reason = totalCount === 0 ? 'no items for this date' : `${totalCount} items but none joined (source/summary join dropped all)`;
     console.log(`  ⚠  ${date}: ${reason}, skipping digest`);
     return { __skipped: true, reason };

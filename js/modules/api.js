@@ -56,35 +56,8 @@ export const API = {
     });
   },
 
-  fetchResearch: async (url) => {
-    const res = await fetch(`${API_BASE}/research`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
-    });
-    if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
-    return await res.json();
-  },
-
   fetchItem: async (itemId) => {
     return await fetchJSON(`${API_BASE}/items/${encodeURIComponent(itemId)}`);
-  },
-
-  triggerItemResearch: async (itemId, force = false) => {
-    const suffix = force ? '?force=true' : '';
-    const res = await fetch(`${API_BASE}/items/${encodeURIComponent(itemId)}/research${suffix}`, { method: 'POST' });
-    if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
-    return await res.json();
-  },
-
-  chatItemResearch: async (itemId, message, history = []) => {
-    const res = await fetch(`${API_BASE}/items/${encodeURIComponent(itemId)}/research/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, history }),
-    });
-    if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
-    return await res.json();
   },
 
   fetchGraph: async () => {

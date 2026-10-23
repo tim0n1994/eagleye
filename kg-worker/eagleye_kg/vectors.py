@@ -21,7 +21,8 @@ HASH_EMBED_VECTOR_TYPE = "semantic-hash"
 
 
 def load_vector_items(conn: sqlite3.Connection, sources: list[str], limit: int,
-                      model_name: str, vector_type: str, max_chars: int, force: bool) -> list[sqlite3.Row]:
+                      model_name: str, vector_type: str, max_chars: int, force: bool,
+                      order: str | None = None) -> list[sqlite3.Row]:
     conn.create_function("kg_vector_hash", 4, lambda *parts: hash_inputs(*parts, model_name, str(max_chars)), deterministic=True)
     conn.create_function("kg_target_model", 0, lambda: model_name, deterministic=True)
     conn.create_function("kg_target_type", 0, lambda: vector_type, deterministic=True)
@@ -34,7 +35,7 @@ def load_vector_items(conn: sqlite3.Connection, sources: list[str], limit: int,
                  AND v.content_hash = kg_vector_hash(CAST(i.title AS BLOB), CAST(i.original_summary AS BLOB),
                      CAST(i.content_text AS BLOB), CAST(i.canonical_url AS BLOB)))"""
     return fair_items(conn, sources, limit, pending="1=1" if force else pending,
-                      completed="kg_vectors_done(s.slug)")
+                      completed="kg_vectors_done(s.slug)", order=order)
 
 
 def feature_terms(text: str, extra_terms: list[str] | None = None) -> list[str]:
@@ -107,6 +108,7 @@ def embed_hash(
     force: bool = False,
     max_chars: int = 1200,
     fallback_reason: str | None = None,
+    order: str | None = None,
 ) -> dict:
     chosen_sources = resolve_sources(conn, sources)
     run_id = create_run(
@@ -122,6 +124,7 @@ def embed_hash(
             "force": force,
             "max_chars": max_chars,
             "fallback_reason": fallback_reason,
+            "order": order,
         },
     )
     start = time.time()
@@ -139,7 +142,8 @@ def embed_hash(
         metrics["fallback_reason"] = fallback_reason[:500]
 
     try:
-        items = load_vector_items(conn, chosen_sources, limit, HASH_VECTOR_MODEL, HASH_EMBED_VECTOR_TYPE, max_chars, force)
+        items = load_vector_items(conn, chosen_sources, limit, HASH_VECTOR_MODEL, HASH_EMBED_VECTOR_TYPE,
+                                  max_chars, force, order=order)
         metrics["total"] = len(items)
         metrics["selection"] = "source-balanced-model-gaps" if not force else "source-balanced-force"
         metrics["by_source"] = dict(Counter(item["source_slug"] for item in items))
@@ -214,15 +218,17 @@ def embed_fastembed(
     force: bool = False,
     max_chars: int = 1200,
     backend: str = "auto",
+    order: str | None = None,
 ) -> dict:
     if backend == "hash":
-        return embed_hash(conn, sources, limit, batch_size, force, max_chars)
+        return embed_hash(conn, sources, limit, batch_size, force, max_chars, order=order)
 
     try:
         from fastembed import TextEmbedding
     except Exception as exc:
         if backend == "auto":
-            return embed_hash(conn, sources, limit, batch_size, force, max_chars, f"fastembed import failed: {exc}")
+            return embed_hash(conn, sources, limit, batch_size, force, max_chars,
+                              f"fastembed import failed: {exc}", order=order)
         raise RuntimeError("fastembed is not installed; run `uv sync --project kg-worker` first") from exc
 
     chosen_sources = resolve_sources(conn, sources)
@@ -240,12 +246,14 @@ def embed_fastembed(
             "force": force,
             "max_chars": max_chars,
             "backend": backend,
+            "order": order,
         },
     )
     start = time.time()
     metrics = {"run_id": run_id, "processed": 0, "vectors": 0, "skipped": 0, "total": 0, "model": model_name}
     try:
-        items = load_vector_items(conn, chosen_sources, limit, model_name, FASTEMBED_VECTOR_TYPE, max_chars, force)
+        items = load_vector_items(conn, chosen_sources, limit, model_name, FASTEMBED_VECTOR_TYPE,
+                                  max_chars, force, order=order)
         metrics["total"] = len(items)
         metrics["selection"] = "source-balanced-model-gaps" if not force else "source-balanced-force"
         metrics["by_source"] = dict(Counter(item["source_slug"] for item in items))
@@ -269,7 +277,7 @@ def embed_fastembed(
                     ),
                     flush=True,
                 )
-                return embed_hash(conn, sources, limit, batch_size, force, max_chars, str(exc))
+                return embed_hash(conn, sources, limit, batch_size, force, max_chars, str(exc), order=order)
             raise
 
         for index in range(0, len(items), batch_size):
@@ -316,7 +324,7 @@ def embed_fastembed(
                         ),
                         flush=True,
                     )
-                    return embed_hash(conn, sources, limit, batch_size, force, max_chars, str(exc))
+                    return embed_hash(conn, sources, limit, batch_size, force, max_chars, str(exc), order=order)
                 raise
             for (item, _, chash), vector in zip(to_embed, vectors):
                 upsert_dense_vector(

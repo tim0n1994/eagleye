@@ -143,9 +143,40 @@ KNOWN_DYNAMIC_LABELS = {
 }
 
 
-def load_items_for_topics(conn: sqlite3.Connection, sources: list[str] | None, limit: int) -> list[sqlite3.Row]:
+# R3 drainer (EAGLEYE_R3_DRAINER) — converging pending predicate for the
+# topics stage. Without it the stage re-picks the same top-score window every
+# run and the 60k old dynamic-topic backlog never drains.
+#
+# The stage produces two outputs per selected item, and an item is done only
+# when it has BOTH:
+#   * the semantic-lite vector for HASH_VECTOR_MODEL — written unconditionally
+#     for every selected item (upsert_item_vector in discover_topics);
+#   * a dynamic-topic assignment — written only for groups that pass
+#     should_keep_group(min_items).
+# R3.1 ruling C (Q5): the vector alone used to be the done marker, which
+# starved the lite_but_no_dynamic caliber (15,216 items on the 2026-10-20
+# snapshot) — an item whose candidate keys never reached min_items left the
+# run with a vector and no topic, and the predicate then excluded it forever.
+# Pending = missing either output. Done items are never re-selected, so the
+# pending set is monotone non-increasing modulo new intake and shrinks each
+# time a selected item's group clears min_items.
+#
+# Alias `i` is the information_items row inside fair_items(); the dynamic
+# check is on topic_kind alone (any assigner), matching the no_dynamic
+# caliber definition, and it binds no extra parameter.
+TOPICS_LITE_PENDING = """(NOT EXISTS (SELECT 1 FROM item_vectors v WHERE v.item_id = i.id
+                   AND v.vector_type = 'semantic-lite' AND v.model_name = ?)
+                OR NOT EXISTS (SELECT 1 FROM item_topic_assignments a WHERE a.item_id = i.id
+                   AND a.topic_kind = 'dynamic'))"""
+
+
+def load_items_for_topics(conn: sqlite3.Connection, sources: list[str] | None, limit: int,
+                          pending: bool = False, order: str | None = None) -> list[sqlite3.Row]:
     return fair_items(conn, resolve_sources(conn, sources), limit,
                       join="LEFT JOIN item_features f ON f.item_id = i.id",
+                      pending=TOPICS_LITE_PENDING if pending else "1=1",
+                      params=(HASH_VECTOR_MODEL,) if pending else (),
+                      order=order,
                       extra_columns=""", f.keyword_candidates, f.source_features,
                         (SELECT a.topic_id FROM item_topic_assignments a
                          WHERE a.item_id = i.id AND a.topic_kind = 'taxonomy'
@@ -377,20 +408,22 @@ def topic_input_fingerprint(items: list[sqlite3.Row], tags: dict, entities: dict
     return content_hash(json.dumps(inputs, sort_keys=True, ensure_ascii=False))
 
 
-def discover_topics(conn: sqlite3.Connection, sources: list[str] | None = None, limit: int = 5000, min_items: int = 5) -> dict:
+def discover_topics(conn: sqlite3.Connection, sources: list[str] | None = None, limit: int = 5000,
+                    min_items: int = 5, pending: bool = False, order: str | None = None) -> dict:
     chosen_sources = resolve_sources(conn, sources)
     run_id = create_run(
         conn,
         "dynamic-topic",
         ",".join(chosen_sources),
-        {"sources": chosen_sources, "limit": limit, "min_items": min_items, "model": HASH_VECTOR_MODEL},
+        {"sources": chosen_sources, "limit": limit, "min_items": min_items,
+         "model": HASH_VECTOR_MODEL, "pending": bool(pending), "order": order},
     )
     start = time.time()
     metrics = {"run_id": run_id, "processed": 0, "vectors": 0, "dynamic_topics": 0, "assignments": 0, "edges": 0, "total": 0}
     try:
         prepared_version = conn.execute("PRAGMA data_version").fetchone()[0]
         phase_start = time.monotonic()
-        items = load_items_for_topics(conn, chosen_sources, limit)
+        items = load_items_for_topics(conn, chosen_sources, limit, pending=pending, order=order)
         item_ids = [str(item["id"]) for item in items]
         metrics["timings"] = {"select_seconds": round(time.monotonic() - phase_start, 3)}
         phase_start = time.monotonic()
@@ -436,7 +469,7 @@ def discover_topics(conn: sqlite3.Connection, sources: list[str] | None = None, 
         phase_start = time.monotonic()
         conn.execute("BEGIN IMMEDIATE")
         if conn.execute("PRAGMA data_version").fetchone()[0] != prepared_version:
-            current_items = load_items_for_topics(conn, chosen_sources, limit)
+            current_items = load_items_for_topics(conn, chosen_sources, limit, pending=pending, order=order)
             current_ids = [str(item["id"]) for item in current_items]
             current_fingerprint = topic_input_fingerprint(
                 current_items, item_tags(conn, current_ids), item_entities(conn, current_ids))

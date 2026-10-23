@@ -10,6 +10,7 @@
 
 const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
+const { compactDigestDate, todayDigestDate } = require('../services/date-contract');
 
 class AppStoreBaseConnector extends BaseConnector {
   constructor(slug, chartType, country) {
@@ -25,12 +26,11 @@ class AppStoreBaseConnector extends BaseConnector {
       const data = JSON.parse(body);
       const results = data?.feed?.results || [];
       const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-
-      if (date && dateStr !== date) {
-        // Provide a coherent response even if date doesn't match
-        // (Apple API always returns current data, not historical)
-      }
+      // D2: chart data is current-only (no per-item publish timestamps), so
+      // items are judged against fetch time — always inside the freshness
+      // window — and digest_date takes the requested digest date instead of
+      // UTC today.
+      const digestDate = date || compactDigestDate(todayDigestDate());
 
       return results.map((app, index) => ({
         ...this.normalize({
@@ -55,7 +55,7 @@ class AppStoreBaseConnector extends BaseConnector {
           popularity: { rank: index + 1, chart_type: this.chartType },
           score: Math.max(0, 50 - index) / 50,
         }),
-        digest_date: dateStr,
+        digest_date: digestDate,
       }));
     } catch (err) {
       console.error(`App Store fetch error (${this.slug}):`, err.message);

@@ -111,14 +111,13 @@ function register(routes) {
       { key: 'personalization', label: 'Personal filter + watchlist', eagleye: '✓ For-You + lens', hackertab: '—', feedly: '✓ ML', techmeme: '—', dailydev: '✓ basic' },
       { key: 'stories', label: 'Cross-source story clustering', eagleye: '✓', hackertab: '—', feedly: 'partial', techmeme: '✓ editorial', dailydev: '—' },
       { key: 'knowledge_graph', label: 'Live knowledge graph', eagleye: '✓ KG v2 + 3D', hackertab: '—', feedly: '—', techmeme: '—', dailydev: '—' },
-      { key: 'deep_research', label: 'Deep research action', eagleye: '✓ per-item + topic', hackertab: '—', feedly: '—', techmeme: '—', dailydev: '—' },
       { key: 'deploy', label: '1-click deploy analysis', eagleye: '✓ GitHub repos', hackertab: '—', feedly: '—', techmeme: '—', dailydev: '—' },
       { key: 'language', label: 'Chinese-first', eagleye: '✓', hackertab: '—', feedly: '—', techmeme: '—', dailydev: '—' },
       { key: 'self_hosted', label: 'Self-hosted / local', eagleye: '✓', hackertab: '✓ ext', feedly: '—', techmeme: '—', dailydev: '—' },
       { key: 'signup', label: 'Sign-up friction', eagleye: 'none', hackertab: 'none', feedly: 'account', techmeme: 'none', dailydev: 'account' },
     ];
     const personas = [
-      { key: 'solo_dev', label: 'Solo developer', best: 'eagleye', why: 'AI cards + deploy + deep research' },
+      { key: 'solo_dev', label: 'Solo developer', best: 'eagleye', why: 'AI cards + deploy analysis' },
       { key: 'ai_researcher', label: 'AI researcher', best: 'eagleye', why: 'arXiv + HF papers + topic graph + trajectories' },
       { key: 'indie_hacker', label: 'Indie hacker', best: 'eagleye', why: 'Product Hunt + funding signals + alpha radar' },
       { key: 'founder_vc', label: 'Founder / VC', best: 'eagleye', why: 'Investor lens + entity momentum + stories' },
@@ -157,7 +156,7 @@ function register(routes) {
         JOIN sources s ON i.source_id = s.id
         LEFT JOIN ai_summaries a ON a.item_id = i.id
         LEFT JOIN signal_scores ss ON ss.item_id = i.id
-        WHERE items_fts MATCH ?
+        WHERE items_fts MATCH ? AND i.duplicate_of IS NULL
         ORDER BY rank ASC
         LIMIT ?
       `).all(`"${safeQ}"`, limit);
@@ -174,8 +173,9 @@ function register(routes) {
         JOIN sources s ON i.source_id = s.id
         LEFT JOIN ai_summaries a ON a.item_id = i.id
         LEFT JOIN signal_scores ss ON ss.item_id = i.id
-        WHERE i.title LIKE ? ESCAPE '\\' OR i.title_zh LIKE ? ESCAPE '\\'
-           OR a.one_liner_zh LIKE ? ESCAPE '\\' OR a.short_summary_zh LIKE ? ESCAPE '\\'
+        WHERE (i.title LIKE ? ESCAPE '\\' OR i.title_zh LIKE ? ESCAPE '\\'
+           OR a.one_liner_zh LIKE ? ESCAPE '\\' OR a.short_summary_zh LIKE ? ESCAPE '\\')
+          AND i.duplicate_of IS NULL
         ORDER BY COALESCE(ss.alpha_score, 0) DESC LIMIT ?
       `).all(like, like, like, like, limit);
       sendJSON(res, 200, { status: 'ok', items, total: items.length, q, engine: 'like-fallback' });

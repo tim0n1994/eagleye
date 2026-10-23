@@ -41,7 +41,6 @@ export const en = {
   'system.online': 'SYSTEMS ONLINE',
   'system.ready': 'System ready. Waiting for activity...',
   'system.cleared': 'Log cleared.',
-  'system.research_failed': 'RESEARCH FAILED',
 
   // ── Footer ──
   'footer.read': 'Read',
@@ -58,7 +57,7 @@ export const en = {
   // ── Right sidebar ──
   'sidebar.agents': 'AGENT PROGRESS',
   'sidebar.log': 'MESSAGE LOG',
-  'sidebar.idle': 'IDLE — No active research',
+  'sidebar.idle': 'IDLE — No active agents',
   'sidebar.clear': 'Clear log',
 
   // ── Common UI ──
@@ -66,25 +65,16 @@ export const en = {
   'common.error': 'Error',
   'common.empty': 'No items yet. Try triggering a sync.',
   'common.original': 'ORIGINAL',
-  'common.deep_research': 'Deep Research',
   'common.connecting_graph': 'CONNECTING TO KNOWLEDGE GRAPH...',
   'common.graph_void': 'GRAPH DATA VOID',
   'common.graph_error': 'Graph Error: {msg}',
-  'common.analysing': 'ANALYZING SIGNAL...',
   'common.search_ph': 'SEARCH SIGNALS...',
   'common.last_updated': 'LAST UPDATED',
   'common.synced': 'Synced',
   'common.signal_lost': 'SIGNAL LOST // NO ITEMS FOUND',
-  'common.research_analysing': 'Analyzing signal, please wait...',
-  'common.researching': 'Researching: {title}',
-  'common.start_research': 'Starting deep research: {title}',
-  'common.collecting': 'Collecting context from sources...',
-  'common.research_success': 'Research report generated successfully',
-  'common.research_error': 'Research error: {msg}',
   'common.deploy_unavailable': 'Deployment analysis not yet available for this item.',
   'common.deploy_generating': 'GENERATING DEPLOYMENT PLAN...',
   'common.deploy_feasibility': 'ANALYZING DEPLOYMENT FEASIBILITY...',
-  'common.research_agent': 'Research Agent',
   'common.context_collector': 'Context Collector',
   'common.llm_analyst': 'LLM Analyst',
   'common.analyzing': 'Analyzing...',
@@ -145,7 +135,6 @@ export const en = {
   'topics.entities': '{n} entities',
   'topics.related_topics': 'Related Topics',
   'topics.recent_items': 'Recent Items',
-  'topics.research_this': 'Research this topic',
   'topics.all_items': 'View all {n} items',
 
   // ── Tools ──
@@ -298,10 +287,6 @@ export const en = {
   'item.rank': 'RANK #{n}',
   'item.visit': 'VISIT',
   'item.summary_na': 'No summary available.',
-
-  // ── Research modal states ──
-  'research.title': 'Deep Research',
-  'research.failed_title': 'Research Failed',
 
   // ── Saved page ──
   'saved.title': 'SAVED ITEMS',

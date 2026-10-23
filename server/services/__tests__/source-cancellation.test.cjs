@@ -33,6 +33,11 @@ function registry(fetch, env = {}) {
     .map(([, name]) => [name, new Proxy({}, { get: () => Connector })]));
   mocks['./base'] = { parseItemLimit: value => value };
   mocks['../services/date-contract'] = { compactDigestDate: value => value };
+  // CTO 03:40 retry patch: connectors/index.js now requires the shared utils
+  // for runWithFetchContext (per-source stats/signal propagation). The real
+  // module is used so the ALS wrapper runs inside these cancellation cases;
+  // the Proxy connectors never call fetchURL, so no network is involved.
+  mocks['../services/utils'] = require('../utils');
   mocks['../db/connection'] = { getDB: () => ({ prepare: () => ({ all: () => [{ slug: 'hacker-news' }, { slug: 'x-following' }] }) }) };
   return { ...load('connectors/index.js', mocks, env), calls };
 }
@@ -102,7 +107,7 @@ test('sync full and single source pass cancellation through registry and skip en
       '../connectors/index': h,
       './llm': { enrichItems: () => { enrichCalls++; } },
       './jobs': { isJobCancelled: () => false },
-      './date-contract': { todayDigestDate: () => '20261016' },
+      './date-contract': { normalizeDigestDate: value => value, todayDigestDate: () => '20261016' },
     });
     const controller = new AbortController();
     const pending = single ? sync.syncSource('hacker-news', '', { signal: controller.signal })
@@ -123,7 +128,16 @@ function xConnector(reach, fetchURL, env = {}) {
     './base': { BaseConnector }, '../services/utils': { fetchURL },
     '../services/x-following-config': { readXFollowingConfig: () => ({ users: [] }) },
     '../services/agent-reach': reach,
-  }, { X_FOLLOWING_CONCURRENCY: '1', X_FOLLOWING_CIRCUIT_FAILURES: '3', ...env });
+    // Round 2 ①: feed is now the default. These cancellation and breaker
+    // cases target the explicit per-user legacy lane, so pin its mode rather
+    // than relying on the obsolete default.
+    '../db/user-data': { getValue: () => null, setValue: () => {}, GLOBAL_SCOPE: '' },
+  }, {
+    X_FOLLOWING_MODE: 'per-user',
+    X_FOLLOWING_CONCURRENCY: '1',
+    X_FOLLOWING_CIRCUIT_FAILURES: '3',
+    ...env,
+  });
   const connector = new XFollowingConnector();
   connector.loadUserList = () => ['one', 'two', 'three', 'four', 'five'];
   return connector;

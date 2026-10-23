@@ -10,8 +10,11 @@
 
 const { getDB } = require('../db/connection');
 const { enrichItems, generateDailyDigest } = require('./llm');
-const { buildTopicGraph } = require('./topic-graph');
 const { normalizeDigestDate, todayDigestDate } = require('./date-contract');
+
+// buildTopicGraph is required lazily at its call sites (BUILD_TOPIC_GRAPH /
+// the FULL_PIPELINE topic_graph stage) so jobs.js only pulls what the fired
+// job actually needs.
 
 // Circular dependency: sync.js imported lazily inside executeJob()
 const crypto = require('crypto');
@@ -37,8 +40,10 @@ const JOB_TYPES = {
   TRANSLATE_BACKFILL: 'translate-backfill',
   SCORE_SIGNALS: 'score-signals',
   RESCORE_ALL: 'rescore-all',
-  ITEM_RESEARCH: 'item-research',
   BUILD_TAG_HIERARCHY: 'build-tag-hierarchy',
+  // R3 EAGLEYE_R3_DRAINER: 2h convergence drain entry (timer-fired via
+  // scripts/kg-drain.js). Append-only job type per the R3 file boundary.
+  KG_DRAIN: 'kg-drain',
 };
 
 const configuredEnrichBatch = Number(process.env.JOB_ENRICH_BATCH_SIZE || 100);
@@ -50,6 +55,24 @@ const SINGLETON_JOB_TYPES = new Set([
   JOB_TYPES.TRANSLATE_BACKFILL,
   JOB_TYPES.X_FOLLOWING_SYNC,
   JOB_TYPES.RESCORE_ALL,
+  // The KG drain must be a true singleton — the enrich drainer's known gap
+  // (ENRICH_ITEMS is NOT a singleton) must not be copied: a second 2h fire
+  // while one drain runs reuses the in-flight job instead of doubling load.
+  JOB_TYPES.KG_DRAIN,
+]);
+
+// D7 WAL governance: bulk-writing job types checkpoint the WAL when the run
+// ends so the -wal file returns to baseline instead of growing unbounded
+// (it reached 172MB in production). Gated to the daily pipeline and the
+// enrich drain job (the 2h drainer's /api/enrich?background=true and manual
+// background enrich both land in ENRICH_ITEMS).
+const WAL_CHECKPOINT_JOB_TYPES = new Set([
+  JOB_TYPES.FULL_PIPELINE,
+  JOB_TYPES.ENRICH_ITEMS,
+  // The KG drain is a bulk writer too (features / vectors / topic
+  // assignments / edges); D7 exists precisely because failed drains used to
+  // leave WAL frames accumulating for days.
+  JOB_TYPES.KG_DRAIN,
 ]);
 
 function boundedJobCount(value, fallback, maximum) {
@@ -141,6 +164,24 @@ function isStaleLeaseWriter(db, id) {
 function staleLeaseResult(jobId, jobType, epoch, error) {
   console.warn(`  ⚠  Job ${jobId} (${jobType}) late commit rejected: lease epoch moved on from ${epoch}; newer results preserved`);
   return { stale: true, reason: 'lease-stale', jobId, jobType, ...(error ? { error } : {}) };
+}
+
+/**
+ * D7 WAL governance: TRUNCATE-checkpoint the shared connection once a
+ * bulk-writing job (full pipeline / enrich drain) has finished — success,
+ * failure or cancellation alike (failed enrich drains used to leave WAL
+ * frames accumulating for days). Best-effort: a checkpoint failure never
+ * fails the job itself.
+ */
+function checkpointWALAfterJob(jobId, jobType) {
+  try {
+    const db = getDB();
+    if (!db) return;
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    console.log(`  🧹 WAL checkpoint (TRUNCATE) after ${jobType} job ${jobId}`);
+  } catch (err) {
+    console.warn(`  ⚠  WAL checkpoint after ${jobType} job ${jobId} failed: ${err?.message || err}`);
+  }
 }
 
 // ─── Job CRUD ───────────────────────────────────────────────────────────
@@ -323,7 +364,7 @@ function updatePipelineStage(jobId, stageKey, status, detail = null, result = nu
   for (const stage of next.stages) {
     if (stage.key === stageKey) {
       if (status === 'running' && !stage.started_at) stage.started_at = now;
-      if (['completed', 'failed', 'skipped'].includes(status)) stage.completed_at = now;
+      if (['completed', 'failed', 'skipped', 'degraded'].includes(status)) stage.completed_at = now;
       stage.status = status;
       if (detail !== null) stage.detail = detail;
       if (result !== null) stage.result = result;
@@ -339,28 +380,72 @@ function getJob(id) {
   return db.prepare('SELECT * FROM background_jobs WHERE id = ?').get(id);
 }
 
+function findCompensationJob(jobId) {
+  const db = getDB();
+  if (!db || !jobId) return null;
+  return db.prepare(`
+    SELECT * FROM background_jobs
+    WHERE job_type = ? AND json_extract(params, '$.resume_of') = ?
+    ORDER BY created_at DESC LIMIT 1
+  `).get(JOB_TYPES.FULL_PIPELINE, jobId) || null;
+}
+
 function pipelineResult(jobId, outcome = null) {
   const progress = parseProgress(getJob(jobId)?.result) || emptyPipelineProgress();
   const stages = progress.stages || [];
   const failedStages = stages.filter(stage => stage.status === 'failed').map(stage => stage.key);
+  const degradedStages = stages.filter(stage => stage.status === 'degraded').map(stage => stage.key);
   const cancelled = outcome === 'cancelled';
   return {
     ...progress,
-    completed: !cancelled && failedStages.length === 0 && stages.every(stage => ['completed', 'skipped'].includes(stage.status)),
+    completed: !cancelled && failedStages.length === 0
+      && stages.every(stage => ['completed', 'skipped', 'degraded'].includes(stage.status)),
     cancelled,
     outcome: outcome || (failedStages.length ? 'failed' : 'completed'),
     partial: stages.some(stage => stage.status === 'completed') && (cancelled || failedStages.length > 0),
     failed_stages: failedStages,
+    degraded: degradedStages.length > 0,
+    degraded_stages: degradedStages,
     summary: Object.fromEntries(stages.map(stage => [stage.key, stage.result])),
     updated_at: new Date().toISOString(),
   };
 }
 
-function stageFailure(result) {
+/**
+ * EAGLEYE_R3_PARTIAL_FAIL — enrich partial-failure semantics (R3 stage 2).
+ * Default ON; an explicitly falsy value ('0', 'false', …) restores the
+ * legacy whole-batch judgment byte-identically. Since 10-19 the 2h enrich
+ * drainer lost 2-34 items out of 1,200 per run (dead LLM batches + gate
+ * skips) and this rule marked every such job failed even though the
+ * ~1,196 successful items already flow downstream at the data layer
+ * (downstream selectors never read background_jobs). Per-item retry /
+ * poison-pill state lives on information_items.enrichment_attempts.
+ */
+function enrichPartialFailureEnabled() {
+  const raw = String(process.env.EAGLEYE_R3_PARTIAL_FAIL ?? '').trim().toLowerCase();
+  if (!raw) return true; // unset/empty → default ON
+  return ['1', 'true', 'yes', 'on'].includes(raw);
+}
+
+function stageFailure(result, stageKey = null) {
   if (!result || typeof result !== 'object') return null;
   if (result.error || ['error', 'failed'].includes(result.status)) return result.error || result.message || 'Stage returned a failure';
   if (result.fallback_reason) return `Requested backend degraded: ${result.fallback_reason}`;
-  if (Number(result.failed) > 0) return `${result.failed} item(s) failed`;
+  // A fetch envelope signals per-source failures, not a failed stage. The
+  // distinction between partial and total fetch failure belongs to the stage
+  // runner, which has the whole source list. Check this before the generic
+  // `failed` count clause, because syncAll returns `{ fetch, failed }`.
+  if (stageKey === 'fetch' && Array.isArray(result.fetch)) return null;
+  // Enrich-shaped batches (an `enriched` count) under the new semantics only
+  // fail when the WHOLE batch died (enriched === 0); partial failures stay
+  // visible in the stored result (failed count, successful_item_ids). Other
+  // shapes — translate {translated, failed}, fetch rows, nested KG results —
+  // keep today's judgment exactly.
+  const wholeBatchFailure = !(typeof result.enriched === 'number' && result.enriched > 0 && enrichPartialFailureEnabled());
+  const failedCount = Number(result.failed) || 0;
+  const deferredCount = Number(result.deferred) || 0;
+  if (failedCount > 0 && wholeBatchFailure) return `${failedCount} item(s) failed`;
+  if (deferredCount > 0 && wholeBatchFailure) return `${deferredCount} item(s) deferred`;
   const failedSources = (result.fetch || []).filter(row => row.error || row.status === 'failed');
   if (failedSources.length) return failedSources.map(row => `${row.source || 'unknown'}: ${row.error || 'failed'}`).join('; ');
   if (result.skipped && result.reason === 'no-llm-provider') return 'Enrichment unavailable: no LLM provider configured';
@@ -377,14 +462,37 @@ async function runPipelineStage(jobId, stageKey, detail, work) {
   try {
     const result = await work();
     if (isJobCancelled(jobId)) throw new Error('Job cancelled by user');
-    const failure = stageFailure(result);
-    updatePipelineStage(jobId, stageKey, failure ? 'failed' : result?.skipped ? 'skipped' : 'completed',
-      failure ? { error: failure } : {}, result);
+    let failure = stageFailure(result, stageKey);
+    let degraded = null;
+    if (stageKey === 'fetch' && Array.isArray(result?.fetch)) {
+      const failedSources = result.fetch.filter(row => row.error || row.status === 'failed');
+      const availableSources = result.fetch.filter(row => !row.error && row.status !== 'failed');
+      if (failedSources.length > 0 && availableSources.length === 0) {
+        failure = failedSources.map(row => `${row.source || 'unknown'}: ${row.error || 'failed'}`).join('; ');
+      } else if (failedSources.length > 0) {
+        degraded = {
+          warning: `${failedSources.length} source(s) failed; continuing downstream with ${availableSources.length} available source(s)`,
+          failed_sources: failedSources.map(row => row.source || 'unknown'),
+        };
+      }
+    }
+    const status = failure ? 'failed' : degraded ? 'degraded' : result?.skipped ? 'skipped' : 'completed';
+    updatePipelineStage(jobId, stageKey, status, failure ? { error: failure } : degraded || {}, result);
+    // A fetch failure is a pipeline-level stop condition. Only the fetch stage
+    // has the whole source set needed to distinguish a degraded round (some
+    // sources succeeded) from a dead one. Other stages intentionally keep the
+    // collect-and-continue semantics below, but continuing enrichment/digest
+    // work after every source failed would publish an empty run as progress.
+    if (failure && stageKey === 'fetch') throw new Error(failure);
     return result;
   } catch (err) {
     if (isJobCancelled(jobId)) throw err;
     updatePipelineStage(jobId, stageKey, 'failed', { error: err.message });
     console.warn(`  ⚠  Pipeline stage ${stageKey} failed: ${err.message}`);
+    // The stage layer records the failure before rethrowing because the outer
+    // executor owns terminalization. Swallowing a fetch exception here used to
+    // let a fully dead fetch advance into enrich with no source rows.
+    if (stageKey === 'fetch') throw err;
     return null;
   }
 }
@@ -395,7 +503,118 @@ function getRecentJobs(limit = 20) {
   return db.prepare('SELECT * FROM background_jobs ORDER BY created_at DESC LIMIT ?').all(limit);
 }
 
-function markInterruptedJobs() {
+// 重启恢复（scheduler-recovery）：只对 running 的 full-pipeline 尝试恢复，
+// 依据是 job.result 里按阶段持久化的检查点（stage 状态与输出）。
+// - fetch 已到终态（completed/failed/skipped）→ 抓取已完整落盘，创建补偿 job
+//   从第一个未完成阶段续跑，复用已持久化的 stage 输出，不重抓不重复写入。
+// - fetch 仍未终态（抓取中途被打断）→ 没有每源检查点，续跑等于盲目重放整条
+//   pipeline，按策略明确拒绝恢复并失败。
+// - 全部阶段已落盘（进程死在最终提交前）→ 就地按阶段终态收敛 job 终态。
+// - queued job 从未开始、非 pipeline job 无阶段检查点 → 一律明确失败。
+// 语义保持：补偿 job 走正常 runJob/claimJob（单例、lease、EAGLEYE_JOBS_PAUSED
+// 回滚门全部复用）；默认 recover=false 维持旧行为（优雅停机路径不受影响）。
+const SUCCESS_STAGE_STATUSES = new Set(['completed', 'skipped', 'degraded']);
+
+function progressStages(progress) {
+  if (!Array.isArray(progress?.stages)) return null;
+  return new Map(progress.stages.map(stage => [stage?.key, stage]).filter(([key]) => key));
+}
+
+function pipelineDate(job, progress) {
+  let params = {};
+  try { params = JSON.parse(job?.params || '{}') || {}; } catch { /* legacy text params */ }
+  const persisted = normalizeDigestDate(params.date);
+  if (persisted) return persisted;
+  const fetchStage = progressStages(progress)?.get('fetch');
+  return normalizeDigestDate(fetchStage?.detail?.date) || normalizeDigestDate(fetchStage?.result?.date) || null;
+}
+
+// A stage list is a checkpoint, not a set of hints. The first stage that has
+// not reached a successful terminal state is resumable even when its own
+// status is running/failed/pending; completed prefixes are reused verbatim.
+// For a fetch resume the persisted per-source rows are the checkpoint and the
+// next attempt only fills the missing/error sources.
+function planPipelineRecovery(job) {
+  const progress = parseProgress(job.result);
+  const stages = progressStages(progress);
+  if (!stages) return { action: 'refuse', reason: 'no-stage-progress' };
+  const firstUnfinished = PIPELINE_STAGES.findIndex(([key]) => {
+    const stage = stages.get(key);
+    return !stage || !SUCCESS_STAGE_STATUSES.has(stage.status);
+  });
+  if (firstUnfinished === -1) return { action: 'finalize', outcome: 'completed', progress };
+
+  const resumeFromStage = PIPELINE_STAGES[firstUnfinished][0];
+  const date = pipelineDate(job, progress);
+  if (!date) return { action: 'refuse', reason: 'job-date-missing' };
+
+  let fetchCheckpoint = null;
+  if (resumeFromStage === 'fetch') {
+    const fetchStage = stages.get('fetch');
+    const rows = fetchStage?.detail?.results;
+    if (fetchStage && !Array.isArray(rows)) {
+      return { action: 'refuse', reason: 'fetch-checkpoint-missing' };
+    }
+    fetchCheckpoint = Array.isArray(rows) ? rows : [];
+  }
+
+  const rootResumeOf = progress.root_resume_of
+    || progress.resume_of
+    || job.id;
+  return {
+    action: 'resume',
+    resumeFromStage,
+    date,
+    rootResumeOf,
+    progress,
+    fetchCheckpoint,
+  };
+}
+
+// 把源 job 已到终态的阶段原样拷贝进补偿 job 的进度（含 stage 输出），使
+// pipelineResult 能把补偿运行与原运行的已完成部分合并成一个完整视图。
+function seedResumeProgress(jobId, originalProgress, resumeFromStage, resumeOf, rootResumeOf) {
+  const db = getDB();
+  if (!db) return;
+  const stageOrder = PIPELINE_STAGES.map(([key]) => key);
+  const resumeIndex = stageOrder.indexOf(resumeFromStage);
+  const progress = emptyPipelineProgress();
+  const originalStages = Array.isArray(originalProgress?.stages) ? originalProgress.stages : [];
+  // 只拷贝 resume 点之前的前缀阶段：中断标注会把运行中/未开始的阶段改写为
+  // failed/skipped，那些阶段必须由补偿 job 重新执行而不是原样带过来。
+  if (resumeIndex > 0) {
+    for (const stage of progress.stages) {
+      if (stageOrder.indexOf(stage.key) >= resumeIndex) continue;
+      const source = originalStages.find(row => row.key === stage.key);
+      if (source && SUCCESS_STAGE_STATUSES.has(source.status)) {
+        stage.status = source.status;
+        stage.detail = source.detail;
+        stage.result = source.result;
+        stage.started_at = source.started_at;
+        stage.completed_at = source.completed_at;
+      }
+    }
+  }
+  // Carry the resume stage's checkpoint (fetch rows, partial counts) without
+  // copying its interrupted failure status. The stage runner advances it from
+  // running to its real terminal state in this job.
+  const resumeStage = progress.stages.find(stage => stage.key === resumeFromStage);
+  const sourceStage = originalStages.find(row => row.key === resumeFromStage);
+  if (resumeStage && sourceStage) {
+    resumeStage.detail = sourceStage.detail ? { ...sourceStage.detail } : null;
+    if (resumeStage.detail) delete resumeStage.detail.error;
+    resumeStage.result = sourceStage.result ?? null;
+  }
+  progress.current_stage = resumeFromStage;
+  progress.resume_of = resumeOf;
+  progress.root_resume_of = rootResumeOf;
+  progress.resumed_from_stage = resumeFromStage;
+  progress.updated_at = new Date().toISOString();
+  db.prepare('UPDATE background_jobs SET result = ? WHERE id = ? AND status = ?')
+    .run(JSON.stringify(progress), jobId, 'running');
+}
+
+function reconcileInterruptedJobs({ recover = false } = {}) {
   const db = getDB();
   if (!db) return 0;
   const reason = 'Server restarted before this background job completed';
@@ -403,12 +622,18 @@ function markInterruptedJobs() {
   const leaseClauses = hasLeaseColumns(db)
     ? ', lease_epoch = lease_epoch + 1, lease_owner = NULL, lease_expiry = NULL'
     : '';
-  return db.transaction(() => {
+  const resumePlans = [];
+  const refusedPlans = [];
+  const count = db.transaction(() => {
     const interrupted = db.prepare("SELECT * FROM background_jobs WHERE status IN ('running', 'queued')").all();
-    const update = db.prepare(`UPDATE background_jobs SET status = 'failed', completed_at = ?, error = ?, result = ?${leaseClauses}
+    // 终态参数化：恢复路径除了 failed，还可能就地收敛为 completed。
+    const update = db.prepare(`UPDATE background_jobs SET status = ?, completed_at = ?, error = ?, result = ?${leaseClauses}
       WHERE id = ? AND status IN ('running', 'queued')`);
     for (const job of interrupted) {
       const previous = parseProgress(job.result);
+      const plan = recover && job.status === 'running' && job.job_type === JOB_TYPES.FULL_PIPELINE
+        ? planPipelineRecovery(job)
+        : null;
       const result = { ...(previous && typeof previous === 'object' ? previous : { previous_result: job.result }),
         completed: false, cancelled: false, interrupted: true, outcome: 'failed', updated_at: now };
       if (Array.isArray(result.stages)) {
@@ -419,10 +644,124 @@ function markInterruptedJobs() {
         result.failed_stages = result.stages.filter(stage => stage.status === 'failed').map(stage => stage.key);
         result.partial = result.stages.some(stage => stage.status === 'completed');
       }
-      update.run(now, reason, JSON.stringify(result), job.id);
+      let terminalStatus = 'failed';
+      let failureReason = reason;
+      if (recover) {
+        if (job.status === 'running' && job.job_type === JOB_TYPES.FULL_PIPELINE) {
+          if (plan.action === 'resume') {
+            result.recovery = { action: 'resume_scheduled', resume_of: job.id, root_resume_of: plan.rootResumeOf,
+              resume_from_stage: plan.resumeFromStage, date: plan.date, planned_at: now };
+            failureReason = `${reason}; recovery scheduled: remaining stages resume from '${plan.resumeFromStage}' in a follow-up job (persisted checkpoint reused)`;
+            resumePlans.push({ resumeOf: job.id, rootResumeOf: plan.rootResumeOf,
+              resumeFromStage: plan.resumeFromStage, date: plan.date, params: job.params,
+              createdAt: job.created_at, previous });
+            console.log(`  ♻️  Recovery: full-pipeline ${job.id} will resume from stage '${plan.resumeFromStage}'`);
+          } else if (plan.action === 'finalize') {
+            // 所有阶段已落盘：按阶段终态收敛，不重跑任何阶段。
+            result.completed = plan.outcome === 'completed';
+            result.outcome = plan.outcome;
+            result.recovery = { action: 'finalized', planned_at: now };
+            terminalStatus = plan.outcome;
+            failureReason = `${reason}; recovery finalized: all stages were already persisted, outcome ${plan.outcome} committed without re-running`;
+            console.log(`  ♻️  Recovery: full-pipeline ${job.id} finalized as ${plan.outcome} from persisted stages`);
+          } else {
+            result.recovery = { action: 'resume_refused', reason: plan.reason, planned_at: now };
+            failureReason = `${reason}; recovery refused (${plan.reason}): no safe resume checkpoint, replaying would repeat the whole pipeline`;
+            console.warn(`  ⚠  Recovery refused for full-pipeline ${job.id}: ${plan.reason}`);
+            refusedPlans.push(job.id);
+          }
+        } else if (job.status === 'queued') {
+          // queued 与 running 的分界：queued 从未开始，自动重放等于盲目重跑
+          // 整个 job，明确失败并留下拒绝原因。
+          result.recovery = { action: 'resume_refused', reason: 'job-never-started', planned_at: now };
+          failureReason = `${reason}; recovery refused (job-never-started): queued job has no checkpoint to resume`;
+          console.warn(`  ⚠  Recovery refused for queued job ${job.id} (${job.job_type}): never started`);
+        } else {
+          result.recovery = { action: 'resume_refused', reason: 'no-checkpoint-for-job-type', planned_at: now };
+          failureReason = `${reason}; recovery refused (no-checkpoint-for-job-type): only full-pipeline persists resumable stage checkpoints`;
+          console.warn(`  ⚠  Recovery refused for ${job.job_type} job ${job.id}: no stage checkpoint`);
+        }
+      }
+      update.run(terminalStatus, now, terminalStatus === 'completed' ? null : failureReason, JSON.stringify(result), job.id);
     }
     return interrupted.length;
   })();
+
+  return { count, resumePlans, refusedPlans };
+}
+
+async function enqueueRecoveryJobs(db, resumePlans) {
+  // A single process has no queued-job pump. Resume the newest interrupted
+  // full-pipeline and explicitly account for older roots instead of letting
+  // the singleton intake silently hand back the wrong job ID.
+  const ordered = [...resumePlans].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  if (ordered.length > 1) {
+    for (const superseded of ordered.slice(1)) {
+      const progress = parseProgress(getJob(superseded.resumeOf)?.result);
+      if (progress?.recovery) {
+        progress.recovery.action = 'resume_superseded';
+        progress.recovery.superseded_by = ordered[0].resumeOf;
+        db.prepare('UPDATE background_jobs SET result = ? WHERE id = ?').run(JSON.stringify(progress), superseded.resumeOf);
+      }
+    }
+  }
+  for (const plan of ordered.slice(0, 1)) {
+    try {
+      const originalParams = JSON.parse(plan.params || '{}');
+      const existing = db.prepare(`
+        SELECT id FROM background_jobs
+        WHERE job_type = ? AND json_extract(params, '$.resume_of') = ?
+        ORDER BY created_at DESC LIMIT 1
+      `).get(JOB_TYPES.FULL_PIPELINE, plan.resumeOf);
+      const recoveryParams = {
+        ...originalParams,
+        date: plan.date,
+        resume_of: plan.resumeOf,
+        root_resume_of: plan.rootResumeOf,
+        resume_from_stage: plan.resumeFromStage,
+        allowConcurrent: true,
+      };
+      delete recoveryParams.allowConcurrent;
+      const compensationId = existing?.id || await runJob(JOB_TYPES.FULL_PIPELINE, { ...recoveryParams, allowConcurrent: true });
+      if (!compensationId) {
+        console.warn(`  ⚠  Recovery of full-pipeline ${plan.resumeOf} not enqueued: job intake paused (EAGLEYE_JOBS_PAUSED)`);
+        // 如实写回“未入队”，避免源 job 留下与事实不符的 resume_scheduled。
+        const progress = parseProgress(getJob(plan.resumeOf)?.result);
+        if (progress?.recovery) {
+          progress.recovery.action = 'resume_blocked_jobs_paused';
+          db.prepare('UPDATE background_jobs SET result = ? WHERE id = ?').run(JSON.stringify(progress), plan.resumeOf);
+        }
+      } else {
+        const progress = parseProgress(getJob(plan.resumeOf)?.result);
+        if (progress?.recovery) {
+          progress.recovery.action = existing?.id ? 'resume_already_enqueued' : 'resume_scheduled';
+          progress.recovery.compensation_job_id = compensationId;
+          db.prepare('UPDATE background_jobs SET result = ? WHERE id = ?').run(JSON.stringify(progress), plan.resumeOf);
+        }
+        console.log(`  ♻️  Recovery job ${compensationId} enqueued for ${plan.resumeOf} (resume_from_stage='${plan.resumeFromStage}')`);
+      }
+    } catch (err) {
+      console.warn(`  ⚠  Recovery of full-pipeline ${plan.resumeOf} failed to enqueue: ${err.message}`);
+      const progress = parseProgress(getJob(plan.resumeOf)?.result);
+      if (progress?.recovery) {
+        progress.recovery.action = 'resume_enqueue_failed';
+        progress.recovery.error = err.message;
+        db.prepare('UPDATE background_jobs SET result = ? WHERE id = ?').run(JSON.stringify(progress), plan.resumeOf);
+      }
+    }
+  }
+}
+
+let recoveryInFlight = null;
+
+function markInterruptedJobs({ recover = false } = {}) {
+  const reconciliation = reconcileInterruptedJobs({ recover });
+  if (!recover || reconciliation.resumePlans.length === 0) return reconciliation.count;
+  if (recoveryInFlight) return recoveryInFlight;
+  recoveryInFlight = enqueueRecoveryJobs(getDB(), reconciliation.resumePlans)
+    .then(() => reconciliation.count)
+    .finally(() => { recoveryInFlight = null; });
+  return recoveryInFlight;
 }
 
 /**
@@ -524,6 +863,7 @@ async function executeJob(jobId) {
       }
 
       case JOB_TYPES.BUILD_TOPIC_GRAPH: {
+        const { buildTopicGraph } = require('./topic-graph');
         const params = JSON.parse(job.params || '{}');
         const date = jobDate(params.date);
         result = await buildTopicGraph(date, { jobId, signal, deep: params.deep === true });
@@ -535,52 +875,100 @@ async function executeJob(jobId) {
         const { runKGFullPipeline } = require('./kg-worker');
         const { translateItems } = require('./translate');
         const params = JSON.parse(job.params || '{}');
-        const today = todayDigestDate();
+        // The digest date belongs to the job contract. Persisting it at
+        // creation keeps a restart after midnight on the original day.
+        const date = jobDate(params.date);
         const stage = (key, detail, work) => runPipelineStage(jobId, key, detail, work);
-        await stage('fetch', { message: 'Starting source fetch' },
-          () => syncAll({ jobId, signal, skipEnrich: true }));
         const requestedBatch = Number(params.enrichBatchSize ?? DEFAULT_JOB_ENRICH_BATCH);
         const enrichBatchSize = Number.isInteger(requestedBatch) && requestedBatch > 0
           ? Math.min(1600, requestedBatch) : DEFAULT_JOB_ENRICH_BATCH;
-        await stage('enrich', { message: `Starting enrichment, batch size ${enrichBatchSize}` },
-          () => enrichItems(enrichBatchSize, { jobId, signal }));
-        await stage('translate', { message: 'Starting Chinese card backfill' },
-          () => translateItems({ jobId, signal, batchSize: Math.min(200, enrichBatchSize) }));
-        await stage('topic_graph', { date: today }, () => buildTopicGraph(today, { jobId, signal }));
-        await stage('kg_worker', { sources: 'All active sources / 所有活跃信息源' },
-          () => runKGFullPipeline(null));
-        await stage('entity_momentum', { message: 'Computing entity momentum' }, () => {
-          const { updateEntityMomentum } = require('./source-profiles');
-          return updateEntityMomentum();
-        });
-        await stage('source_profiles', { message: 'Computing source profiles and rescoring with fresh evidence' }, async () => {
-          const { updateSourceProfiles } = require('./source-profiles');
-          const profileResult = updateSourceProfiles();
-          const { scoreSignals } = require('./signals');
-          const todayItems = getDB().prepare(`
-            SELECT i.*, s.label as source_label, s.slug as source_slug
-            FROM information_items i JOIN sources s ON i.source_id = s.id
-            WHERE i.digest_date = ? LIMIT ?
-          `).all(today, enrichBatchSize);
-          let rescore = { scored: 0 };
-          try {
-            if (todayItems.length > 0) rescore = await scoreSignals(todayItems, { jobId, signal, autoResearch: false });
-          } catch (err) {
-            rescore = { error: err.message };
+
+        // 重启补偿：resume_from_stage 表示本 job 从持久化检查点续跑剩余阶段。
+        // 已落盘阶段（含 stage 输出）从源 job 原样拷入进度，fetch 不重抓，
+        // 避免重复写入；单例/lease/取消语义与本 job 自身的 claim 一致。
+        const resumeFromStage = params.resume_from_stage;
+        let startIndex = 0;
+        let fetchCheckpoint = null;
+        if (resumeFromStage) {
+          const stageOrder = PIPELINE_STAGES.map(([key]) => key);
+          startIndex = stageOrder.indexOf(resumeFromStage);
+          if (startIndex < 0) throw new Error(`Invalid resume_from_stage: ${resumeFromStage}`);
+          const originalProgress = parseProgress(getJob(params.resume_of || '')?.result);
+          if (!originalProgress) throw new Error(`Cannot resume: source job ${params.resume_of || '(missing)'} has no checkpoint`);
+          if (resumeFromStage === 'fetch') {
+            const sourceFetch = originalProgress.stages?.find(stage => stage.key === 'fetch');
+            if (!Array.isArray(sourceFetch?.detail?.results)) {
+              throw new Error('Cannot resume fetch without a per-source checkpoint');
+            }
+            fetchCheckpoint = sourceFetch.detail.results;
           }
-          return { ...profileResult, rescored: rescore?.scored || 0, rescore };
-        });
-        await stage('digest', { date: today }, async () => {
-          const digest = await generateDailyDigest(today, { jobId, signal });
-          if (digest?.id) return { generated: true, id: digest.id };
-          if (digest?.__skipped) return { generated: false, skipped: true, reason: digest.reason };
-          return { generated: false, error: 'Digest LLM call failed (empty/unparseable response or exception)' };
-        });
-        await stage('hierarchy', { message: 'Building concept graph from tags' }, () => {
-          const { buildTagHierarchy } = require('./tag-hierarchy');
-          return buildTagHierarchy({ jobId, signal });
-        });
+          seedResumeProgress(jobId, originalProgress,
+            resumeFromStage, params.resume_of, params.root_resume_of || params.resume_of);
+          console.log(`  ♻️  Job ${jobId} (${job.job_type}) resuming from stage '${resumeFromStage}' (recovered from ${params.resume_of})`);
+        }
+
+        // 阶段按声明顺序执行；恢复运行从 startIndex 起只跑剩余阶段。
+        const stageRuns = [
+          ['fetch', { message: 'Starting source fetch' },
+            () => syncAll({ jobId, signal, skipEnrich: true, date, fetchCheckpoint })],
+          ['enrich', { message: `Starting enrichment, batch size ${enrichBatchSize}` },
+            () => enrichItems(enrichBatchSize, { jobId, signal })],
+          ['translate', { message: 'Starting Chinese card backfill' },
+            () => translateItems({ jobId, signal, batchSize: Math.min(200, enrichBatchSize) })],
+          ['topic_graph', { date }, () => {
+            const { buildTopicGraph } = require('./topic-graph');
+            return buildTopicGraph(date, { jobId, signal });
+          }],
+          ['kg_worker', { sources: 'All active sources / 所有活跃信息源' },
+            () => runKGFullPipeline(null)],
+          ['entity_momentum', { message: 'Computing entity momentum' }, () => {
+            const { updateEntityMomentum } = require('./source-profiles');
+            return updateEntityMomentum();
+          }],
+          ['source_profiles', { message: 'Computing source profiles and rescoring with fresh evidence' }, async () => {
+            const { updateSourceProfiles } = require('./source-profiles');
+            const profileResult = updateSourceProfiles();
+            const { scoreSignals } = require('./signals');
+            const todayItems = getDB().prepare(`
+              SELECT i.*, s.label as source_label, s.slug as source_slug
+              FROM information_items i JOIN sources s ON i.source_id = s.id
+              WHERE i.digest_date = ? LIMIT ?
+            `).all(date, enrichBatchSize);
+            let rescore = { scored: 0 };
+            try {
+              if (todayItems.length > 0) rescore = await scoreSignals(todayItems, { jobId, signal });
+            } catch (err) {
+              rescore = { error: err.message };
+            }
+            return { ...profileResult, rescored: rescore?.scored || 0, rescore };
+          }],
+          ['digest', { date }, async () => {
+            const digest = await generateDailyDigest(date, { jobId, signal });
+            if (digest?.id) return { generated: true, id: digest.id };
+            if (digest?.__skipped) return { generated: false, skipped: true, reason: digest.reason };
+            return { generated: false, error: 'Digest LLM call failed (empty/unparseable response or exception)' };
+          }],
+          ['hierarchy', { message: 'Building concept graph from tags' }, () => {
+            const { buildTagHierarchy } = require('./tag-hierarchy');
+            return buildTagHierarchy({ jobId, signal });
+          }],
+        ];
+        for (const [key, detail, work] of stageRuns.slice(startIndex)) {
+          await stage(key, detail, work);
+        }
         result = pipelineResult(jobId);
+        break;
+      }
+
+      case JOB_TYPES.KG_DRAIN: {
+        // EAGLEYE_R3_DRAINER 2h convergence drain (timer-fired via
+        // scripts/kg-drain.js). jobs.js stays switch-agnostic: runKGDrain
+        // no-ops with { skipped: 'disabled' } when the switch is off, so a
+        // manually fired job completes with the skip result instead of
+        // hanging. Params (idleWindow) pass straight through.
+        const params = JSON.parse(job.params || '{}');
+        const { runKGDrain } = require('./kg-drainer');
+        result = await runKGDrain({ jobId, signal, ...params });
         break;
       }
 
@@ -624,24 +1012,6 @@ async function executeJob(jobId) {
         const { rescoreAllSignals } = require('./signal-rescore');
         const params = JSON.parse(job.params || '{}');
         result = await rescoreAllSignals({ jobId, signal, concurrency: params.concurrency });
-        break;
-      }
-
-      case JOB_TYPES.ITEM_RESEARCH: {
-        // Auto-triggered deep research for high-alpha items (Phase 3.B).
-        // Skips items that already have a completed report unless force=true.
-        const { generateItemResearch } = require('./research');
-        const params = JSON.parse(job.params || '{}');
-        if (!params.itemId) throw new Error('item-research job requires itemId');
-        const db = getDB();
-        const existing = !params.force
-          ? db?.prepare('SELECT id FROM research_reports WHERE item_id = ? AND status = ? ORDER BY created_at DESC LIMIT 1').get(params.itemId, 'completed')
-          : null;
-        if (existing) {
-          result = { itemId: params.itemId, skipped: true, reason: 'existing completed report', reportId: existing.id };
-        } else {
-          result = await generateItemResearch(params.itemId, { jobId, signal });
-        }
         break;
       }
 
@@ -695,6 +1065,8 @@ async function executeJob(jobId) {
   } finally {
     jobControllers.delete(jobId);
     jobLeases.delete(jobId);
+    // D7: checkpoint once the run has fully ended, whatever the outcome.
+    if (WAL_CHECKPOINT_JOB_TYPES.has(job.job_type)) checkpointWALAfterJob(jobId, job.job_type);
   }
 }
 
@@ -706,6 +1078,9 @@ async function runJob(jobType, params = {}) {
   params = { ...params };
   if (jobType === JOB_TYPES.ENRICH_ITEMS) params.batchSize = boundedJobCount(params.batchSize, DEFAULT_JOB_ENRICH_BATCH, 1600);
   if (jobType === JOB_TYPES.FULL_PIPELINE) params.enrichBatchSize = boundedJobCount(params.enrichBatchSize, DEFAULT_JOB_ENRICH_BATCH, 1600);
+  // Persist the day this run belongs to before executeJob can cross midnight.
+  // Recovery pins the same date explicitly; both paths use jobDate().
+  if (jobType === JOB_TYPES.FULL_PIPELINE) params.date = jobDate(params.date);
   if (jobType === JOB_TYPES.FETCH_SOURCE) params.limit = boundedJobCount(params.limit, 5, 100);
   if (jobType === JOB_TYPES.SCORE_SIGNALS) params.limit = boundedJobCount(params.limit, 200, 1600);
   if (jobType === JOB_TYPES.TRANSLATE_BACKFILL) {
@@ -736,6 +1111,7 @@ async function runJob(jobType, params = {}) {
 module.exports = {
   JOB_TYPES,
   getJob,
+  findCompensationJob,
   getRecentJobs,
   markInterruptedJobs,
   runJob,

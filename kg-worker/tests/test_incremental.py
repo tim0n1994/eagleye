@@ -23,6 +23,8 @@ class IncrementalTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         for migration in ("001_initial_schema.sql", "006_kg_v2.sql", "030_kg_item_topic_lookup.sql"):
             self.conn.executescript((root / "server/migrations" / migration).read_text())
+        # R3.0: 生产由新迁移提供 duplicate_of 列（与 test_dup_exclusion.py 同款 ALTER）。
+        self.conn.execute("ALTER TABLE information_items ADD COLUMN duplicate_of TEXT")
         self.conn.execute("DELETE FROM sources")
         self.sources = ["x-following", "hacker-news", "reddit"]
         for slug in self.sources + ["inactive"]:

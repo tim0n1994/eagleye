@@ -10,6 +10,7 @@
 
 const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
+const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../services/date-contract');
 
 // Known RSS/news sources for humanoid robotics companies
 const HUMAN_NEWS_SOURCES = [
@@ -40,7 +41,9 @@ class HumanoidConnector extends BaseConnector {
 
   async fetch(date) {
     const items = [];
-    const dateStr = date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    // D2: digest date basis is the requested local digest date (fallback:
+    // local today), never the item's own UTC day.
+    const dateStr = date || compactDigestDate(todayDigestDate());
 
     // Fetch from RSS feeds
     for (const source of HUMAN_FEEDS) {
@@ -48,8 +51,8 @@ class HumanoidConnector extends BaseConnector {
         const xml = await fetchURL(source.url);
         const parsed = this._parseRSS(xml, dateStr, source.name);
         items.push(...parsed);
-      } catch {
-        // Silently skip failed feeds
+      } catch (err) {
+        console.error(`[${this.slug}] RSS feed failed (${source.name} ${source.url}):`, err.message);
       }
     }
 
@@ -59,8 +62,8 @@ class HumanoidConnector extends BaseConnector {
         const html = await fetchURL(source.url);
         const parsed = this._scrapePage(html, dateStr, source.name, source.url);
         items.push(...parsed);
-      } catch {
-        // Skip failed scrapes
+      } catch (err) {
+        console.error(`[${this.slug}] company page scrape failed (${source.name} ${source.url}):`, err.message);
       }
     }
 
@@ -92,17 +95,12 @@ class HumanoidConnector extends BaseConnector {
       const description = getField('description') || getField('summary') || '';
       const title = getField('title') || '[No Title]';
 
-      let itemDate = dateStr;
-      if (pubDate) {
-        try {
-          const d = new Date(pubDate);
-          if (!isNaN(d.getTime())) {
-            itemDate = d.toISOString().slice(0, 10).replace(/-/g, '');
-          }
-        } catch {}
-      }
-
-      if (itemDate !== dateStr) continue;
+      // D2 time-window freshness replaces the digest-day == item-UTC-day
+      // equality filter; items without a parseable pubDate keep the legacy
+      // keep-behavior (judged against fetch time).
+      const pubTs = Date.parse(pubDate);
+      const effectiveTs = Number.isFinite(pubTs) ? pubTs : Date.now();
+      if (dateStr && !isWithinFetchWindow(effectiveTs)) continue;
 
       items.push({
         ...this.normalize({
@@ -116,7 +114,7 @@ class HumanoidConnector extends BaseConnector {
             category: 'humanoid-robotics',
           },
         }),
-        digest_date: itemDate,
+        digest_date: dateStr,
       });
     }
 
@@ -126,9 +124,13 @@ class HumanoidConnector extends BaseConnector {
   _scrapePage(html, dateStr, companyName, pageUrl) {
     const items = [];
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    // D2: the company-page add-on gate compares against the LOCAL calendar
+    // today (the digest date basis). The old UTC-today comparison kept the
+    // gate permanently closed during the 01:00 Asia/Shanghai run, when UTC is
+    // still on the previous day.
+    const todayStr = compactDigestDate(todayDigestDate(now));
 
-    if (dateStr !== todayStr) return items; // Only scrape for current day
+    if (dateStr !== todayStr) return items; // Only scrape for the current local day
 
     // Try to extract article links and titles
     const articleRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
@@ -172,7 +174,7 @@ class HumanoidConnector extends BaseConnector {
           popularity: {},
           score: 0,
         }),
-        digest_date: todayStr,
+        digest_date: dateStr,
       });
 
       // Limit to 5 items per source

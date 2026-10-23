@@ -8,6 +8,7 @@
 const https = require('https');
 const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
+const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../services/date-contract');
 
 // Cloudflare 现在对 EagleyeBot 和无头请求直接 403（JS challenge），
 // 首页抓取已不可用。Product Hunt 官方提供 Atom feed（/feed），用浏览器 UA
@@ -29,7 +30,7 @@ class ProductHuntConnector extends BaseConnector {
       try {
         return await this._fetchViaAPI(apiKey, date);
       } catch (err) {
-        console.warn('Product Hunt API fetch failed, falling back to Atom feed:', err.message);
+        console.warn(`[${this.slug}] API fetch failed, falling back to Atom feed:`, err.message);
       }
     }
 
@@ -38,6 +39,7 @@ class ProductHuntConnector extends BaseConnector {
   }
 
   async _fetchViaFeed(date) {
+    const digestDate = date || compactDigestDate(todayDigestDate());
     try {
       const xml = await fetchURL('https://www.producthunt.com/feed', { headers: BROWSER_HEADERS });
       const items = [];
@@ -55,15 +57,18 @@ class ProductHuntConnector extends BaseConnector {
         const desc = contentHtml.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, ' ').trim().slice(0, 300);
         if (!title) continue;
 
-        const pubDate = published ? new Date(published) : new Date();
-        const dateStr = pubDate.toISOString().slice(0, 10).replace(/-/g, '');
-        if (date && dateStr !== date) continue;
+        // D2 time-window freshness replaces the digest-day == item-UTC-day
+        // equality filter; entries without a parseable <published> are judged
+        // against fetch time (the feed lags behind the site's day roll-over).
+        const pubTs = Date.parse(published);
+        const effectiveTs = Number.isFinite(pubTs) ? pubTs : Date.now();
+        if (date && !isWithinFetchWindow(effectiveTs)) continue;
 
-        items.push(this._makeItem(title, link, desc, pubDate.toISOString(), dateStr));
+        items.push(this._makeItem(title, link, desc, new Date(effectiveTs).toISOString(), digestDate));
       }
       return items;
     } catch (err) {
-      console.error('Product Hunt feed fetch error:', err.message);
+      console.error(`[${this.slug}] feed fetch error:`, err.message);
       return [];
     }
   }
@@ -98,11 +103,12 @@ class ProductHuntConnector extends BaseConnector {
 
     const data = JSON.parse(body);
     const posts = data?.data?.posts?.edges?.map(e => e.node) || [];
+    const digestDate = date || compactDigestDate(todayDigestDate());
 
     return posts.map(post => {
-      const postDate = new Date(post.createdAt);
-      const dateStr = postDate.toISOString().slice(0, 10).replace(/-/g, '');
-      if (date && dateStr !== date) return null;
+      // D2 time-window freshness replaces the digest-day == item-UTC-day
+      // equality filter (see date-contract.js isWithinFetchWindow).
+      if (date && !isWithinFetchWindow(post.createdAt)) return null;
 
       return {
         ...this.normalize({
@@ -123,7 +129,7 @@ class ProductHuntConnector extends BaseConnector {
           popularity: { votes: post.votesCount || 0 },
           score: Math.log2(1 + (post.votesCount || 0)),
         }),
-        digest_date: dateStr,
+        digest_date: digestDate,
       };
     }).filter(Boolean);
   }

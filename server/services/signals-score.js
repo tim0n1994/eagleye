@@ -7,7 +7,7 @@
  */
 
 const { getDB } = require('../db/connection');
-const { taskContext, abortableDelay } = require('./llm-shared');
+const { taskContext } = require('./llm-shared');
 const { normalizeDigestDate } = require('./date-contract');
 const { buildCrossSourceEvidence, describeEvidence } = require('./cross-source-evidence');
 const {
@@ -309,8 +309,6 @@ async function scoreSignals(items, opts = {}) {
     }
   }
 
-  const highAlphaItems = [];
-
   const writeTx = db.transaction(() => {
     for (const item of classifierItems) {
       const cls = classById.get(item.id) || { signal_type: 'uncategorized', thesis_match: 0.3 };
@@ -389,38 +387,11 @@ async function scoreSignals(items, opts = {}) {
         item.sourceScore, thesisMatch, actionability, finalAlpha,
         consensusPenalty, [cls.reason_zh, describeEvidence(crossSourceEvidence.get(item.id))].filter(Boolean).join('；')
       );
-      // Collect high-alpha items for the post-commit auto-research hook.
-      if (opts.autoResearch && finalAlpha >= (opts.alphaResearchThreshold || 0.75)) {
-        highAlphaItems.push(item.id);
-      }
     }
   });
 
   if (context.isCancelled()) return { scored: 0, cancelled: true };
   writeTx();
-
-  // Phase 3.B: auto-queue deep research for genuinely high-alpha signals so the
-  // radar's strongest hits get an evidence report without a manual click.
-  // Guarded by opts.autoResearch so bulk rescore runs don't fan out LLM calls.
-  if (opts.autoResearch && highAlphaItems.length > 0) {
-    try {
-      // Lazy-require to avoid the jobs ↔ signals require cycle (jobs.js already
-      // lazy-requires this module inside its executeJob switch).
-      const { runJob, JOB_TYPES } = require('./jobs');
-      // 限流排队：runJob 是 fire-and-forget，N 个同时启动会打爆智谱账户级限流(429)。
-      // 每个之间隔 2s，给上游喘息空间。research 是后台任务，不要求实时。
-      let queued = 0;
-      for (const itemId of highAlphaItems) {
-        if (context.isCancelled()) break;
-        const id = await runJob(JOB_TYPES.ITEM_RESEARCH, { itemId });
-        if (id) queued++;
-        await abortableDelay(2000, context.signal);
-      }
-      console.log(`  🔬 Auto-queued ${queued} deep-research jobs for high-alpha items (>= ${(opts.alphaResearchThreshold || 0.75)})`);
-    } catch (err) {
-      console.warn(`  ⚠  Auto-research queueing failed (non-fatal): ${err.message}`);
-    }
-  }
 
   return { scored: classifierItems.length, ...(context.isCancelled() ? { cancelled: true } : {}) };
 }

@@ -51,4 +51,11 @@ export default [
     files: ["server/**/*.test.js", "mcp/**/*.test.js"],
     languageOptions: { sourceType: "module" },
   },
+  // Client-side tests execute in vitest, whose runtime exposes Node globals.
+  {
+    files: ["js/**/__tests__/**/*.js"],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 ];

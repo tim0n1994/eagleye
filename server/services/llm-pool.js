@@ -2,6 +2,10 @@ const crypto = require('node:crypto');
 const { TASKS, validatePoolConfig, parsePoolText, maskConfig } = require('./llm-pool-config');
 const { sendLLMRequest, LLMError } = require('./llm-transport');
 const { classifyCode } = require('./llm-error-class');
+// 案2 fix-morning-1022: write-time secret redaction. Pool credentials are
+// stored as ${ENV_REF} placeholders (when the value matches an env var) or
+// <redacted>; llm-transport resolves the reference back at request time.
+const { redactForStorage } = require('./secret-redaction');
 
 const CONFIG_KEY = 'llm_pool_config';
 const SAFE_CODES = new Set(['AUTH_ERROR', 'CONFIG_ERROR', 'RATE_LIMIT', 'HTTP_ERROR', 'TIMEOUT', 'CANCELLED', 'NETWORK_ERROR', 'EMPTY_RESPONSE', 'INVALID_RESPONSE', 'TRUNCATED', 'INVALID_JSON', 'VALIDATION_ERROR', 'QUEUE_FULL', 'QUEUE_TIMEOUT', 'NO_ENDPOINT', 'POOL_DISABLED', 'SHUTDOWN']);
@@ -280,7 +284,12 @@ function createPoolService(dependencies = {}) {
   }
 
   function savePoolConfig(input) {
-    const next = validatePoolConfig(input, loadConfig());
+    const validated = validatePoolConfig(input, loadConfig());
+    // 案2 fix-morning-1022: redact BEFORE the write point (also covers pool
+    // services constructed with injected setValue stubs) and keep the runtime
+    // working off the redacted form — requests resolve ${ENV_REF} keys in
+    // llm-transport, so nothing downstream needs the plaintext again.
+    const { value: next } = redactForStorage(validated);
     setValue(CONFIG_KEY, next);
     for (const endpoint of next.endpoints) {
       const previous = config?.endpoints.find(row => row.id === endpoint.id);
