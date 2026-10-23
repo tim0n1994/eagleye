@@ -302,11 +302,13 @@ function register(routes) {
       WHERE itg.item_id = ?
     `).all(itemId);
 
-    // Deploy-eligibility field removed: server/services/deploy.js was cut in
-    // 58650a7 (dead feature) but this call site survived and threw ReferenceError.
+    // Get deploy eligibility
+    const deployInfo = checkDeployEligibility(itemId);
+
     sendJSON(res, 200, {
       status: 'ok',
       item: { ...item, ai_summary: summary, topics, tags },
+      deploy: deployInfo,
     });
   };
 
