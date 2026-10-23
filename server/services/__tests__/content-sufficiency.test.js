@@ -144,7 +144,7 @@ describe('sufficiency gate', () => {
 
   it('falls back to gate-on through pure getValue injection with corrupt config', () => {
     expect(getSwitches(() => 'not-json{{{')).toEqual({
-      collect: true, enrich: true, translate: true, digest: true, research: true, graph: true, sufficiency_gate: true,
+      collect: true, enrich: true, translate: true, digest: true, graph: true, sufficiency_gate: true,
     });
     expect(getSwitches(() => '"just a string"').sufficiency_gate).toBe(true);
     expect(getSwitches(() => '[true, false]').sufficiency_gate).toBe(true);

@@ -42,7 +42,7 @@ describe('LLM business output contracts with isolated SQLite', () => {
 
   beforeEach(() => {
     db = new Database(':memory:');
-    for (const migration of ['001_initial_schema.sql', '002_i18n_translations.sql', '032_llm_output_metadata.sql']) {
+    for (const migration of ['001_initial_schema.sql', '002_i18n_translations.sql', '032_llm_output_metadata.sql', '044_information_items_duplicate_of.sql']) {
       db.exec(fs.readFileSync(path.resolve(__dirname, '../../migrations', migration), 'utf8'));
     }
     db.exec('ALTER TABLE information_items ADD COLUMN enrichment_attempts INTEGER DEFAULT 0; ALTER TABLE information_items ADD COLUMN last_enrich_attempt TEXT;');
@@ -119,7 +119,7 @@ describe('LLM business output contracts with isolated SQLite', () => {
 
   it.each([{ rows: [card('foreign')] }, { rows: [card('a'), card('a')] }])('rejects foreign or duplicate IDs instead of attributing a batch output to the wrong item', async ({ rows }) => {
     provider.callWithMetadata.mockResolvedValue(response(rows));
-    expect(await llm.generateItemSummariesBatch([addItem('a')])).toEqual([]);
+    expect(await llm.generateItemSummariesBatch([addItem('a')])).toHaveLength(0);
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(1);
   });
 
@@ -128,11 +128,12 @@ describe('LLM business output contracts with isolated SQLite', () => {
     addSummary('old-row', 'valid-old', 'Preserved valid summary');
     provider.callWithMetadata.mockResolvedValueOnce(response([card('b')], 'b')).mockRejectedValueOnce(new Error('all endpoints failed'));
     const result = await llm.enrichItems(2, { batchItemSize: 2, batchConcurrency: 1 });
-    expect(result).toMatchObject({ enriched: 1, failed: 1, total: 2, successful_item_ids: ['b'] });
+    expect(result).toMatchObject({ enriched: 1, failed: 0, deferred: 1, total: 2, successful_item_ids: ['b'] });
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(2);
-    expect(provider.callWithMetadata.mock.calls[1][0]).toContain('title: Article a');
+    expect(provider.callWithMetadata.mock.calls[1][0]).toContain('"title":"Article a"');
     expect(provider.callWithMetadata.mock.calls[1][0]).not.toContain('Article b');
     expect(mocks['./signals'].scoreSignals.mock.calls[0][0].map(item => item.id)).toEqual(['b']);
+    expect(result.task_stats.coverage).toEqual({ total: 2, success: 1, explicit_failed: 0, deferred: 1 });
     const saved = db.prepare('SELECT * FROM ai_summaries WHERE item_id = ?').get('b');
     expect(saved.model_name).toBe('actual-b');
     expect(JSON.parse(saved.llm_metadata).trace_id).toBe('trace-b');
@@ -154,7 +155,7 @@ describe('LLM business output contracts with isolated SQLite', () => {
   it('does not fan out single-item retries after a pool batch exhausts its own budget', async () => {
     addItem('a'); addItem('b');
     provider.callWithMetadata.mockRejectedValue(new Error('pool exhausted'));
-    expect(await llm.enrichItems(2, { batchItemSize: 2 })).toMatchObject({ enriched: 0, failed: 2 });
+    expect(await llm.enrichItems(2, { batchItemSize: 2 })).toMatchObject({ enriched: 0, failed: 0, deferred: 2 });
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(1);
     expect(mocks['./signals'].scoreSignals).not.toHaveBeenCalled();
   });
@@ -173,7 +174,7 @@ describe('LLM business output contracts with isolated SQLite', () => {
     provider.callWithMetadata.mockImplementation(async (prompt, options) => {
       const entries = JSON.parse(prompt.match(/items: (\[[^\n]+\])/)[1]);
       expect(entries.length).toBeLessThanOrEqual(4);
-      expect(options.maxTokens).toBe(8192);
+      expect([3100, 1150]).toContain(options.maxTokens);
       return response(entries.map(entry => card(entry.id)));
     });
     expect(await llm.enrichItems(5, { batchConcurrency: 1 })).toMatchObject({ total: 5, enriched: 5, batch_items: 4 });
@@ -285,7 +286,7 @@ describe('LLM business output contracts with isolated SQLite', () => {
     const items = [{ id: 'a', title: 'a' }, { id: 'b', title: 'b' }];
     expect((await classifier.classifySignals(items)).map(row => row.id)).toEqual(['b', 'a']);
     expect(provider.callWithMetadata.mock.calls[1][0]).not.toContain('"id":"b"');
-    expect(provider.callWithMetadata.mock.calls[0][1]).toMatchObject({ task: 'classify', maxTokens: 2048 });
+    expect(provider.callWithMetadata.mock.calls[0][1]).toMatchObject({ task: 'classify', maxTokens: 340 });
     expect(await classifier.classifyUncategorizedRetry(items)).toEqual([]);
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(2);
   });
@@ -295,7 +296,7 @@ describe('LLM business output contracts with isolated SQLite', () => {
     for (const data of [[{ id: 'a' }], [{ id: 'a', signal_type: 'new_repo', thesis_match: null }],
       [{ id: 'foreign', signal_type: 'new_repo', thesis_match: 0.5 }]]) {
       provider.callWithMetadata.mockResolvedValue(response(data));
-      expect(await classifier.classifySignals([{ id: 'a', title: 'a' }])).toEqual([]);
+      expect(await classifier.classifySignals([{ id: 'a', title: 'a' }])).toHaveLength(0);
     }
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(3);
   });
@@ -393,7 +394,7 @@ describe('LLM business output contracts with isolated SQLite', () => {
     const running = loadService('signals-classify', mocks).classifySignals([{ id: 'a' }, { id: 'b' }], { jobId: 'cancel-classify' });
     expect(await started.promise).toBe(job.signal);
     job.cancel(); late.resolve(response([{ id: 'b', signal_type: 'new_repo', thesis_match: 0.5 }]));
-    expect(await running).toEqual([]);
+    expect(await running).toHaveLength(0);
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(1);
   });
 
@@ -486,7 +487,7 @@ describe('LLM business output contracts with isolated SQLite', () => {
     addItem('title-only'); addItem('body');
     db.prepare("UPDATE information_items SET original_summary = '' WHERE id = 'title-only'").run();
     provider.callWithMetadata.mockRejectedValue(new Error('pool exhausted'));
-    expect(await llm.enrichItems(2, { batchItemSize: 2 })).toMatchObject({ enriched: 1, failed: 1, successful_item_ids: ['title-only'] });
+    expect(await llm.enrichItems(2, { batchItemSize: 2 })).toMatchObject({ enriched: 1, failed: 0, deferred: 1, successful_item_ids: ['title-only'] });
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(1);
   });
 

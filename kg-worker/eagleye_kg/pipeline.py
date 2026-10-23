@@ -43,7 +43,8 @@ def finish_run(conn: sqlite3.Connection, run_id: str, status: str, metrics: dict
     conn.commit()
 
 
-def load_items(conn: sqlite3.Connection, sources: list[str] | None, limit: int) -> list[sqlite3.Row]:
+def load_items(conn: sqlite3.Connection, sources: list[str] | None, limit: int,
+               order: str | None = None) -> list[sqlite3.Row]:
     conn.create_function("kg_feature_hash", len(FEATURE_INPUTS),
                          lambda *parts: hash_inputs(*parts, EXTRACTOR_VERSION), deterministic=True)
     completed_by_source = dict(conn.execute("SELECT source_slug, COUNT(*) FROM item_features GROUP BY source_slug"))
@@ -53,17 +54,19 @@ def load_items(conn: sqlite3.Connection, sources: list[str] | None, limit: int) 
     return fair_items(conn, resolve_sources(conn, sources), limit,
                       join="LEFT JOIN item_features f ON f.item_id = i.id",
                       pending=f"f.item_id IS NULL OR f.content_hash IS NOT kg_feature_hash({fields})",
-                      completed="kg_features_done(s.slug)")
+                      completed="kg_features_done(s.slug)", order=order)
 
 
-def extract(conn: sqlite3.Connection, sources: list[str] | None = None, limit: int = 100) -> dict:
+def extract(conn: sqlite3.Connection, sources: list[str] | None = None, limit: int = 100,
+            order: str | None = None) -> dict:
     chosen_sources = resolve_sources(conn, sources)
-    run_id = create_run(conn, "source", ",".join(chosen_sources), {"sources": chosen_sources, "limit": limit})
+    run_id = create_run(conn, "source", ",".join(chosen_sources),
+                        {"sources": chosen_sources, "limit": limit, "order": order})
     start = time.time()
     metrics = {"run_id": run_id, "processed": 0, "tags": 0, "topics": 0, "entities": 0, "edges": 0, "total": 0}
     try:
         taxonomy = load_taxonomy(conn)
-        items = load_items(conn, chosen_sources, limit)
+        items = load_items(conn, chosen_sources, limit, order=order)
         metrics["total"] = len(items)
         metrics["selection"] = "source-balanced-pending"
         metrics["by_source"] = dict(Counter(item["source_slug"] for item in items))

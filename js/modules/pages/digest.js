@@ -7,7 +7,11 @@
 
 import { $, escapeAttr, escapeHtml, localDateStr, normalizeDateStr } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
-import { API_BASE, _sourcesCache, fetchJSON, getSourcesCached, localizedDate, orderedSourceEntries, pickZh, renderItemMiniCard, showError, showLoader } from './shared.js';
+import { API_BASE, fetchJSON, getSourcesCached, localizedDate, orderedSourceEntries, pickZh, renderItemMiniCard, setSourcesCache, showError, showLoader } from './shared.js';
+import { isStaleSource } from './sources.js';
+
+// D4: title attribute shared by the stale (🔴) markers below.
+const staleTitle = () => (getLanguage() === 'zh' ? '启用中但超过 48 小时无成功抓取' : 'Enabled but no successful fetch in over 48h');
 
 
 // ─── Daily Digest ────────────────────────────────────────
@@ -94,7 +98,18 @@ export async function renderDigestDate(params) {
   showLoader(container, `${t('common.loading')} ${date}...`);
 
   try {
-    const sources = await getSourcesCached();
+    // D4: the sources list (SELECT s.* carries last_fetched_at) drives source
+    // ordering and the stale-source badges below. getSourcesCached() caches
+    // an empty list for the whole SPA session after one transient
+    // /api/sources failure — re-fetch once in that case instead of rendering
+    // the day view without health data.
+    let sources = await getSourcesCached();
+    if (!Array.isArray(sources) || sources.length === 0) {
+      try {
+        sources = (await fetchJSON(`${API_BASE}/sources`)).sources || [];
+        setSourcesCache(sources);
+      } catch { /* keep [] and render without health data */ }
+    }
     const data = await fetchJSON(`${API_BASE}/digest?date=${date}`);
 
     // Build prev/next dates
@@ -172,9 +187,12 @@ export async function renderDigestDate(params) {
             entries.slice(0, 12).map(([source, items]) => {
               const pct = Math.round((items.length / maxItems) * 100);
               const firstItem = items[0] || {};
-              const cached = _sourcesCache.find(s => s.slug === firstItem.source_slug);
+              const cached = sources.find(s => s.slug === firstItem.source_slug);
               const displayName = cached ? pickZh(cached.label, cached.label_zh) : (firstItem.source_label || source);
-              return '<div class="metrics-bar-row"><span class="metrics-bar-label">' + escapeHtml(displayName) + '</span>' +
+              // D4: flag sources whose last successful fetch is >48h old.
+              const rowStale = cached ? isStaleSource(cached) : false;
+              return '<div class="metrics-bar-row"><span class="metrics-bar-label">' + escapeHtml(displayName) +
+                (rowStale ? `<span class="stale-badge" title="${staleTitle()}"> 🔴</span>` : '') + '</span>' +
                 '<div class="metrics-bar"><div class="metrics-bar-fill" style="width:' + pct + '%"></div></div>' +
                 '<span class="metrics-bar-pct">' + items.length + '</span></div>';
             }).join('') +
@@ -185,12 +203,14 @@ export async function renderDigestDate(params) {
             // Find a representative item's source_label to map to label_zh via sources cache
             const firstItem = items[0] || {};
             const slug = firstItem.source_slug;
-            const cached = sourceObjFromOrder || (slug ? _sourcesCache.find(s => s.slug === slug) : null);
+            const cached = sourceObjFromOrder || (slug ? sources.find(s => s.slug === slug) : null);
             const displayName = cached ? pickZh(cached.label, cached.label_zh) : (firstItem.source_label || source);
+            // D4: flag sources whose last successful fetch is >48h old.
+            const stale = cached ? isStaleSource(cached) : false;
             return `
             <section class="source-section">
               <div class="source-section-header">
-                <h3 class="source-section-title">${escapeHtml(displayName)}</h3>
+                <h3 class="source-section-title${stale ? ' source-stale' : ''}">${escapeHtml(displayName)}${stale ? ` <span class="stale-badge" title="${staleTitle()}">🔴</span>` : ''}</h3>
                 <span class="source-section-count">${items.length} ITEMS</span>
               </div>
               <div class="feed-list">

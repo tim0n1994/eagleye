@@ -6,7 +6,7 @@
 
 const CONFIG_KEY = 'runtime_switches';
 
-const SWITCH_KEYS = ['collect', 'enrich', 'translate', 'digest', 'research', 'graph', 'sufficiency_gate'];
+const SWITCH_KEYS = ['collect', 'enrich', 'translate', 'digest', 'graph', 'sufficiency_gate'];
 
 function defaultSwitches() {
   return Object.fromEntries(SWITCH_KEYS.map(key => [key, true]));
