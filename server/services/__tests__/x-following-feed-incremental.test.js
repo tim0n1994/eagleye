@@ -572,7 +572,10 @@ describe('Round 2 ① x-following feed 增量模式', () => {
       },
     });
 
-    await h.connector.fetch('20261020');
+    await expect(h.connector.fetch('20261020')).rejects.toMatchObject({
+      name: 'UpstreamCooldownError',
+      code: 'FEED_COOLDOWN',
+    });
 
     expect(feedCallCount(h.runReach), '冷却窗口内不得重试 feed').toBe(0);
     expect(h.twitterUserPosts.mock.calls.length, '冷却窗口内不得触发 per-user 扫描').toBe(0);
