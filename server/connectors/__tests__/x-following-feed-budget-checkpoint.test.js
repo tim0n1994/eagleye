@@ -402,7 +402,10 @@ describe('x-following strict feed budget and checkpoint behavior', () => {
     const cooldown = failureValue(harness.getUserData());
     expect(Date.parse(cooldown.next_attempt_at) - Date.parse(cooldown.last_failure_at)).toBe(30 * 60 * 1000);
 
-    await expect(harness.connector.fetchViaFeed(['alice'])).resolves.toEqual([]);
+    await expect(harness.connector.fetchViaFeed(['alice'])).rejects.toMatchObject({
+      name: 'UpstreamCooldownError',
+      code: 'FEED_COOLDOWN',
+    });
     expect(harness.feedCallCount()).toBe(1);
 
     cooldown.next_attempt_at = new Date(Date.now() - 1000).toISOString();

@@ -386,7 +386,12 @@ class XFollowingConnector extends BaseConnector {
   async fetchViaFeed(users, { signal } = {}) {
     signal?.throwIfAborted();
     const cooldownMs = envInt('X_FOLLOWING_FAILURE_COOLDOWN_MS', 30 * 60 * 1000, 0, 24 * 3600 * 1000);
-    if (!this._feedAttemptAllowed(cooldownMs)) return [];
+    if (!this._feedAttemptAllowed(cooldownMs)) {
+      const err = new Error('X Following feed retry suppressed by failure cooldown');
+      err.name = 'UpstreamCooldownError';
+      err.code = 'FEED_COOLDOWN';
+      throw err;
+    }
 
     // Keep the connector-owned ceiling far below fetchSource's default 180s.
     // The ceiling can be tuned downward, but is capped at two minutes so a bad

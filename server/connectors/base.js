@@ -37,6 +37,8 @@ function classifyFetchError(err) {
   const status = Number(err.status ?? err.statusCode ?? err.upstreamStatus ?? NaN);
   if (code === 'AUTH_REQUIRED' || /\bAUTH\b|AUTH_REQUIRED|UNAUTHORIZED|FORBIDDEN/i.test(String(err.message || '')) ||
       (Number.isInteger(status) && (status === 401 || status === 403))) return 'auth';
+  if (code === 'EMPTY_FEED') return 'upstream_empty';
+  if (code === 'FEED_COOLDOWN') return 'upstream_cooldown';
   if (name === 'TimeoutError' || name === 'AbortError' || code === 'ETIMEDOUT' || code === 'ABORT_ERR') return 'timeout';
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'dns';
   // Node system errors (ECONNRESET / ECONNREFUSED / EHOSTUNREACH / …);
