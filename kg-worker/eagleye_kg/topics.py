@@ -13,6 +13,11 @@ from .vectors import HASH_VECTOR_DIM, HASH_VECTOR_MODEL, feature_terms, hash_vec
 
 
 DYNAMIC_TOPIC_VERSION = "dynamic-topic-lite-0.1"
+# Terminal disposition for an item that was evaluated but did not form a
+# stable group in the bounded window. The linked topic is inactive, so this
+# marker converges the pending queue without creating a user-facing topic.
+NO_STABLE_DYNAMIC_TOPIC_ID = "kdt_no_stable_dynamic_topic"
+NO_STABLE_DYNAMIC_TOPIC_SLUG = "no-stable-dynamic-topic"
 LOW_SIGNAL_TAG_TYPES = {"source"}
 LOW_SIGNAL_ENTITY_TYPES = {"account"}
 LOW_SIGNAL_DYNAMIC_LABELS = {
@@ -143,9 +148,40 @@ KNOWN_DYNAMIC_LABELS = {
 }
 
 
-def load_items_for_topics(conn: sqlite3.Connection, sources: list[str] | None, limit: int) -> list[sqlite3.Row]:
+# R3 drainer (EAGLEYE_R3_DRAINER) — converging pending predicate for the
+# topics stage. Without it the stage re-picks the same top-score window every
+# run and the 60k old dynamic-topic backlog never drains.
+#
+# The stage produces two outputs per selected item, and an item is done only
+# when it has BOTH:
+#   * the semantic-lite vector for HASH_VECTOR_MODEL — written unconditionally
+#     for every selected item (upsert_item_vector in discover_topics);
+#   * a dynamic-topic assignment — written only for groups that pass
+#     should_keep_group(min_items).
+# R3.1 ruling C (Q5): the vector alone used to be the done marker, which
+# starved the lite_but_no_dynamic caliber (15,216 items on the 2026-10-20
+# snapshot) — an item whose candidate keys never reached min_items left the
+# run with a vector and no topic, and the predicate then excluded it forever.
+# Pending = missing either output. Done items are never re-selected, so the
+# pending set is monotone non-increasing modulo new intake and shrinks each
+# time a selected item's group clears min_items.
+#
+# Alias `i` is the information_items row inside fair_items(); the dynamic
+# check is on topic_kind alone (any assigner), matching the no_dynamic
+# caliber definition, and it binds no extra parameter.
+TOPICS_LITE_PENDING = """(NOT EXISTS (SELECT 1 FROM item_vectors v WHERE v.item_id = i.id
+                   AND v.vector_type = 'semantic-lite' AND v.model_name = ?)
+                OR NOT EXISTS (SELECT 1 FROM item_topic_assignments a WHERE a.item_id = i.id
+                   AND a.topic_kind = 'dynamic'))"""
+
+
+def load_items_for_topics(conn: sqlite3.Connection, sources: list[str] | None, limit: int,
+                          pending: bool = False, order: str | None = None) -> list[sqlite3.Row]:
     return fair_items(conn, resolve_sources(conn, sources), limit,
                       join="LEFT JOIN item_features f ON f.item_id = i.id",
+                      pending=TOPICS_LITE_PENDING if pending else "1=1",
+                      params=(HASH_VECTOR_MODEL,) if pending else (),
+                      order=order,
                       extra_columns=""", f.keyword_candidates, f.source_features,
                         (SELECT a.topic_id FROM item_topic_assignments a
                          WHERE a.item_id = i.id AND a.topic_kind = 'taxonomy'
@@ -340,13 +376,34 @@ def reset_semantic_lite_topics(conn: sqlite3.Connection, item_ids: list[str]) ->
         placeholders = ",".join("?" for _ in batch)
         affected.update(row[0] for row in conn.execute(f"""
             SELECT topic_id FROM item_topic_assignments WHERE item_id IN ({placeholders})
-            AND topic_kind = 'dynamic' AND assigned_by = 'semantic-lite'
+            AND topic_kind = 'dynamic' AND assigned_by IN ('semantic-lite', 'semantic-lite-terminal')
         """, batch))
         conn.execute(f"""DELETE FROM item_topic_assignments WHERE item_id IN ({placeholders})
-            AND topic_kind = 'dynamic' AND assigned_by = 'semantic-lite'""", batch)
+            AND topic_kind = 'dynamic' AND assigned_by IN ('semantic-lite', 'semantic-lite-terminal')""", batch)
         conn.execute(f"""DELETE FROM kg_edges WHERE from_kind = 'item' AND from_id IN ({placeholders})
             AND edge_type = 'item_belongs_dynamic_topic' AND extractor = 'semantic-lite'""", batch)
     return affected
+
+
+def ensure_no_stable_dynamic_topic(conn: sqlite3.Connection) -> None:
+    """Create the hidden terminal topic used for non-groupable items."""
+    conn.execute(
+        """
+        INSERT INTO dynamic_topics
+          (id, slug, name, name_zh, status, discovery_method,
+           topic_model_version, keywords, representative_item_ids,
+           source_diversity, item_count, growth_score, confidence,
+           first_seen_at, last_seen_at, updated_at)
+        VALUES (?, ?, 'No stable dynamic topic', '暂未形成稳定动态主题', 'inactive',
+                'semantic-lite', ?, '[]', '[]', 0, 0, 0, 0,
+                datetime('now'), datetime('now'), datetime('now'))
+        ON CONFLICT(id) DO UPDATE SET
+          status = 'inactive',
+          topic_model_version = excluded.topic_model_version,
+          updated_at = datetime('now')
+        """,
+        (NO_STABLE_DYNAMIC_TOPIC_ID, NO_STABLE_DYNAMIC_TOPIC_SLUG, DYNAMIC_TOPIC_VERSION),
+    )
 
 
 def refresh_topic_counts(conn: sqlite3.Connection, topic_ids: set[str]) -> None:
@@ -377,20 +434,22 @@ def topic_input_fingerprint(items: list[sqlite3.Row], tags: dict, entities: dict
     return content_hash(json.dumps(inputs, sort_keys=True, ensure_ascii=False))
 
 
-def discover_topics(conn: sqlite3.Connection, sources: list[str] | None = None, limit: int = 5000, min_items: int = 5) -> dict:
+def discover_topics(conn: sqlite3.Connection, sources: list[str] | None = None, limit: int = 5000,
+                    min_items: int = 5, pending: bool = False, order: str | None = None) -> dict:
     chosen_sources = resolve_sources(conn, sources)
     run_id = create_run(
         conn,
         "dynamic-topic",
         ",".join(chosen_sources),
-        {"sources": chosen_sources, "limit": limit, "min_items": min_items, "model": HASH_VECTOR_MODEL},
+        {"sources": chosen_sources, "limit": limit, "min_items": min_items,
+         "model": HASH_VECTOR_MODEL, "pending": bool(pending), "order": order},
     )
     start = time.time()
     metrics = {"run_id": run_id, "processed": 0, "vectors": 0, "dynamic_topics": 0, "assignments": 0, "edges": 0, "total": 0}
     try:
         prepared_version = conn.execute("PRAGMA data_version").fetchone()[0]
         phase_start = time.monotonic()
-        items = load_items_for_topics(conn, chosen_sources, limit)
+        items = load_items_for_topics(conn, chosen_sources, limit, pending=pending, order=order)
         item_ids = [str(item["id"]) for item in items]
         metrics["timings"] = {"select_seconds": round(time.monotonic() - phase_start, 3)}
         phase_start = time.monotonic()
@@ -436,7 +495,7 @@ def discover_topics(conn: sqlite3.Connection, sources: list[str] | None = None, 
         phase_start = time.monotonic()
         conn.execute("BEGIN IMMEDIATE")
         if conn.execute("PRAGMA data_version").fetchone()[0] != prepared_version:
-            current_items = load_items_for_topics(conn, chosen_sources, limit)
+            current_items = load_items_for_topics(conn, chosen_sources, limit, pending=pending, order=order)
             current_ids = [str(item["id"]) for item in current_items]
             current_fingerprint = topic_input_fingerprint(
                 current_items, item_tags(conn, current_ids), item_entities(conn, current_ids))
@@ -445,6 +504,8 @@ def discover_topics(conn: sqlite3.Connection, sources: list[str] | None = None, 
                 metrics["retryable"] = True
                 raise RuntimeError("KG topic inputs changed during preparation; retry this run")
         affected_topics = reset_semantic_lite_topics(conn, item_ids)
+        ensure_no_stable_dynamic_topic(conn)
+        assigned_item_ids: set[str] = set()
         for item, terms in prepared_vectors:
             upsert_item_vector(conn, item, terms)
             metrics["vectors"] += 1
@@ -458,6 +519,7 @@ def discover_topics(conn: sqlite3.Connection, sources: list[str] | None = None, 
             confidence = min((group["confidence"] / max(item_count, 1)) * min(1.0, 0.55 + item_count / 20), 0.96)
             topic_id = upsert_dynamic_topic(conn, key, group["label"], group["kind"], group["items"], parent_topic_id, keywords, confidence)
             affected_topics.add(topic_id)
+            assigned_item_ids.update(group["items"])
             metrics["dynamic_topics"] += 1
             for item_id in group["items"]:
                 relevance = round(confidence, 3)
@@ -483,6 +545,24 @@ def discover_topics(conn: sqlite3.Connection, sources: list[str] | None = None, 
                 )
                 metrics["assignments"] += 1
                 metrics["edges"] += 1
+
+        # A selected item with no qualifying group has still been fully
+        # evaluated. Record that terminal disposition so the next --pending
+        # run does not select the same lite vector forever.
+        terminal_ids = set(item_ids) - assigned_item_ids
+        for item_id in terminal_ids:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO item_topic_assignments
+                  (item_id, topic_kind, topic_id, relevance, assigned_by, reason, run_id)
+                VALUES (?, 'dynamic', ?, 0, 'semantic-lite-terminal',
+                        'evaluated without a stable dynamic group', ?)
+                """,
+                (item_id, NO_STABLE_DYNAMIC_TOPIC_ID, run_id),
+            )
+            metrics["assignments"] += 1
+        if terminal_ids:
+            affected_topics.add(NO_STABLE_DYNAMIC_TOPIC_ID)
 
         refresh_topic_counts(conn, affected_topics)
         metrics["timings"]["write_seconds"] = round(time.monotonic() - phase_start, 3)

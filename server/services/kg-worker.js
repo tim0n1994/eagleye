@@ -77,21 +77,31 @@ function runKGCommand(args, timeoutMs = 300000) {
   });
 }
 
-async function runKGExtract(sources = null, limit = 200) {
+// The optional trailing options object carries EAGLEYE_R3_DRAINER drain
+// parameters through to the Python CLI without touching the default
+// signatures: { order } → --order newest-first/oldest-first (积压最新优先 +
+// 旧积压空闲补齐), { pending } → bare --pending (topics only — the converging
+// selection predicate). Bare calls and runKGFullPipeline add no new flags:
+// switch OFF stays byte-identical to today.
+async function runKGExtract(sources = null, limit = 200, options = {}) {
   const args = ['extract', '--limit', String(limit)];
+  if (options.order) args.push('--order', options.order);
   if (sources) args.push('--sources', Array.isArray(sources) ? sources.join(',') : sources);
   return runKGCommand(args);
 }
 
-async function runKGEmbed(sources = null, limit = 500, batchSize = 64) {
+async function runKGEmbed(sources = null, limit = 500, batchSize = 64, options = {}) {
   const backend = process.env.KG_EMBED_BACKEND || 'hash';
   const args = ['embed', '--limit', String(limit), '--batch-size', String(batchSize), '--backend', backend];
+  if (options.order) args.push('--order', options.order);
   if (sources) args.push('--sources', Array.isArray(sources) ? sources.join(',') : sources);
   return runKGCommand(args, 600000);
 }
 
-async function runKGTopics(sources = null, limit = 1000, minItems = 5) {
+async function runKGTopics(sources = null, limit = 1000, minItems = 5, options = {}) {
   const args = ['topics', '--limit', String(limit), '--min-items', String(minItems)];
+  if (options.order) args.push('--order', options.order);
+  if (options.pending) args.push('--pending');
   if (sources) args.push('--sources', Array.isArray(sources) ? sources.join(',') : sources);
   return runKGCommand(args, 600000);
 }

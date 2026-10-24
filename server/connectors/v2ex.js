@@ -6,6 +6,7 @@
 
 const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
+const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../services/date-contract');
 
 class V2EXConnector extends BaseConnector {
   constructor() {
@@ -13,13 +14,15 @@ class V2EXConnector extends BaseConnector {
   }
 
   async fetch(date) {
+    const digestDate = date || compactDigestDate(todayDigestDate());
     try {
       const body = await fetchURL('https://www.v2ex.com/api/topics/hot.json');
       const data = JSON.parse(body);
 
       return data.map(item => {
-        const dateStr = new Date(item.created * 1000).toISOString().slice(0, 10).replace(/-/g, '');
-        if (date && dateStr !== date) return null;
+        // D2 time-window freshness replaces the digest-day == item-UTC-day
+        // equality filter (see date-contract.js isWithinFetchWindow).
+        if (date && !isWithinFetchWindow(item.created * 1000)) return null;
 
         return {
           ...this.normalize({
@@ -39,11 +42,11 @@ class V2EXConnector extends BaseConnector {
             popularity: { replies: item.replies || 0 },
             score: Math.log2(1 + (item.replies || 0)),
           }),
-          digest_date: dateStr,
+          digest_date: digestDate,
         };
       }).filter(Boolean);
     } catch (err) {
-      console.error('V2EX fetch error:', err.message);
+      console.error(`[${this.slug}] fetch error:`, err.message);
       return [];
     }
   }

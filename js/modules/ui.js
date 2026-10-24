@@ -19,9 +19,6 @@ export const UI = {
     this.dom.lastUpdated = $('#lastUpdated');
     this.dom.syncBtn = $('#syncNow');
     this.dom.searchInput = $('#searchInput');
-    this.dom.researchModal = $('#researchModal');
-    this.dom.researchTitle = $('#researchTitle');
-    this.dom.researchBody = $('#researchBody');
     this.dom.graphOverlay = $('#graphOverlay');
     this.dom.showGraph = $('#showGraph');
     this.dom.closeGraph = $('#closeGraph');
@@ -243,8 +240,7 @@ export const UI = {
     const tagsHtml = (item.tags || []).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('');
     const displayTitle = item.ai_summary?.ai_title_zh || item.title_zh || item.ai_summary?.one_liner_zh || item.title;
     const highlightedTitle = this.highlightText(displayTitle, searchQuery);
-    const researchTitle = displayTitle || item.title || '';
-    
+
     row.innerHTML = `
       <div class="item-header">
         <span class="item-source-tag">${escapeHtml(item.source)}</span>
@@ -256,10 +252,6 @@ export const UI = {
       <p class="item-summary">${escapeHtml(item.summary || t('item.summary_na'))}</p>
       <div class="item-tags">${tagsHtml}</div>
       <div class="item-actions">
-        <button class="research-btn" data-item-id="${escapeAttr(item.id || item._id || '')}" data-url="${escapeAttr(item.url)}" data-title="${escapeAttr(researchTitle)}">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          ${t('common.deep_research')}
-        </button>
         <a href="${escapeAttr(item.url)}" target="_blank" rel="noopener" style="margin-left: auto; color: var(--fg-mute); font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 4px;">
           ${t('common.original')}
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
@@ -279,21 +271,5 @@ export const UI = {
     const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp('(' + q + ')', 'gi');
     return escaped.replace(regex, '<mark style="background: var(--accent); color: #000; padding: 0 2px;">$1</mark>');
-  },
-
-  showResearch(title, content) {
-    this.dom.researchTitle.textContent = title;
-    // Simple markdown-ish formatter
-    const html = content
-      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-      .replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>')
-      .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
-      .replace(/\*(.*)\*/gim, '<em>$1</em>')
-      .replace(/\n/g, '<br>');
-    
-    this.dom.researchBody.innerHTML = html;
-    this.dom.researchModal.style.display = 'block';
   }
 };

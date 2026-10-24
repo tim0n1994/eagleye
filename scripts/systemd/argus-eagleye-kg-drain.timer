@@ -1,0 +1,13 @@
+[Unit]
+Description=Fire the Eagleye KG convergence drainer every 2 hours
+
+[Timer]
+# Offset :10 stays clear of the enrich drainer's :40 fires; RandomizedDelay
+# spreads the two drainers further apart. Persistent=true makes up a missed
+# fire after downtime.
+OnCalendar=*-*-* 00/2:10:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=default.target

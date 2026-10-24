@@ -1,0 +1,13 @@
+[Unit]
+Description=Trigger Eagleye X Following incremental sync every 2 hours
+
+[Timer]
+# 01:10, 03:10, ... 23:10 — offset from the enrich drainer (00/2:40) and
+# just after the 01:00 pipeline start; the trigger script itself defers
+# while a full-pipeline/fetch-all job is queued or running.
+OnCalendar=*-*-* 01/2:10
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

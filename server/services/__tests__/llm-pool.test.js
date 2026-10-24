@@ -61,7 +61,11 @@ describe('pool configuration', () => {
     const raw = pool.getPoolConfig({ masked: false });
     expect(raw.endpoints.map(row => row.endpoint_url)).toEqual(endpoints.map(row => row.endpoint_url));
     expect(raw.endpoints[0].protocol).toBe('anthropic');
-    expect(raw.endpoints.map(row => row.api_key)).toEqual(endpoints.map(row => row.api_key));
+    // 案2 fix-morning-1022: unmasked reads now return the write-time redacted
+    // stored form (test sentinels match no env var → <redacted>); deleted or
+    // masked api_keys on re-save keep the redacted old value.
+    expect(raw.endpoints.every(row => row.api_key === '<redacted>')).toBe(true);
+    expect(JSON.stringify(persisted.get('llm_pool_config'))).not.toContain('secret-sentinel');
     const restarted = createPoolService({ getDB: () => db, getValue: key => persisted.get(key), setValue: (key, value) => persisted.set(key, value) });
     expect(restarted.getPoolConfig({ masked: false })).toEqual(raw);
   });
@@ -256,21 +260,28 @@ describe('bounded shared scheduling', () => {
   });
 
   it('old credential failures cannot trip the newly saved credential circuit', async () => {
-    let releaseOld;
-    const endpoints = await endpoint((req, res) => {
-      if (req.headers['x-api-key'] === 'new-key') reply(res);
-      else releaseOld = () => { res.statusCode = 401; res.end(); };
-    }, 1);
-    save(endpoints);
-    const first = pool.getPoolProvider().call('first');
-    const failed = expect(first).rejects.toMatchObject({ code: 'AUTH_ERROR' });
-    while (!releaseOld) await delay(1);
-    pool.savePoolConfig({ ...pool.getPoolConfig(), endpoints: [{ ...endpoints[0], api_key: 'new-key' }] });
-    releaseOld();
-    await failed;
-    expect(pool.getPoolStatus().runtime.endpoints[0].state).toBe('ready');
-    await expect(pool.getPoolProvider().call('second')).resolves.toBe('{"ok":true}');
-    expect(pool.getPoolStatus().metrics.total).toBe(2);
+    // 案2 fix-morning-1022: 'new-key' is env-backed so it round-trips through
+    // storage as ${EAGLEYE_TEST_POOL_CREDENTIAL} and resolves at request time.
+    process.env.EAGLEYE_TEST_POOL_CREDENTIAL = 'new-key';
+    try {
+      let releaseOld;
+      const endpoints = await endpoint((req, res) => {
+        if (req.headers['x-api-key'] === 'new-key') reply(res);
+        else releaseOld = () => { res.statusCode = 401; res.end(); };
+      }, 1);
+      save(endpoints);
+      const first = pool.getPoolProvider().call('first');
+      const failed = expect(first).rejects.toMatchObject({ code: 'AUTH_ERROR' });
+      while (!releaseOld) await delay(1);
+      pool.savePoolConfig({ ...pool.getPoolConfig(), endpoints: [{ ...endpoints[0], api_key: 'new-key' }] });
+      releaseOld();
+      await failed;
+      expect(pool.getPoolStatus().runtime.endpoints[0].state).toBe('ready');
+      await expect(pool.getPoolProvider().call('second')).resolves.toBe('{"ok":true}');
+      expect(pool.getPoolStatus().metrics.total).toBe(2);
+    } finally {
+      delete process.env.EAGLEYE_TEST_POOL_CREDENTIAL;
+    }
   });
 
   it('hot updates preserve active counters and existing keys', async () => {

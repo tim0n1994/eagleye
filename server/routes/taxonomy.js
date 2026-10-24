@@ -6,7 +6,6 @@
  */
 
 const { escapeXML } = require('../services/utils');
-const { generateTopicResearch } = require('../services/research');
 const { getDB } = require('../db/connection');
 const { runJob, JOB_TYPES } = require('../services/jobs');
 const { getTopicTimeline, getTopicGraphNeighborhood } = require('../services/topic-graph');
@@ -298,21 +297,6 @@ function register(routes) {
       } catch (err) {
         sendError(res, 500, `Topic graph build failed: ${err.message}`);
       }
-    }
-  };
-
-  // --- Topic Deep Research (§9.2): POST /api/topics/:slug/research ---
-  routes['/api/topics/:slug/research'] = async (req, res, _parsed, params) => {
-    if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed; use POST');
-    const slug = params?.slug || '';
-    if (!slug) return sendError(res, 400, 'Topic slug required');
-    try {
-      const result = await generateTopicResearch(slug);
-      if (!result) return sendError(res, 404, 'Topic not found or LLM unavailable');
-      if (result.error) return sendError(res, 500, result.error);
-      sendJSON(res, 200, { status: 'ok', report_id: result.id, topic: result.topic });
-    } catch (err) {
-      sendError(res, 500, `Topic research failed: ${err.message}`);
     }
   };
 

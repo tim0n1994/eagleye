@@ -372,10 +372,6 @@ function renderSignalDetailPane(container, signal, typesData) {
           ${topics.map(t => `<a href="/topics/${escapeAttr(t.slug)}" class="topic-chip">${escapeHtml(t.name)}</a>`).join(' ')}
         </div>` : ''}
 
-      <div class="signal-actions">
-        <button class="signal-action-btn research-btn" data-item-id="${escapeAttr(signal.item_id)}">🔍 Deep Research</button>
-      </div>
-
       ${(() => {
         // SVG radar chart for the 6 score dimensions.
         const dims = [

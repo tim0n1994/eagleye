@@ -59,6 +59,34 @@ function nextDue(cfg, now) {
   return due.toISOString();
 }
 
+// 调度结果对账表：底层 job 到达终态后，调度状态以 job 真实终态为准并持久化。
+// 修复重启后 last_outcome 停留在 queued、与 background_jobs 终态分裂的问题
+// （对外状态集合：queued / running / completed / failed / cancelled）。
+const JOB_STATUS_OUTCOMES = { completed: 'completed', failed: 'failed', cancelled: 'cancelled' };
+
+// Restart recovery creates a compensation job instead of replaying the
+// interrupted run. The scheduler's `last_job_id` still names the original
+// run, so follow the durable links to the newest job in the chain before
+// reporting an outcome. A failed root must not mask a completed resume.
+function finalJobInChain(initialId, getJob, findCompensationJob) {
+  const seen = new Set();
+  let job = getJob(initialId);
+  const chain = [];
+  while (job && !seen.has(job.id)) {
+    seen.add(job.id);
+    chain.push({ id: job.id, status: job.status });
+    let recovery = null;
+    try { recovery = JSON.parse(job.result || '{}')?.recovery || null; } catch { /* legacy result */ }
+    const linkedId = recovery?.compensation_job_id;
+    const child = linkedId
+      ? getJob(linkedId)
+      : (typeof findCompensationJob === 'function' ? findCompensationJob(job.id) : null);
+    if (!child || seen.has(child.id)) break;
+    job = child;
+  }
+  return { job, chain };
+}
+
 function getConfig() {
   const c = normalizeConfig(getValue(CONFIG_KEY) || {});
   if (!_firing && c.last_outcome === 'enqueueing') {
@@ -66,11 +94,31 @@ function getConfig() {
     c.last_error = 'Scheduler enqueue was interrupted. Inspect recent jobs before manually retrying.';
   }
   let lastJobStatus = null;
+  let effectiveJobId = null;
+  let lastJobChain = [];
   if (c.last_job_id) {
-    const { getJob } = require('./jobs');
-    lastJobStatus = getJob(c.last_job_id)?.status || null;
+    const { getJob, findCompensationJob } = require('./jobs');
+    const resolved = finalJobInChain(c.last_job_id, getJob, findCompensationJob);
+    const job = resolved.job;
+    lastJobChain = resolved.chain;
+    effectiveJobId = job?.id || null;
+    lastJobStatus = job?.status || null;
+    // 对账并写回：只有与底层 job 终态不一致时才持久化，避免仅展示层字段分裂。
+    const terminalOutcome = JOB_STATUS_OUTCOMES[job?.status];
+    if (terminalOutcome && c.last_outcome !== terminalOutcome) {
+      c.last_outcome = terminalOutcome;
+      if (job.status === 'failed') c.last_error = job.error || c.last_error || 'Underlying job failed';
+      else if (job.status === 'cancelled') c.last_error = 'Underlying job was cancelled';
+      else c.last_error = null;
+      setValue(CONFIG_KEY, normalizeConfig(c));
+    } else if (job?.status === 'running' && c.last_outcome === 'queued') {
+      // queued → running 也持久化，保证对外状态与 job 执行态一致。
+      c.last_outcome = 'running';
+      setValue(CONFIG_KEY, normalizeConfig(c));
+    }
   }
-  return { ...c, last_job_status: lastJobStatus,
+  return { ...c, last_job_status: lastJobStatus, effective_job_id: effectiveJobId,
+    last_job_chain: lastJobChain,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     next_due: nextDue(c, new Date()) };
 }

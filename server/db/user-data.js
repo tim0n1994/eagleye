@@ -12,6 +12,8 @@
  */
 
 const { getDB } = require('./connection');
+// 案2 fix-morning-1022: pure leaf module (no requires) — safe dependency from the db layer.
+const { redactForStorage } = require('../services/secret-redaction');
 
 const GLOBAL_SCOPE = '';
 
@@ -31,8 +33,13 @@ function getValue(key, userId = GLOBAL_SCOPE) {
 function setValue(key, value, userId = GLOBAL_SCOPE) {
   const db = getDB();
   if (!db) return;
+  // 案2 fix-morning-1022: this is the generic write point into user_data —
+  // credential-bearing fields (structured api_key/authorization/LLM_API_KEY
+  // and JSON-embedded forms) are redacted before serialisation, fail-closed:
+  // if redaction/serialisation throws, nothing is written (never plaintext).
+  const { value: safeValue } = redactForStorage(value);
   db.prepare('INSERT OR REPLACE INTO user_data (key, user_id, value) VALUES (?, ?, ?)')
-    .run(key, userId || GLOBAL_SCOPE, JSON.stringify(value));
+    .run(key, userId || GLOBAL_SCOPE, JSON.stringify(safeValue));
 }
 
 module.exports = { getValue, setValue, GLOBAL_SCOPE };

@@ -8,6 +8,7 @@
 const { execSync } = require('child_process');
 const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
+const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../services/date-contract');
 
 // Cloudflare 对该站同时做 UA + TLS 指纹(JA3) 判定：node 的 TLS 握手
 // 会被 403，即便 UA 完全模仿浏览器。curl 的 TLS 指纹能通过，因此对
@@ -35,6 +36,9 @@ class StartupArchiveConnector extends BaseConnector {
   }
 
   async fetch(date) {
+    // D2: digest date basis is the requested local digest date (fallback:
+    // local today), never a derived item date.
+    const digestDate = date || compactDigestDate(todayDigestDate());
     try {
       const html = await fetchStartupArchiveHtml();
       const items = [];
@@ -46,8 +50,12 @@ class StartupArchiveConnector extends BaseConnector {
       let match;
 
       while ((match = entryRegex.exec(html)) !== null) {
-        const dateStr = date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        if (date && dateStr !== date) continue;
+        // D2 time-window freshness on the <time> day string ('Mon D, YYYY'):
+        // keep entries dated within [now - SOURCE_LOOKBACK_HOURS (default
+        // 36h), now + 1h]. The previous dateStr !== date check was a
+        // tautology that never filtered, so historical quotes re-entered
+        // every round under the current digest date.
+        if (date && !isWithinFetchWindow(match[1])) continue;
 
         // 标题里可能是 "Person on topic" 或 "Person: quote"，拆出人名
         const rawTitle = match[2].replace(/<[^>]*>/g, '').trim();
@@ -73,14 +81,17 @@ class StartupArchiveConnector extends BaseConnector {
             popularity: {},
             score: 0,
           }),
-          digest_date: dateStr,
+          digest_date: digestDate,
         });
       }
 
       return items;
     } catch (err) {
+      // An empty array would falsely record a clean empty round and leave
+      // last_error_class stale. Let fetchSource's shared failure path record
+      // the real error class and rethrow to the caller.
       console.error('Startup Archive fetch error:', err.message);
-      return [];
+      throw err;
     }
   }
 

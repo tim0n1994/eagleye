@@ -13,9 +13,13 @@ function harness(db, options = {}) {
   let cancelled = false;
   const serverRoot = path.resolve(__dirname, '../..');
   const fixedDate = '20260909';
+  // D2 window contract: story timestamps must be relative to the real clock
+  // and inside the 36h fetch window — day filtering is now
+  // isWithinFetchWindow-based (date-contract.js), not digest-day ==
+  // item-UTC-day equality.
   const stories = options.stories || Array.from({ length: 40 }, (_, index) => ({
     id: index + 1, title: `Story ${index + 1}`, url: `https://example.com/story-${index + 1}`,
-    by: 'author', score: 20, descendants: 3, time: Date.parse('2026-09-09T01:00:00Z') / 1000,
+    by: 'author', score: 20, descendants: 3, time: Math.floor(Date.now() / 1000) - 7 * 3600,
   }));
   const fetchURL = async (url) => {
     requests.push(url);
@@ -110,9 +114,10 @@ describe('bounded single-source sync', () => {
   });
 
   it('separates failed requests from deleted or out-of-date stories', async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
     const h = harness(db, { stories: [new Error('request failed'), { deleted: true },
-      { id: 3, title: 'Old', time: Date.parse('2026-09-08') / 1000 }, null,
-      { id: 5, title: 'Today', time: Date.parse('2026-09-09') / 1000 }] });
+      { id: 3, title: 'Old', time: nowSec - 40 * 3600 }, null,
+      { id: 5, title: 'Today', time: nowSec - 7 * 3600 }] });
     const result = await h.sync.syncSource('hacker-news', '20260909', { limit: 5, skipEnrich: true });
     expect(result).toMatchObject({ requested: 5, inserted: 1, existing: 0, skipped: 2, failed: 2 });
     expect(h.enrichCalls).toEqual([]);

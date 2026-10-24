@@ -3,7 +3,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const xml = '<rss><channel><item><title>Release</title><link>https://example.com/story</link><pubDate>Fri, 16 Oct 2026 04:00:00 GMT</pubDate></item></channel></rss>';
+// D2 window contract: pubDate must sit inside the 36h fetch window relative
+// to the real clock (isWithinFetchWindow replaced digest-day == item-UTC-day
+// equality filtering in rss.js).
+const xml = `<rss><channel><item><title>Release</title><link>https://example.com/story</link><pubDate>${new Date(Date.now() - 7 * 3600e3).toUTCString()}</pubDate></item></channel></rss>`;
 
 function connector(fetchURL, env = {}) {
   const module = { exports: {} };
@@ -12,7 +15,10 @@ function connector(fetchURL, env = {}) {
     require: name => ({ './base': { BaseConnector: class {
       constructor(slug) { this.slug = slug; }
       normalize(item) { return item; }
-    } }, '../services/utils': { fetchURL }, '../db/connection': { getDB: () => null } })[name],
+    } }, '../services/utils': { fetchURL }, '../db/connection': { getDB: () => null },
+    '../services/date-contract': require('../date-contract'),
+    // 案2 redaction lane: rss.js 新增此 require（写库前脱敏），真实模块透传。
+    '../services/secret-redaction': require('../secret-redaction') })[name],
   });
   const subject = new module.exports.RSSConnector('solidot');
   subject.getFeedUrl = () => 'https://primary.example/feed';

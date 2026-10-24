@@ -18,15 +18,11 @@ describe('app-main', () => {
       <div id="categoryList"></div>
       <div id="lastUpdated"></div>
       <div id="searchInput"></div>
-      <div id="researchModal" style="display:none;"></div>
-      <div id="researchTitle"></div>
-      <div id="researchBody"></div>
       <div id="graphOverlay"></div>
       <div id="graphCanvas"></div>
       <button id="showGraph"></button>
       <button id="closeGraph"></button>
       <button id="syncNow"></button>
-      <div class="close-modal"></div>
     `;
   });
 

@@ -58,14 +58,14 @@ describe('runtime switches admin API', () => {
     getDB().prepare('DELETE FROM user_data').run();
   });
 
-  it('exposes all seven switches defaulting to true to any authenticated caller', async () => {
+  it('exposes all six switches defaulting to true to any authenticated caller', async () => {
     const response = await call('GET', 'user');
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
       status: 'ok',
       switches: Object.fromEntries(SWITCH_KEYS.map(key => [key, true])),
     });
-    expect(Object.keys(response.body.switches)).toHaveLength(7);
+    expect(Object.keys(response.body.switches)).toHaveLength(6);
   });
 
   it('rejects a non-admin POST before touching the stored switches', async () => {

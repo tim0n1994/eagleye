@@ -7,7 +7,10 @@
  */
 
 const { getProvider, getLLMConfig } = require('./llm-provider');
-const { taskContext, abortableDelay, callWithMetadata, nonEmpty, validateBatch } = require('./llm-shared');
+const { taskContext, abortableDelay, callWithMetadata, nonEmpty, validateBatch,
+  estimateTokens, isOutputRepairable, taskAttempt, withTaskStats } = require('./llm-shared');
+const { ITEM_STATE, ITEM_REASON, repairCallBudget, createCoverage, markItem,
+  finalizeCoverage, mergeFinalCoverage } = require('./llm-shared');
 
 function providerAvailable() {
   try { return !!getProvider(); } catch { return false; }
@@ -49,7 +52,10 @@ function preClassifyByTags(itemTags) {
 // Batch size for the LLM signal classifier. glm-5.2 (and similar reasoning
 // routers via /v1/messages) reliably classify ≤10 items per call; larger
 // batches get dropped as empty responses, so we keep this conservative.
-const CLASSIFY_BATCH_SIZE = parseInt(process.env.SIGNAL_CLASSIFY_BATCH || '10', 10);
+const CLASSIFY_BATCH_SIZE = parseInt(process.env.SIGNAL_CLASSIFY_BATCH || '6', 10);
+// Keep broad prompts away from output-token cliffs and stop chatty routers early.
+const CLASSIFY_INPUT_TOKEN_BUDGET = parseInt(process.env.SIGNAL_CLASSIFY_INPUT_TOKEN_BUDGET || '2000', 10);
+const CLASSIFY_MAX_OUTPUT_TOKENS = parseInt(process.env.SIGNAL_CLASSIFY_MAX_OUTPUT_TOKENS || '1024', 10);
 
 const SIGNAL_CLASSIFIER_PROMPT = `/no_think
 You are a strict JSON signal classifier for tech/AI investment intelligence. Output ONLY a JSON array. NO markdown, NO explanation, NO thinking.
@@ -206,28 +212,51 @@ async function classifyChunk(chunk, opts = {}) {
   const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
   context.check();
   const provider = getProvider();
-  if (!provider || !chunk?.length) return [];
+  if (!chunk?.length) return [];
+  if (!provider) {
+    const coverage = createCoverage(chunk.map(item => item.id));
+    for (const item of chunk) markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.NO_PROVIDER);
+    return withTaskStats([], [], coverage);
+  }
+  const coverage = createCoverage(chunk.map(item => item.id));
 
-  const batch = chunk.map(item => ({
+  const compact = item => ({
     id: item.id,
     title: String(item.title || '').slice(0, 200),
     summary: String(item.ai_summary?.short_summary || item.ai_summary?.one_liner || item.ai_summary?.ai_title || '').slice(0, 300),
     source: String(item.source_slug || '').slice(0, 60),
-  }));
+  });
 
-  // Retry pass: use a tighter, more directive prompt so ambiguous items that
-  // the first pass left unclassified get a second, firmer look. The first pass
-  // frequently returns uncategorized for genuinely-classifiable content when
-  // the batch is large or the model hedges; a single-purpose retry reduces the
-  // 31% uncategorized tail without re-classifying already-good items.
-  const basePrompt = retry ? SIGNAL_CLASSIFIER_RETRY_PROMPT : SIGNAL_CLASSIFIER_PROMPT;
-  const prompt = basePrompt + '\n\n输入：' + JSON.stringify(batch);
-  // 20 items × ~120 tokens each for output; cap at a safe ceiling.
-  const maxTokens = Math.min(4096, Math.max(2048, 300 + batch.length * 130));
+  // Invalid output gets a bounded halving retry, so a bad item narrows the
+  // request instead of repeatedly resending the same broad batch.
+  const averageInputTokens = Math.max(1, Math.ceil(estimateTokens(chunk.map(compact)) / chunk.length));
+  const inputLimit = Math.max(1, Math.min(chunk.length, Math.floor(CLASSIFY_INPUT_TOKEN_BUDGET / averageInputTokens)));
+  if (inputLimit < chunk.length) {
+    const results = [];
+    const splitAttempts = [];
+    let splitCoverageComplete = true;
+    for (let i = 0; i < chunk.length; i += inputLimit) {
+      const part = await classifyChunk(chunk.slice(i, i + inputLimit), opts);
+      if (part.task_stats) splitAttempts.push(...part.task_stats.attempts);
+      if (part.task_stats?.coverage) {
+        mergeFinalCoverage(coverage, {
+          item_states: part.task_stats.item_states,
+          item_reasons: part.task_stats.item_reasons,
+        });
+      }
+      else splitCoverageComplete = false;
+      results.push(...part);
+      if (context.isCancelled()) break;
+    }
+    if (!splitCoverageComplete || context.isCancelled()) return results;
+    return withTaskStats(results, splitAttempts, coverage);
+  }
+  const attempts = [];
 
-  // 重试撑过 glm-5.2 间歇性过载(529/1305) 和账户限流(429/1302)
-  const maxAttempts = provider.isPool ? 1 : retry ? 2 : 3;
-  const allowedIds = new Set(chunk.map(item => item.id));
+  // A pool request already owns transport retries. Add only bounded output
+  // repairs: at most two halvings, and never a retry for transport failures.
+  const budget = repairCallBudget(chunk.length);
+  const maxSameSetCalls = retry ? 2 : 3;
   const validClassification = row => nonEmpty(row.signal_type || row.category || row.type || row.classification)
     && (normalizeSignalType(row.signal_type || row.category || row.type || row.classification) !== 'uncategorized'
       || (row.signal_type || row.category || row.type || row.classification) === 'uncategorized')
@@ -235,34 +264,81 @@ async function classifyChunk(chunk, opts = {}) {
     && Number.isFinite(row.thesis_match ?? row.confidence ?? row.score)
     && (row.thesis_match ?? row.confidence ?? row.score) >= 0
     && (row.thesis_match ?? row.confidence ?? row.score) <= 1;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  let pending = chunk.slice(0, inputLimit);
+  let callCount = 0;
+  let sameSetRetries = 0;
+  let kindForNextCall = 'initial';
+  while (pending.length && callCount < budget) {
+    const batch = pending.map(compact);
+    const allowedIds = new Set(pending.map(item => item.id));
+    const basePrompt = retry ? SIGNAL_CLASSIFIER_RETRY_PROMPT : SIGNAL_CLASSIFIER_PROMPT;
+    const prompt = basePrompt + '\n\n输入：' + JSON.stringify(batch);
+    const maxTokens = Math.min(CLASSIFY_MAX_OUTPUT_TOKENS, 180 + batch.length * 80);
+    const started = Date.now();
+    callCount++;
     try {
-      const { data } = await callWithMetadata(provider, prompt, {
+      const { data, metadata } = await callWithMetadata(provider, prompt, {
         task: 'classify', signal: context.signal, temperature: 0.1, maxTokens, json: true,
         validate: rows => validateBatch(rows, allowedIds, validClassification),
       });
       context.check();
-      return data.filter(validClassification).map(row => ({
+      const successRows = data.filter(validClassification).map(row => ({
         ...row,
         signal_type: normalizeSignalType(row.signal_type || row.category || row.type || row.classification),
         thesis_match: normalizeThesisMatch(row.thesis_match ?? row.confidence ?? row.score),
       }));
+      for (const row of successRows) markItem(coverage, row.id, ITEM_STATE.SUCCESS, ITEM_REASON.SUCCEEDED);
+      for (const item of pending.filter(item => coverage.states.get(item.id) !== ITEM_STATE.SUCCESS)) {
+        markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.UNCOVERED_IN_RESPONSE);
+      }
+      attempts.push(taskAttempt(attempts.length + 1, batch, maxTokens, null, Date.now() - started, metadata, kindForNextCall));
+      return withTaskStats(successRows, attempts, coverage);
     } catch (err) {
       context.check();
+      attempts.push(taskAttempt(attempts.length + 1, batch, maxTokens, err, Date.now() - started, null, kindForNextCall));
       // 1301 内容安全审核：不可恢复，跳过不重试
       if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
         if (!retry) console.log(`  ⏭  Signal classification skipped: content filtered by safety check`);
-        return [];
+        for (const item of pending) markItem(coverage, item.id, ITEM_STATE.EXPLICIT_FAILED, ITEM_REASON.CONTENT_FILTERED);
+        break;
       }
-      if (!retry) console.warn(`  ⚠  Signal classification attempt ${attempt}/${maxAttempts} failed for chunk:`, err.message.slice(0, 100));
-      if (attempt < maxAttempts) {
-        await _signalBackoff(attempt, err.message, context.signal);
+      const repairable = isOutputRepairable(err);
+      if (provider.isPool) {
+        if (!repairable) {
+          for (const item of pending) markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.TRANSPORT_DEFERRED);
+          break;
+        }
+        if (pending.length === 1) {
+          markItem(coverage, pending[0].id, ITEM_STATE.EXPLICIT_FAILED, ITEM_REASON.REPAIR_EXHAUSTED);
+          break;
+        }
+        const keepCount = Math.ceil(pending.length / 2);
+        for (const item of pending.slice(keepCount)) markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.REPAIR_DEFERRED);
+        pending = pending.slice(0, keepCount);
+        kindForNextCall = 'output_repair';
+        continue;
+      }
+      if (!retry) console.warn('  ⚠  Signal classification attempt ' + attempts.length + '/' + budget + ' failed for ' + batch.length + ' item(s):', err.message.slice(0, 100));
+      if (sameSetRetries < maxSameSetCalls - 1 && callCount < budget) {
+        sameSetRetries++;
+        kindForNextCall = repairable ? 'output_repair' : 'transport_retry';
+        await _signalBackoff(attempts.length, err.message, context.signal);
+        continue;
+      }
+      if (pending.length === 1) {
+        markItem(coverage, pending[0].id, ITEM_STATE.EXPLICIT_FAILED, ITEM_REASON.REPAIR_EXHAUSTED);
       } else {
-        return [];
+        for (const item of pending) markItem(coverage, item.id, ITEM_STATE.DEFERRED, repairable ? ITEM_REASON.REPAIR_DEFERRED : ITEM_REASON.TRANSPORT_DEFERRED);
       }
+      break;
     }
   }
-  return [];
+  for (const item of pending) {
+    if (!coverage.states.has(item.id)) {
+      markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.TRANSPORT_DEFERRED);
+    }
+  }
+  return withTaskStats([], attempts, coverage);
 }
 
 // 529/429 长退避（共享逻辑，与 enrich 一致）
@@ -285,20 +361,41 @@ function classifySignals(items, opts = {}) {
   // router saturated without overwhelming it.
   const CONCURRENCY = parseInt(process.env.SIGNAL_CLASSIFY_CONCURRENCY || '3', 10);
   const results = [];
+  const taskAttempts = [];
+  const aggregateCoverage = createCoverage(items.map(item => item.id));
   let idx = 0;
   async function worker() {
     while (idx < chunks.length && !context.isCancelled()) {
       const i = idx++;
       const out = await classifyChunk(chunks[i], context).catch(() => []);
+      if (out.task_stats) taskAttempts.push(...out.task_stats.attempts);
+      if (out.task_stats?.coverage) {
+        mergeFinalCoverage(aggregateCoverage, {
+          item_states: out.task_stats.item_states,
+          item_reasons: out.task_stats.item_reasons,
+        });
+      }
       if (context.isCancelled()) { results[i] = []; return; }
-      const found = new Set(out.map(row => row.id));
-      const missing = chunks[i].filter(item => !found.has(item.id));
-      const recovered = out.length && missing.length ? await classifyChunk(missing, { ...context, retry: true }).catch(() => []) : [];
+      const recoverable = chunks[i].filter(item => out.task_stats?.item_states?.[item.id] === ITEM_STATE.DEFERRED);
+      const recovered = recoverable.length ? await classifyChunk(recoverable, { ...context, retry: true }).catch(() => []) : [];
+      if (recovered.task_stats) taskAttempts.push(...recovered.task_stats.attempts);
+      if (recovered.task_stats?.coverage) {
+        mergeFinalCoverage(aggregateCoverage, {
+          item_states: recovered.task_stats.item_states,
+          item_reasons: recovered.task_stats.item_reasons,
+        });
+      }
       results[i] = [...out, ...recovered];
     }
   }
   return Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker))
-    .then(() => results.flat());
+    .then(() => {
+      if (context.isCancelled()) {
+        return [];
+      }
+      finalizeCoverage(aggregateCoverage, 'classifySignals');
+      return withTaskStats(results.flat(), taskAttempts, aggregateCoverage);
+    });
 }
 
 /**
@@ -323,17 +420,32 @@ async function classifyUncategorizedRetry(items, opts = {}) {
   }
   const CONCURRENCY = parseInt(process.env.SIGNAL_CLASSIFY_CONCURRENCY || '3', 10);
   const results = [];
+  const taskAttempts = [];
+  const aggregateCoverage = createCoverage(items.map(item => item.id));
   let idx = 0;
   async function worker() {
     while (idx < chunks.length && !context.isCancelled()) {
       const i = idx++;
       const out = await classifyChunk(chunks[i], { ...context, retry: true }).catch(() => []);
+      if (out.task_stats) taskAttempts.push(...out.task_stats.attempts);
+      if (out.task_stats?.coverage) {
+        mergeFinalCoverage(aggregateCoverage, {
+          item_states: out.task_stats.item_states,
+          item_reasons: out.task_stats.item_reasons,
+        });
+      }
       results[i] = out;
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
+  if (context.isCancelled()) return [];
+  finalizeCoverage(aggregateCoverage, 'classifyUncategorizedRetry');
   // Keep only rows where the retry produced a real (non-uncategorized) type.
-  return results.flat().filter(r => r.signal_type && r.signal_type !== 'uncategorized');
+  return withTaskStats(
+    results.flat().filter(r => r.signal_type && r.signal_type !== 'uncategorized'),
+    taskAttempts,
+    aggregateCoverage,
+  );
 }
 
 module.exports = {

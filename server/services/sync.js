@@ -8,7 +8,7 @@
 const { fetchAllSources, fetchSource } = require('../connectors/index');
 const { enrichItems } = require('./llm');
 const { isJobCancelled } = require('./jobs');
-const { todayDigestDate } = require('./date-contract');
+const { normalizeDigestDate, todayDigestDate } = require('./date-contract');
 
 // Circular dependency: runJob/JOB_TYPES imported lazily inside runFullPipeline()
 
@@ -20,6 +20,11 @@ const DEFAULT_SYNC_ENRICH_BATCH = Math.max(1, parseInt(process.env.SYNC_ENRICH_B
 async function syncAllSources(opts = {}) {
   opts.signal?.throwIfAborted();
   const { jobId, enrichBatchSize = DEFAULT_SYNC_ENRICH_BATCH, skipEnrich = false } = opts;
+  const requestedDate = normalizeDigestDate(opts.date);
+  if (opts.date != null && opts.date !== '' && !requestedDate) {
+    throw new Error(`Invalid sync date: expected YYYY-MM-DD or YYYYMMDD, got ${opts.date}`);
+  }
+  const checkpoint = Array.isArray(opts.fetchCheckpoint) ? opts.fetchCheckpoint : [];
   const updateProgress = (progress) => {
     if (!jobId) return;
     const { updateJobProgress } = require('./jobs');
@@ -27,8 +32,11 @@ async function syncAllSources(opts = {}) {
   };
 
   console.log('📡 Starting full sync...');
-  const date = todayDigestDate();
-  updateProgress({ phase: 'starting', date, current_index: 0, total_sources: 0, results: [] });
+  const date = requestedDate || todayDigestDate();
+  updateProgress({
+    phase: 'starting', date, current_index: checkpoint.length,
+    total_sources: 0, results: checkpoint, checkpoint_rows: checkpoint.length,
+  });
 
   if (jobId && isJobCancelled(jobId)) {
     console.log('  ⛔ syncAllSources cancelled before start');
@@ -37,6 +45,7 @@ async function syncAllSources(opts = {}) {
 
   const results = await fetchAllSources(date, {
     signal: opts.signal,
+    checkpoint,
     isCancelled: () => !!jobId && isJobCancelled(jobId),
     onProgress: (progress) => updateProgress({ date, ...progress }),
   });
