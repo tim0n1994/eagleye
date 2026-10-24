@@ -1,5 +1,7 @@
 # Eagleye
 
+> Collect, enrich, translate, connect, and brief intelligence while keeping runtime and corpus boundaries explicit.
+
 Private intelligence collection, enrichment, translation, knowledge graph and
 briefing service. The canonical runtime and development host is `argus-thinkpad`.
 The Mac is a remote client; production does not require a Mac process or disk.
