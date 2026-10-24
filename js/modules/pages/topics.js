@@ -214,7 +214,6 @@ export async function renderTopicDetailPage(params) {
           <h2 class="page-title">${t('topics.title')} / ${escapeHtml(pickZh(topic.name, topic.name_zh) || slug)}</h2>
           <div class="topic-detail-actions">
             <a href="/topics" class="anchor-link">← ${t('nav.topics')}</a>
-            <button class="action-btn topic-research-btn" data-slug="${escapeAttr(slug)}">🔬 ${t('topics.research_this')}</button>
             <a href="/api/topics/${escapeAttr(slug)}/feed.xml" class="action-link" target="_blank" rel="noopener">📡 RSS</a>
           </div>
         </div>
@@ -269,31 +268,6 @@ export async function renderTopicDetailPage(params) {
         insertEl.parentNode.insertBefore(chartDiv, insertEl);
       }
     }).catch(() => {});
-
-    // Wire topic research button (§9.2).
-    const researchBtn = container.querySelector('.topic-research-btn');
-    if (researchBtn) {
-      researchBtn.addEventListener('click', async () => {
-        const s = researchBtn.dataset.slug;
-        researchBtn.disabled = true;
-        researchBtn.textContent = '⏳ ' + t('common.loading');
-        try {
-          const res = await fetch(`/api/topics/${encodeURIComponent(s)}/research`, { method: 'POST' });
-          const data = await res.json();
-          if (data.report_id) {
-            // Open the research report in a new tab via the existing research page.
-            window.open(`/research/${encodeURIComponent(data.report_id)}?topic=${encodeURIComponent(s)}`, '_blank', 'noopener');
-          } else if (data.error) {
-            alert(data.error);
-          }
-        } catch (err) {
-          console.warn('Topic research failed:', err.message);
-        } finally {
-          researchBtn.disabled = false;
-          researchBtn.textContent = '🔬 ' + t('topics.research_this');
-        }
-      });
-    }
 
     // Initialize topic-specific graph
     try {

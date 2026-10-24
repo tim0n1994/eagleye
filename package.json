@@ -26,6 +26,7 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^17.4.2",
+    "fast-xml-parser": "^5.11.2",
     "resend": "^6.17.2"
   },
   "devDependencies": {

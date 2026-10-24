@@ -6,6 +6,7 @@
 
 const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
+const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../services/date-contract');
 
 class LobstersConnector extends BaseConnector {
   constructor() {
@@ -13,13 +14,15 @@ class LobstersConnector extends BaseConnector {
   }
 
   async fetch(date) {
+    const digestDate = date || compactDigestDate(todayDigestDate());
     try {
       const body = await fetchURL('https://lobste.rs/hottest.json');
       const data = JSON.parse(body);
 
       return data.map(item => {
-        const dateStr = new Date(item.created_at).toISOString().slice(0, 10).replace(/-/g, '');
-        if (date && dateStr !== date) return null;
+        // D2 time-window freshness replaces the digest-day == item-UTC-day
+        // equality filter (see date-contract.js isWithinFetchWindow).
+        if (date && !isWithinFetchWindow(item.created_at)) return null;
 
         return {
           ...this.normalize({
@@ -38,11 +41,11 @@ class LobstersConnector extends BaseConnector {
             popularity: { score: item.score || 0, comments: item.comment_count || 0 },
             score: Math.log2(1 + (item.score || 0)),
           }),
-          digest_date: dateStr,
+          digest_date: digestDate,
         };
       }).filter(Boolean);
     } catch (err) {
-      console.error('Lobsters fetch error:', err.message);
+      console.error(`[${this.slug}] fetch error:`, err.message);
       return [];
     }
   }

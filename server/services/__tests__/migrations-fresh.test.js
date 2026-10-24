@@ -28,7 +28,9 @@ describe('complete migrations on fresh and legacy SQLite databases', () => {
   afterEach(() => { db.close(); vi.restoreAllMocks(); });
 
   function expectAllApplied() {
-    expect(files).toHaveLength(38);
+    // 42 = 38 (R0) + 041_source_consecutive_empty (Round1 D4) + 042_xiaohongshu_disable (Round1 D5) + 043_source_fetch_duration (Round2 ⑤) + 044_information_items_duplicate_of (R3.0 dup 软标记; renumbered 043→044 at merge: 043 taken by Round2 ⑤ already applied in prod)
+    // 【主脚本仲裁接管：机械更新迁移文件计数】
+    expect(files).toHaveLength(42);
     expect(db.prepare('SELECT name FROM _migrations ORDER BY name').all().map(row => row.name)).toEqual(files);
     expect(db.pragma('foreign_key_check')).toEqual([]);
     expect(db.pragma('foreign_keys', { simple: true })).toBe(1);

@@ -10,6 +10,7 @@
 
 const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
+const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../services/date-contract');
 
 // CIKs for companies relevant to Physical AI / semiconductor / robotics
 // Format: { ticker: { name, cik, sector } }
@@ -50,11 +51,13 @@ class SEC8KConnector extends BaseConnector {
 
   async fetch(date) {
     const items = [];
-    const dateStr = date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    // D2: digest date basis is the requested local digest date (fallback:
+    // local today), never the filing's own day.
+    const digestDate = date || compactDigestDate(todayDigestDate());
 
     for (const [ticker, company] of Object.entries(TARGET_COMPANIES)) {
       try {
-        const filings = await this._fetchCompanyFilings(company, dateStr);
+        const filings = await this._fetchCompanyFilings(company, date, digestDate);
         items.push(...filings);
         // SEC rate limiting: be respectful
         await new Promise(r => setTimeout(r, 200));
@@ -68,7 +71,7 @@ class SEC8KConnector extends BaseConnector {
     return items;
   }
 
-  async _fetchCompanyFilings(company, dateStr) {
+  async _fetchCompanyFilings(company, date, digestDate) {
     const url = `https://data.sec.gov/submissions/CIK${company.cik}.json`;
     const body = await fetchURL(url);
     const data = JSON.parse(body);
@@ -79,8 +82,13 @@ class SEC8KConnector extends BaseConnector {
     for (const filing of filings) {
       if (filing.form !== '8-K') continue;
       const filingDate = filing.filingDate || '';
-      const filingDateStr = filingDate.replace(/-/g, '');
-      if (filingDateStr !== dateStr) continue;
+      // D2 time-window freshness replaces the filing-day == digest-day
+      // equality filter (see date-contract.js isWithinFetchWindow): filings
+      // dated within [now - SOURCE_LOOKBACK_HOURS (default 36h), now + 1h]
+      // are new; digest_date always takes the requested digest date. The old
+      // strict equality skipped every filing during the 01:00 Asia/Shanghai
+      // run (UTC is still on the previous day).
+      if (date && !isWithinFetchWindow(filingDate)) continue;
 
       const accessionNo = filing.accessionNumber || '';
       const primaryDoc = filing.primaryDocument || '';
@@ -112,7 +120,7 @@ class SEC8KConnector extends BaseConnector {
           popularity: {},
           score: 0.5,
         }),
-        digest_date: dateStr,
+        digest_date: digestDate,
       });
     }
 

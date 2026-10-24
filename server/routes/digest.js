@@ -28,7 +28,7 @@ function register(routes) {
       SELECT i.*, s.label as source_label, s.slug as source_slug
       FROM information_items i 
       JOIN sources s ON i.source_id = s.id 
-      WHERE i.digest_date = ?
+      WHERE i.digest_date = ? AND i.duplicate_of IS NULL
       ORDER BY s.label, i.score DESC
       LIMIT 100
     `).all(date);
@@ -75,6 +75,7 @@ function register(routes) {
     const coverage = db.prepare(`
       SELECT digest_date, COUNT(*) as count
       FROM information_items
+      WHERE duplicate_of IS NULL
       GROUP BY digest_date
       ORDER BY digest_date DESC
       LIMIT 30

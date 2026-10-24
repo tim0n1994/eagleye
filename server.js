@@ -391,25 +391,24 @@ async function handleRequest(req, res) {
 
       // Try param-based routes (ordered from most to least specific)
       const paramRoutes = [
+        // Retired research endpoints (2026-10-21 方案C下线): answer 410 Gone ahead
+        // of the topics/items catch-alls. Data table research_reports is kept until R5.
+        { pattern: /^\/api\/items\/([^/]+)\/research\/chat$/, handlerName: '/api/items/:id/research/chat' },
+        { pattern: /^\/api\/items\/([^/]+)\/research$/, handlerName: '/api/items/:id/research' },
+        { pattern: /^\/api\/topics\/([^/]+)\/research$/, handlerName: '/api/topics/:slug/research' },
+        { pattern: /^\/api\/research\/([^/]+)$/, handlerName: '/api/research/:id' },
         { pattern: /^\/api\/topics\/([^/]+)\/feed\.xml$/, handlerName: '/api/topics/:slug/feed.xml' },
         { pattern: /^\/api\/topics\/([^/]+)\/timeline$/, handlerName: '/api/topics/:slug/timeline' },
         { pattern: /^\/api\/topics\/([^/]+)\/graph$/, handlerName: '/api/topics/:slug/graph' },
-        { pattern: /^\/api\/topics\/([^/]+)\/research$/, handlerName: '/api/topics/:slug/research' },
         { pattern: /^\/api\/topics\/(.+)$/, handlerName: '/api/topics/:slug' },
         { pattern: /^\/api\/items\/([^/]+)\/summary$/, handlerName: '/api/items/:id/summary' },
-        { pattern: /^\/api\/items\/([^/]+)\/research\/chat$/, handlerName: '/api/items/:id/research/chat' },
-        { pattern: /^\/api\/items\/([^/]+)\/research$/, handlerName: '/api/items/:id/research' },
-        { pattern: /^\/api\/items\/([^/]+)\/deployment-plan$/, handlerName: '/api/items/:id/deployment-plan' },
         { pattern: /^\/api\/items\/([^/]+)\/save$/, handlerName: '/api/items/:id/save' },
         { pattern: /^\/api\/items\/([^/]+)\/seen$/, handlerName: '/api/items/:id/seen' },
         { pattern: /^\/api\/items\/(.+)$/, handlerName: '/api/items/:id' },
-        { pattern: /^\/api\/research\/(.+)$/, handlerName: '/api/research/:id' },
         { pattern: /^\/api\/feed\/(.+)$/, handlerName: '/api/feed/:source' },
-        { pattern: /^\/api\/skills\/(.+)$/, handlerName: '/api/skills/:id' },
         { pattern: /^\/api\/source\/(.+)$/, handlerName: '/api/source/:slug' },
         { pattern: /^\/api\/tags\/(.+)$/, handlerName: '/api/tags/:slug' },
         { pattern: /^\/api\/domains\/(.+)$/, handlerName: '/api/domains/:slug' },
-        { pattern: /^\/api\/deployment-plans\/(.+)$/, handlerName: '/api/deployment-plans/:id' },
         { pattern: /^\/api\/year\/(\d{4})$/, handlerName: '/api/year/:year' },
         { pattern: /^\/api\/jobs\/([^/]+)\/cancel$/, handlerName: '/api/jobs/:id/cancel' },
         { pattern: /^\/api\/jobs\/(.+)$/, handlerName: '/api/jobs/:id' },
@@ -566,7 +565,7 @@ async function handleRequest(req, res) {
         const base = `http://localhost:${PORT}`;
         let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
         // Static pages
-        const staticPages = ['/', '/for-you', '/papers', '/signals', '/digest', '/sources', '/tools', '/skills', '/kg3d', '/physical-ai', '/intelligence', '/industry-metrics', '/year', '/compare', '/search', '/help', '/saved', '/watchlist', '/stories', '/topics', '/tags'];
+        const staticPages = ['/', '/for-you', '/papers', '/signals', '/digest', '/sources', '/kg3d', '/physical-ai', '/intelligence', '/industry-metrics', '/year', '/compare', '/search', '/help', '/saved', '/watchlist', '/stories', '/topics', '/tags'];
         for (const p of staticPages) xml += `  <url><loc>${base}${p}</loc></url>\n`;
         // Sources
         const sources = db.prepare('SELECT slug FROM sources WHERE is_active = 1').all();
@@ -623,7 +622,7 @@ process.on('unhandledRejection', (reason) => {
   console.warn('  ⚠  Unhandled promise rejection (non-fatal):', reason?.message || reason);
 });
 
-server.listen(PORT, process.env.EAGLEYE_HOST || undefined, () => {
+server.listen(PORT, process.env.EAGLEYE_HOST || undefined, async () => {
   const addr = `http://localhost:${PORT}`;
   console.log('');
   console.log('  🦅 Eagleye Bot (Orangebot Edition)');
@@ -651,9 +650,13 @@ server.listen(PORT, process.env.EAGLEYE_HOST || undefined, () => {
   console.log(`  🌐 Static i18n: ${i18nResult.sources} sources + ${i18nResult.topics} topics translated`);
 
   const { markInterruptedJobs } = require('./server/services/jobs');
-  const interruptedJobs = markInterruptedJobs();
+  // 启动时开启恢复评估：full-pipeline 以持久化阶段检查点续跑或明确拒绝；
+  // 优雅停机路径仍走默认 recover=false（只标记失败，不创建补偿 job）。
+  // Await reconciliation: the compensation job must be durably enqueued
+  // before the scheduler starts and can enqueue its own daily run.
+  const interruptedJobs = await markInterruptedJobs({ recover: true });
   if (interruptedJobs > 0) {
-    console.log(`  🧹 Marked ${interruptedJobs} interrupted background job(s) as failed`);
+    console.log(`  🧹 Marked ${interruptedJobs} interrupted background job(s); recovery decisions logged above`);
   }
 
   // Optional: initial sync (disabled by default — user starts manually or via API)

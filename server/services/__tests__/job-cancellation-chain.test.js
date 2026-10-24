@@ -13,7 +13,7 @@ describe('actual job and enrichment cancellation chain', () => {
 
   beforeEach(() => {
     db = new Database(':memory:');
-    for (const migration of ['001_initial_schema.sql', '002_i18n_translations.sql', '032_llm_output_metadata.sql']) {
+    for (const migration of ['001_initial_schema.sql', '002_i18n_translations.sql', '032_llm_output_metadata.sql', '044_information_items_duplicate_of.sql']) {
       db.exec(fs.readFileSync(path.resolve(__dirname, '../../migrations', migration), 'utf8'));
     }
     db.exec(`ALTER TABLE information_items ADD COLUMN enrichment_attempts INTEGER DEFAULT 0;

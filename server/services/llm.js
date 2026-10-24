@@ -13,7 +13,9 @@
 const { getProvider, getEnrichProvider } = require('./llm-provider');
 const { getDB } = require('../db/connection');
 const { generateDailyDigest } = require('./llm-digest');
-const { taskContext, abortableDelay, _isOverloadError, callWithMetadata, validCard, validateBatch, VALID_SUMMARY_SQL } = require('./llm-shared');
+const { taskContext, abortableDelay, _isOverloadError, callWithMetadata, validCard, validateBatch, VALID_SUMMARY_SQL,
+  estimateTokens, isOutputRepairable, taskAttempt, withTaskStats, ITEM_STATE, ITEM_REASON,
+  repairCallBudget, createCoverage, markItem, finalizeCoverage, mergeFinalCoverage } = require('./llm-shared');
 const { isTerminalLLMError } = require('./llm-error-class');
 const { deepEnrichSkipReason } = require('./content-sufficiency');
 const crypto = require('crypto');
@@ -254,10 +256,10 @@ const BATCH_ITEM_SUMMARY_PROMPT = `/no_think
 3. title_zh 必须直接概括实质内容，不能写成"@xxx posted""某人发帖""某人分享了什么""有人讨论了什么"。
 4. title_zh 尽量控制在 22 到 36 个中文字符，让它通常能在卡片里 2 到 3 行读完。
 5. 对 X、论坛、社区、RSS 等来源，优先提炼成"产品/模型/论文/发布/观点/趋势/融资/项目进展"的知识标题。
-6. 每条输出中文标题、一句话判断、1句短摘要、2-3个要点、topic_slugs、tags、entities。
-7. short_summary_zh 不超过 60 个中文字。
+6. 每条输出中文标题、一句话判断、1句短摘要、2个要点、topic_slugs、tags、entities。
+7. short_summary_zh 不超过 60 个中文字，why_it_matters_zh 不超过 30 个中文字，每个要点不超过 20 个中文字。
 8. topic_slugs 只能从 allowed_topics 选择，最多3个。
-9. tags 非常重要，用于构建知识图谱！必须提供 4-6 个中文短标签，粒度要细。优先：具体技术名词、具体产品名、具体公司名、具体能力方向。严禁英文、拼音、混合语言。
+9. tags 非常重要，用于构建知识图谱！必须提供 4-5 个中文短标签，粒度要细。优先：具体技术名词、具体产品名、具体公司名、具体能力方向。严禁英文、拼音、混合语言。entities 最多 5 个。
 10. 如果 item 是论文源（hugging-face、arxiv-ai、physical-ai-arxiv，或 payload 包含 paper/arxiv 字段），必须按论文理解：title_zh 概括论文贡献，one_liner_zh 说明方法或发现，tags 优先抽取方法、任务、模型、数据集、基准和应用场景，例如"VLA模型""机器人学习""扩散策略""多模态评测""参数高效微调"。严禁只给"论文""AI论文""机器学习""研究分享"。
 11. 输出严格 JSON 数组，不要 Markdown，不要思考过程。
 
@@ -282,59 +284,157 @@ async function generateItemSummariesBatch(items, opts = {}) {
   const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
   context.check();
   if (!items?.length) return [];
+  const coverage = createCoverage(items.map(item => item.id));
   const titleOnly = [];
-  const gateSkipped = [];
+  const gateSkippedMessages = [];
   items = items.filter(item => {
     if (!evidenceExcerpt(item)) {
       titleOnly.push(createTitleOnlySummary(item));
+      markItem(coverage, item.id, ITEM_STATE.SUCCESS, ITEM_REASON.TITLE_ONLY);
       return false;
     }
     const skipReason = deepEnrichSkipReason(item);
     if (skipReason) {
-      gateSkipped.push((item.id?.slice(0, 8) || 'unknown') + ': ' + skipReason);
+      gateSkippedMessages.push((item.id?.slice(0, 8) || 'unknown') + ': ' + skipReason);
+      markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.GATE_SKIPPED);
       return false;
     }
     return true;
   });
-  if (gateSkipped.length) console.log('  ⏭  Sufficiency gate skipped ' + gateSkipped.length + ' item(s): ' + gateSkipped.join('; '));
-  if (!items.length) return titleOnly;
+  if (gateSkippedMessages.length) console.log('  ⏭  Sufficiency gate skipped ' + gateSkippedMessages.length + ' item(s): ' + gateSkippedMessages.join('; '));
+  if (!items.length) return withTaskStats(titleOnly, [], coverage);
   const provider = getEnrichProvider();
-  if (!provider) return titleOnly;
+  if (!provider) {
+    for (const item of items) markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.NO_PROVIDER);
+    return withTaskStats(titleOnly, [], coverage);
+  }
 
-  const compactItems = items.map(item => ({
+  const compact = item => ({
     id: item.id,
     source: item.source_label || item.source_slug || '',
     title: String(item.title || '').slice(0, 240),
     url: String(item.canonical_url || '').slice(0, 260),
     summary: evidenceExcerpt(item).replace(/\s+/g, ' ').slice(0, 420),
     payload: String(item.source_payload || '').replace(/\s+/g, ' ').slice(0, 260),
-  }));
+  });
+  const inputTokenBudget = parseInt(process.env.ENRICH_LLM_INPUT_TOKEN_BUDGET || '2400', 10);
+  const averageInputTokens = Math.max(1, Math.ceil(estimateTokens(items.map(compact)) / items.length));
+  const inputLimit = Math.max(1, Math.min(items.length, Math.floor(inputTokenBudget / averageInputTokens)));
+  if (inputLimit < items.length) {
+    const results = [];
+    const splitAttempts = [];
+    let splitCoverageComplete = true;
+    for (let i = 0; i < items.length; i += inputLimit) {
+      const part = await generateItemSummariesBatch(items.slice(i, i + inputLimit), opts);
+      if (part.task_stats) splitAttempts.push(...part.task_stats.attempts);
+      if (part.task_stats?.coverage) {
+        mergeFinalCoverage(coverage, {
+          item_states: part.task_stats.item_states,
+          item_reasons: part.task_stats.item_reasons,
+        });
+      } else {
+        splitCoverageComplete = false;
+      }
+      results.push(...part);
+      if (context.isCancelled()) break;
+    }
+    const combined = [...titleOnly, ...results];
+    if (!results.length && titleOnly.length) Object.assign(combined, { batch_failed: true });
+    if (splitCoverageComplete && !context.isCancelled()) {
+      return withTaskStats(combined, splitAttempts, coverage);
+    }
+    return combined;
+  }
 
-  const prompt = BATCH_ITEM_SUMMARY_PROMPT
-    .replace('{{allowed_topics}}', JSON.stringify(getAllowedTopicsForPrompt()).slice(0, 1400))
-    .replace('{{items}}', JSON.stringify(compactItems));
-
-  const allowedIds = new Set(items.map(item => item.id));
-  const maxAttempts = provider.isPool ? 1 : 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  let pending = items;
+  const attempts = [];
+  let callCount = 0;
+  let sameSetRetries = 0;
+  let kindForNextCall = 'initial';
+  const repairDeferredGaps = new Set();
+  const budget = repairCallBudget(items.length);
+  while (pending.length && callCount < budget) {
+    const requestItems = pending;
+    const compactItems = requestItems.map(compact);
+    const allowedIds = new Set(requestItems.map(item => item.id));
+    const prompt = BATCH_ITEM_SUMMARY_PROMPT
+      .replace('{{allowed_topics}}', JSON.stringify(getAllowedTopicsForPrompt()).slice(0, 1400))
+      .replace('{{items}}', JSON.stringify(compactItems));
+    const maxTokens = Math.min(provider.isPool ? 4096 : 8192, 500 + requestItems.length * 650);
+    const started = Date.now();
+    callCount++;
     try {
       const { data, metadata } = await callWithMetadata(provider, prompt, {
         task: 'enrich', signal: context.signal, temperature: 0.1, json: true,
-        maxTokens: provider.isPool ? 8192 : Math.min(8192, 600 + items.length * 900),
+        maxTokens,
         validate: rows => validateBatch(rows, allowedIds, validCard),
       });
       context.check();
-      const byId = new Map(items.map(item => [item.id, item]));
-      return [...titleOnly, ...data.filter(validCard).map(row => createSummaryResult(byId.get(row.id), row, metadata))];
+      const byId = new Map(pending.map(item => [item.id, item]));
+      const successRows = data.filter(validCard).map(row => createSummaryResult(byId.get(row.id), row, metadata));
+      for (const row of successRows) markItem(coverage, row.summary.item_id, ITEM_STATE.SUCCESS, ITEM_REASON.SUCCEEDED);
+      const uncovered = pending.filter(item => coverage.states.get(item.id) !== ITEM_STATE.SUCCESS);
+      for (const item of uncovered) markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.UNCOVERED_IN_RESPONSE);
+      for (const item of repairDeferredGaps) {
+        if (coverage.states.get(item.id) !== ITEM_STATE.SUCCESS && coverage.states.get(item.id) !== ITEM_STATE.EXPLICIT_FAILED) {
+          markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.UNCOVERED_IN_RESPONSE, true);
+        }
+      }
+      attempts.push(taskAttempt(attempts.length + 1, requestItems, maxTokens, null, Date.now() - started, metadata, kindForNextCall));
+      // A successful but incomplete response is already useful. Return it for
+      // commit; the caller schedules a separate compensation call for gaps.
+      return withTaskStats([...titleOnly, ...successRows], attempts, coverage);
     } catch (err) {
       context.check();
-      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) return titleOnly.length ? Object.assign(titleOnly, { batch_failed: true }) : [];
-      if (isTerminalLLMError(err)) return titleOnly.length ? Object.assign(titleOnly, { batch_failed: true }) : [];
-      console.warn(`  ⚠  Batch summary attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
-      if (attempt < maxAttempts) await _llmBackoff(attempt, err.message, context.signal);
+      attempts.push(taskAttempt(attempts.length + 1, requestItems, maxTokens, err, Date.now() - started, null, kindForNextCall));
+      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
+        for (const item of pending) markItem(coverage, item.id, ITEM_STATE.EXPLICIT_FAILED, ITEM_REASON.CONTENT_FILTERED);
+        break;
+      }
+      if (isTerminalLLMError(err)) {
+        for (const item of pending) markItem(coverage, item.id, ITEM_STATE.EXPLICIT_FAILED, ITEM_REASON.TERMINAL_ERROR);
+        break;
+      }
+      const repairable = isOutputRepairable(err);
+      if (provider.isPool) {
+        if (!repairable) {
+          for (const item of pending) markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.TRANSPORT_DEFERRED);
+          break;
+        }
+        if (pending.length === 1) {
+          markItem(coverage, pending[0].id, ITEM_STATE.EXPLICIT_FAILED, ITEM_REASON.REPAIR_EXHAUSTED);
+          break;
+        }
+        const keepCount = Math.ceil(pending.length / 2);
+        for (const item of pending.slice(keepCount)) markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.REPAIR_DEFERRED);
+        for (const item of pending.slice(keepCount)) repairDeferredGaps.add(item);
+        pending = pending.slice(0, keepCount);
+        kindForNextCall = 'output_repair';
+        continue;
+      }
+      console.warn('  ⚠  Batch summary attempt ' + attempts.length + '/' + budget + ' for ' + requestItems.length + ' item(s) failed: ' + err.message);
+      if (sameSetRetries < 2 && callCount < budget) {
+        sameSetRetries++;
+        kindForNextCall = repairable ? 'output_repair' : 'transport_retry';
+        await _llmBackoff(attempts.length, err.message, context.signal);
+        continue;
+      }
+      if (pending.length === 1) {
+        markItem(coverage, pending[0].id, ITEM_STATE.EXPLICIT_FAILED, ITEM_REASON.REPAIR_EXHAUSTED);
+      } else {
+        for (const item of pending) markItem(coverage, item.id, ITEM_STATE.DEFERRED, repairable ? ITEM_REASON.REPAIR_DEFERRED : ITEM_REASON.TRANSPORT_DEFERRED);
+      }
+      break;
     }
   }
-  return titleOnly.length ? Object.assign(titleOnly, { batch_failed: true }) : [];
+  for (const item of pending) {
+    if (!coverage.states.has(item.id)) {
+      markItem(coverage, item.id, ITEM_STATE.DEFERRED, ITEM_REASON.TRANSPORT_DEFERRED);
+    }
+  }
+  const rows = [...titleOnly];
+  Object.assign(rows, { batch_failed: true });
+  return withTaskStats(rows, attempts, coverage);
 }
 
 /**
@@ -536,7 +636,7 @@ async function enrichItems(batchSize = 1600, opts = {}) {
   // If resetAttempts is set (e.g. after a prompt upgrade), clear the poison-pill
   // counter so previously-failed items get another chance with the new prompt.
   if (resetAttempts) {
-    const reset = db.prepare(`UPDATE information_items SET enrichment_attempts = 0 WHERE NOT EXISTS (SELECT 1 FROM ai_summaries WHERE item_id = information_items.id AND ${VALID_SUMMARY_SQL})`);
+    const reset = db.prepare(`UPDATE information_items SET enrichment_attempts = 0 WHERE duplicate_of IS NULL AND NOT EXISTS (SELECT 1 FROM ai_summaries WHERE item_id = information_items.id AND ${VALID_SUMMARY_SQL})`);
     const info = reset.run();
     console.log(`  🔄 Reset enrichment_attempts for ${info.changes} unsummarized items`);
   }
@@ -554,7 +654,8 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     SELECT i.*, s.label as source_label, s.slug as source_slug
     FROM information_items i
     JOIN sources s ON i.source_id = s.id
-    WHERE NOT EXISTS (SELECT 1 FROM ai_summaries WHERE item_id = i.id AND ${VALID_SUMMARY_SQL})
+    WHERE i.duplicate_of IS NULL
+      AND NOT EXISTS (SELECT 1 FROM ai_summaries WHERE item_id = i.id AND ${VALID_SUMMARY_SQL})
       AND COALESCE(i.enrichment_attempts, 0) < ?
       ${priorityFilter}
     ORDER BY ${ENRICH_PRIORITY_SQL} ASC,
@@ -597,8 +698,11 @@ async function enrichItems(batchSize = 1600, opts = {}) {
   const successfulItemIds = new Set();
   let enriched = 0;
   let failed = 0;
+  let deferred = 0;
   let entitiesSaved = 0;
   let topicsAssigned = 0;
+  const llmTaskAttempts = [];
+  const aggregateCoverage = createCoverage(items.map(item => item.id));
   const updateItemTitleZh = db.prepare(`
     UPDATE information_items
     SET title_zh = ?, title_zh_status = ?
@@ -641,16 +745,53 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     return { ok: true, item_id: item.id, entities: itemEntityCount, topics: itemTopicCount };
   }
 
-  async function processItemFallback(item) {
-    try {
-      context.check();
-      const result = await generateItemSummary(item, context);
-      return writeResult(item, result);
-    } catch (err) {
-      if (context.isCancelled()) return { cancelled: true };
-      console.error(`  ❌ Failed to enrich ${item.id?.slice(0, 8)}:`, err.message);
-      return { ok: false };
+  function absorbBatch(batchResults) {
+    if (batchResults.task_stats) llmTaskAttempts.push(...batchResults.task_stats.attempts);
+    if (batchResults.task_stats?.coverage) {
+      mergeFinalCoverage(aggregateCoverage, {
+        item_states: batchResults.task_stats.item_states,
+        item_reasons: batchResults.task_stats.item_reasons,
+      });
     }
+  }
+
+  function recordOutcome(result) {
+    if (result?.cancelled) return;
+    processed++;
+    if (result?.ok) {
+      enriched++;
+      entitiesSaved += result.entities || 0;
+      topicsAssigned += result.topics || 0;
+    } else if (result?.deferred) {
+      deferred++;
+    } else {
+      failed++;
+    }
+  }
+
+  async function commitSuccesses(requestedItems, batchResults, results = []) {
+    const byItemId = new Map(batchResults.map(result => [result.summary.item_id, result]));
+    for (const item of requestedItems) {
+      const result = byItemId.get(item.id);
+      if (!result) continue;
+      try {
+        const outcome = await writeResult(item, result);
+        results.push(outcome);
+        markItem(aggregateCoverage, item.id, ITEM_STATE.SUCCESS, ITEM_REASON.SUCCEEDED);
+        recordOutcome(outcome);
+      } catch (err) {
+        if (context.isCancelled()) {
+          results.push({ cancelled: true });
+          break;
+        }
+        console.error('  ❌ Failed to write enriched item ' + item.id?.slice(0, 8) + ':', err.message);
+        markItem(aggregateCoverage, item.id, ITEM_STATE.EXPLICIT_FAILED, ITEM_REASON.PERSIST_FAILED, true);
+        const outcome = { ok: false };
+        results.push(outcome);
+        recordOutcome(outcome);
+      }
+    }
+    return results;
   }
 
   const chunks = [];
@@ -664,51 +805,70 @@ async function enrichItems(batchSize = 1600, opts = {}) {
   async function processChunk(chunk) {
     context.check();
     const batchResults = await generateItemSummariesBatch(chunk, context);
-    const byItemId = new Map(batchResults.map(result => [result.summary.item_id, result]));
+    absorbBatch(batchResults);
     const results = [];
+    await commitSuccesses(chunk, batchResults, results);
+    if (context.isCancelled()) return;
 
+    const byItemId = new Map(batchResults.map(result => [result.summary.item_id, result]));
+    const compensable = [];
     for (const item of chunk) {
-      if (context.isCancelled()) break;
-      if (byItemId.has(item.id)) {
-        try {
-          results.push(writeResult(item, byItemId.get(item.id)));
-        } catch (err) {
-          console.error(`  ❌ Failed to write enriched item ${item.id?.slice(0, 8)}:`, err.message);
-          results.push({ ok: false });
-        }
-      }
-    }
-    for (const item of chunk) {
-      if (context.isCancelled()) break;
       if (byItemId.has(item.id)) continue;
-      if (getEnrichProvider()?.isPool && (batchResults.length === 0 || batchResults.batch_failed)) {
-        results.push({ ok: false });
+      const state = batchResults.task_stats?.item_states?.[item.id];
+      const reason = batchResults.task_stats?.item_reasons?.[item.id];
+      // These are deterministic skips, not model failures. Leave them out of
+      // the failed counter so the stage result matches task coverage.
+      if (state === ITEM_STATE.DEFERRED && (reason === ITEM_REASON.GATE_SKIPPED || reason === ITEM_REASON.NO_PROVIDER)) {
+        processed++;
+        deferred++;
+        continue;
+      }
+      if (state === ITEM_STATE.EXPLICIT_FAILED) {
+        const outcome = { ok: false };
+        results.push(outcome);
+        recordOutcome(outcome);
+      } else if (
+        getEnrichProvider()?.isPool &&
+        state === ITEM_STATE.DEFERRED &&
+        [ITEM_REASON.UNCOVERED_IN_RESPONSE, ITEM_REASON.REPAIR_DEFERRED].includes(reason)
+      ) {
+        compensable.push(item);
+      } else if (!getEnrichProvider()?.isPool) {
+        const fallbackResults = await generateItemSummariesBatch([item], context);
+        absorbBatch(fallbackResults);
+        if (context.isCancelled()) return;
+        const fallbackOutcomes = [];
+        await commitSuccesses([item], fallbackResults, fallbackOutcomes);
+        if (!fallbackOutcomes.length) {
+          const outcome = { ok: false };
+          results.push(outcome);
+          recordOutcome(outcome);
+        }
       } else {
-        results.push(await processItemFallback(item));
+        const outcome = { ok: false, deferred: true, reason: reason || 'unknown' };
+        results.push(outcome);
+        recordOutcome(outcome);
       }
     }
 
-    let chunkEnriched = 0;
-    let chunkFailed = 0;
-    let chunkEntities = 0;
-    let chunkTopics = 0;
-
-    for (const result of results) {
-      if (result?.cancelled) continue;
-      if (result?.ok) {
-        chunkEnriched++;
-        chunkEntities += result.entities || 0;
-        chunkTopics += result.topics || 0;
-      } else {
-        chunkFailed++;
+    if (compensable.length) {
+      const compensation = await generateItemSummariesBatch(compensable, context);
+      absorbBatch(compensation);
+      if (context.isCancelled()) return;
+      await commitSuccesses(compensable, compensation, results);
+      const compensatedIds = new Set(compensation.map(result => result.summary.item_id));
+      for (let index = 0; index < compensable.length; index++) {
+        if (compensatedIds.has(compensable[index].id)) continue;
+        const compensationState = compensation.task_stats?.item_states?.[compensable[index].id];
+        const compensationReason = compensation.task_stats?.item_reasons?.[compensable[index].id];
+        const outcome = compensationState === ITEM_STATE.EXPLICIT_FAILED
+          ? { ok: false }
+          : { ok: false, deferred: true, reason: compensationReason || 'unknown' };
+        results.push(outcome);
+        recordOutcome(outcome);
       }
     }
 
-    enriched += chunkEnriched;
-    failed += chunkFailed;
-    entitiesSaved += chunkEntities;
-    topicsAssigned += chunkTopics;
-    processed += results.filter(result => !result?.cancelled).length;
     if (context.isCancelled()) return;
 
     updateProgress({
@@ -719,11 +879,13 @@ async function enrichItems(batchSize = 1600, opts = {}) {
       processed: Math.min(processed, items.length),
       enriched,
       failed,
+      deferred,
       entities: entitiesSaved,
       topics: topicsAssigned,
       total: items.length,
       batch_items: batchItemSize,
       workers: Math.min(batchConcurrency, chunks.length),
+      llm_attempts: llmTaskAttempts.length,
     });
   }
 
@@ -746,8 +908,14 @@ async function enrichItems(batchSize = 1600, opts = {}) {
 
   if (context.isCancelled()) {
     console.log(`  ⛔ enrichItems cancelled at ${processed}/${items.length}`);
-    return { enriched, failed, successful_item_ids: [...successfulItemIds], entities: entitiesSaved, topics: topicsAssigned, total: items.length, cancelled: true };
+    return { enriched, failed, deferred, successful_item_ids: [...successfulItemIds], entities: entitiesSaved, topics: topicsAssigned, total: items.length, cancelled: true };
   }
+
+  const coverage = finalizeCoverage(aggregateCoverage, 'enrichItems');
+  if (coverage.total !== items.length || coverage.success !== enriched) {
+    throw new Error('LLM_COVERAGE_BROKEN(enrichItems): final coverage does not match persisted enrich results');
+  }
+  const taskStats = withTaskStats([], llmTaskAttempts, aggregateCoverage).task_stats;
 
   // Auto-trigger signal scoring after enrichment
   if (process.env.ENABLE_SIGNAL_SCORING !== 'false' && enriched > 0) {
@@ -756,7 +924,7 @@ async function enrichItems(batchSize = 1600, opts = {}) {
       const enrichedItems = items.filter(item => successfulItemIds.has(item.id));
       if (enrichedItems.length > 0) {
         updateProgress({ phase: 'scoring', processed, enriched, failed, entities: entitiesSaved, topics: topicsAssigned, total: items.length });
-        await scoreSignals(enrichedItems, { jobId, signal: context.signal, autoResearch: false });
+        await scoreSignals(enrichedItems, { jobId, signal: context.signal });
         console.log(`  📡 Signal scoring complete for ${enrichedItems.length} items`);
       }
     } catch (err) {
@@ -764,15 +932,17 @@ async function enrichItems(batchSize = 1600, opts = {}) {
     }
   }
 
-  if (context.isCancelled()) return { enriched, failed, successful_item_ids: [...successfulItemIds], total: items.length, cancelled: true };
+  if (context.isCancelled()) return { enriched, failed, deferred, successful_item_ids: [...successfulItemIds], total: items.length, cancelled: true };
   console.log(`  ✅ Enriched ${enriched}/${items.length} items. Entities: ${entitiesSaved}, topics: ${topicsAssigned}.`);
   return {
     enriched,
     failed,
+    deferred,
     successful_item_ids: [...successfulItemIds],
     entities: entitiesSaved,
     topics: topicsAssigned,
     total: items.length,
+    task_stats: taskStats,
     batch_items: batchItemSize,
     workers: Math.min(batchConcurrency, chunks.length),
     priority_sources: ENRICH_PRIORITY_SOURCES,

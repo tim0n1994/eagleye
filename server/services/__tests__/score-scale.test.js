@@ -40,8 +40,6 @@ describe('REST API score-scale declarations (plan OBS-08 / T03)', () => {
   it('/api/items declares the legacy unbounded score scale', () => {
     const mocks = {
       '../db/connection': { getDB: () => db },
-      '../services/deploy': { generateDeployPlan: async () => ({}), checkDeployEligibility: () => ({ eligible: false }) },
-      '../services/research': { generateItemResearch: async () => ({}), getResearchReport: () => null, answerItemResearchChat: async () => ({}) },
       './_shared': require('../../routes/_shared'),
       '../services/date-contract': require('../date-contract'),
     };

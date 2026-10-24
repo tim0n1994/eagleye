@@ -1,0 +1,16 @@
+[Unit]
+Description=Eagleye R3 KG convergence drainer (2h fire, EAGLEYE_R3_DRAINER)
+Documentation=file:///home/jc/projects/eagleye/scripts/kg-drain.js
+
+[Service]
+Type=oneshot
+# 3b98144 enrich-drainer pattern: the timer fires this oneshot script, which
+# probes the convergence backlog read-only and fires the kg-drain singleton
+# job through the job system (never writes the DB directly).
+WorkingDirectory=/home/jc/projects/eagleye
+Environment=EAGLEYE_R3_DRAINER=1
+Environment=PATH=/home/jc/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/jc/.local/bin/node /home/jc/projects/eagleye/scripts/kg-drain.js
+# Rollback: remove Environment= (or stop/disable the timer) — the drainer
+# then no-ops and the nightly pipeline keeps its one-shot 200/500/1000 shape.
+Nice=19
