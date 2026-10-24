@@ -67,14 +67,15 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def cmd_extract(args: argparse.Namespace) -> int:
     conn = connect(args.db)
-    metrics = extract(conn, split_sources(args.sources), args.limit)
+    metrics = extract(conn, split_sources(args.sources), args.limit, order=args.order)
     print(json.dumps({"status": "ok", **metrics}, ensure_ascii=False, indent=2))
     return 0
 
 
 def cmd_topics(args: argparse.Namespace) -> int:
     conn = connect(args.db)
-    metrics = discover_topics(conn, split_sources(args.sources), args.limit, args.min_items)
+    metrics = discover_topics(conn, split_sources(args.sources), args.limit, args.min_items,
+                              pending=args.pending, order=args.order)
     print(json.dumps({"status": "ok", **metrics}, ensure_ascii=False, indent=2))
     return 0
 
@@ -92,6 +93,7 @@ def cmd_embed(args: argparse.Namespace) -> int:
         args.force,
         args.max_chars,
         args.backend,
+        order=args.order,
     )
     print(json.dumps({"status": "ok", **metrics}, ensure_ascii=False, indent=2))
     return 0
@@ -108,12 +110,19 @@ def build_parser() -> argparse.ArgumentParser:
     extract_parser = sub.add_parser("extract", help="Run deterministic KG extraction")
     extract_parser.add_argument("--sources", default=None, help="Comma-separated source slugs")
     extract_parser.add_argument("--limit", type=int, default=100)
+    extract_parser.add_argument("--order", choices=["newest-first", "oldest-first"], default=None,
+                                help="R3 drainer: drain ordering (default keeps the score-first selection)")
     extract_parser.set_defaults(func=cmd_extract)
 
     topics_parser = sub.add_parser("topics", help="Run semantic-lite vectorization and dynamic topic discovery")
     topics_parser.add_argument("--sources", default=None, help="Comma-separated source slugs")
     topics_parser.add_argument("--limit", type=int, default=5000)
     topics_parser.add_argument("--min-items", type=int, default=5)
+    topics_parser.add_argument("--pending", action="store_true",
+                               help="R3 drainer: converging selection — only items still missing a semantic-lite "
+                                    "vector or a dynamic-topic assignment (R3.1 C: lite alone is not done)")
+    topics_parser.add_argument("--order", choices=["newest-first", "oldest-first"], default=None,
+                               help="R3 drainer: drain ordering (default keeps the score-first selection)")
     topics_parser.set_defaults(func=cmd_topics)
 
     embed_parser = sub.add_parser("embed", help="Generate dense item vectors")
@@ -131,6 +140,8 @@ def build_parser() -> argparse.ArgumentParser:
     embed_parser.add_argument("--parallel", type=int, default=None)
     embed_parser.add_argument("--max-chars", type=int, default=1200)
     embed_parser.add_argument("--force", action="store_true", help="Recompute vectors even if content hash matches")
+    embed_parser.add_argument("--order", choices=["newest-first", "oldest-first"], default=None,
+                              help="R3 drainer: drain ordering (default keeps the score-first selection)")
     embed_parser.set_defaults(func=cmd_embed)
 
     return parser

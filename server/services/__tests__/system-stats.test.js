@@ -21,6 +21,7 @@ beforeEach(() => {
     CREATE TABLE dynamic_topics (id TEXT);
     CREATE TABLE item_features (item_id TEXT);
     CREATE TABLE item_vectors (item_id TEXT, vector_type TEXT, model_name TEXT);
+    ALTER TABLE information_items ADD COLUMN duplicate_of TEXT; -- R3.0: 生产由新迁移提供
     CREATE TABLE background_jobs (id TEXT, job_type TEXT, status TEXT, result TEXT, created_at TEXT, completed_at TEXT, error TEXT);
     INSERT INTO sources VALUES ('s', 'source', 'Source', 1, '2026-09-08T09:00:00Z');
   `);
@@ -29,7 +30,7 @@ afterEach(() => db.close());
 
 describe('system stats read model', () => {
   it('partitions 100 current items into 30 successful, 10 retryable, 60 exhausted', () => {
-    const insert = db.prepare(`INSERT INTO information_items VALUES (?, 's', ?, '2026-08-01', '2026-08-01 12:00:00')`);
+    const insert = db.prepare(`INSERT INTO information_items (id, source_id, enrichment_attempts, digest_date, fetched_at) VALUES (?, 's', ?, '2026-08-01', '2026-08-01 12:00:00')`);
     for (let i = 0; i < 100; i++) insert.run(String(i), i < 30 || i >= 40 ? 3 : null);
     const summary = db.prepare('INSERT INTO ai_summaries (item_id, short_summary, translation_status) VALUES (?, ?, ?)');
     for (let i = 0; i < 30; i++) summary.run(String(i), 'Useful summary', i < 20 ? 'translated' : null);
@@ -57,7 +58,7 @@ describe('system stats read model', () => {
   });
 
   it('deduplicates KG items and exposes hash and semantic coverage separately', () => {
-    db.exec(`INSERT INTO information_items VALUES ('i', 's', 0, '20260908', '2026-09-08T09:00:00Z');
+    db.exec(`INSERT INTO information_items (id, source_id, enrichment_attempts, digest_date, fetched_at) VALUES ('i', 's', 0, '20260908', '2026-09-08T09:00:00Z');
       INSERT INTO item_features VALUES ('i'), ('deleted');
       INSERT INTO item_vectors VALUES ('i', 'semantic-hash', 'eagleye-hash-v1'), ('i', 'semantic-fastembed', 'BAAI/bge-small-en-v1.5'), ('deleted', 'semantic', 'other');`);
     const stats = read();
@@ -69,7 +70,7 @@ describe('system stats read model', () => {
   });
 
   it('compares mixed timestamp representations as dates', () => {
-    db.exec(`INSERT INTO information_items VALUES ('early', 's', 0, '20260908', '2026-09-08T09:00:00Z'),
+    db.exec(`INSERT INTO information_items (id, source_id, enrichment_attempts, digest_date, fetched_at) VALUES ('early', 's', 0, '20260908', '2026-09-08T09:00:00Z'),
       ('late', 's', 0, '20260908', '2026-09-08 10:00:00');`);
     expect(read().latest_item_fetched_at).toBe('2026-09-08T10:00:00.000Z');
     expect(read().connectors[0].latest_item_fetched_at).toBe('2026-09-08T10:00:00.000Z');
@@ -85,7 +86,7 @@ describe('system stats read model', () => {
   });
 
   it('keeps read results identical with idempotent covering indexes', () => {
-    db.exec(`INSERT INTO information_items VALUES ('i', 's', 3, '20260908', '2026-09-08');
+    db.exec(`INSERT INTO information_items (id, source_id, enrichment_attempts, digest_date, fetched_at) VALUES ('i', 's', 3, '20260908', '2026-09-08');
       INSERT INTO ai_summaries (item_id, short_summary) VALUES ('i', 'Useful summary'), ('i', '');`);
     const before = read();
     const migration = fs.readFileSync(path.join(__dirname, '../../migrations/029_system_stats_indexes.sql'), 'utf8');

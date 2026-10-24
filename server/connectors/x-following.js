@@ -19,18 +19,118 @@
  *  - Jina needs no auth but is rate-limited and loses exact metrics/dates
  *
  * Config (env or runtime):
+ *  X_FOLLOWING_MODE="feed"|"per-user"                      (default feed; per-user is explicit legacy)
  *  X_FOLLOWING_USERS="elonmusk,sama,DHH,paulg"           (comma-separated, no @)
  *  X_FOLLOWING_CONFIG_PATH="/abs/path/to/users.txt"      (optional override)
  *  X_FOLLOWING_CACHE_TTL_MS=1800000                       (default 30 min, Jina path)
+ *
+ * Feed mode is the only recommended/default mode. It strictly pages the
+ * incremental following timeline via `twitter feed -t following ...`; it never
+ * expands a feed failure into a 442-account per-user scan. Each page has a
+ * hard abort deadline, and the whole feed run has a smaller budget than the
+ * pipeline 180s source budget. A successfully persisted batch advances the
+ * global user_data cursor first; a later failed page leaves that checkpoint
+ * and saved rows intact for the next run. A failed attempt enters a cooldown
+ * so the next scheduler tick cannot immediately repeat the same fault.
+ * X_FOLLOWING_MODE=per-user is the explicit legacy escape hatch and keeps the
+ * old path verbatim; it never touches the feed cursor.
  */
 
 const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
 const { readXFollowingConfig } = require('../services/x-following-config');
 const reach = require('../services/agent-reach');
+const userData = require('../db/user-data');
 const { setTimeout: sleep } = require('node:timers/promises');
 
 const CACHE = new Map(); // username -> { ts, posts }  (Jina path only)
+
+// Incremental timeline cursor (user_data, global scope per the
+// server-level-keys convention in server/db/user-data.js header).
+const X_CURSOR_KEY = 'x_following_cursor';
+// Feed failure backoff ledger (also global scope). This is deliberately
+// separate from the data checkpoint: backoff must never move the cursor.
+const X_FAILURE_KEY = 'x_following_failure';
+
+/**
+ * Resolve the mode switch. Feed is the safe default because the legacy mode
+ * serially scans every followed account. Only the exact value "per-user"
+ * opts back into that legacy behavior.
+ */
+function resolveXMode() {
+  const raw = String(process.env.X_FOLLOWING_MODE || '').trim().toLowerCase();
+  return raw === 'per-user' ? 'per-user' : 'feed';
+}
+
+/**
+ * Read the incremental cursor {cursor, updated_at, ...} from user_data
+ * (global scope). Storage failures degrade to "no cursor" — a broken cursor
+ * table must not take the source down, it just makes the next run first-run.
+ */
+function readXCursor() {
+  try {
+    const row = userData.getValue(X_CURSOR_KEY);
+    const cursor = row ? String(row.cursor ?? '') : '';
+    if (!/^\d+$/.test(cursor)) return null;
+    return { cursor, updated_at: row.updated_at || null };
+  } catch (err) {
+    console.warn(`  ⚠ X Following: cursor read failed (${err.message}) — assuming no cursor`);
+    return null;
+  }
+}
+
+/** Persist the cursor (global scope — machine-level watermark, no owner id). */
+function writeXCursor(cursor, extra = {}) {
+  try {
+    userData.setValue(X_CURSOR_KEY, {
+      cursor: String(cursor),
+      updated_at: new Date().toISOString(),
+      ...extra,
+    }, userData.GLOBAL_SCOPE ?? '');
+    return true;
+  } catch (err) {
+    console.warn(`  ⚠ X Following: cursor write failed (${err.message})`);
+    return false;
+  }
+}
+
+function readFailureState() {
+  try {
+    const row = userData.getValue(X_FAILURE_KEY);
+    return row && typeof row === 'object' ? row : {};
+  } catch (err) {
+    console.warn(`  ⚠ X Following: failure state read failed (${err.message})`);
+    return {};
+  }
+}
+
+function writeFailureState(state) {
+  try {
+    userData.setValue(X_FAILURE_KEY, state, userData.GLOBAL_SCOPE ?? '');
+  } catch (err) {
+    console.warn(`  ⚠ X Following: failure state write failed (${err.message})`);
+  }
+}
+
+/**
+ * Compare tweet ids as integers. Snowflake ids are 19 digits — beyond
+ * Number.MAX_SAFE_INTEGER — so they MUST go through BigInt (equal-length
+ * strings would also compare fine lexicographically, BigInt also covers the
+ * ragged-length case).
+ */
+function tweetIdLE(a, b) {
+  const x = String(a);
+  const y = String(b);
+  if (/^\d+$/.test(x) && /^\d+$/.test(y)) {
+    try { return BigInt(x) <= BigInt(y); } catch { /* fall through */ }
+  }
+  return x <= y;
+}
+
+/** Retweets: recognized either by the explicit isRetweet flag or the "RT @" text prefix. */
+function isRetweetTweet(tw) {
+  return tw?.isRetweet === true || /^\s*RT\s+@/.test(String(tw?.text || ''));
+}
 
 function envInt(name, fallback, min, max) {
   const value = parseInt(process.env[name] || `${fallback}`, 10);
@@ -63,9 +163,51 @@ function isNetworkError(err) {
   return /timeout|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|socket hang up/i.test(text);
 }
 
+/**
+ * Await one upstream call under a hard local deadline and the run abort
+ * signal. Once this wrapper settles, a late upstream promise is ignored and
+ * cannot mutate feed state or advance the checkpoint.
+ */
+function withHardDeadline(promise, signal, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer = null;
+    const finish = (ok, value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      if (ok) resolve(value);
+      else reject(value);
+    };
+    function onAbort() {
+      finish(false, signal.reason || new Error(label + ' aborted'));
+    }
+    if (signal.aborted) {
+      finish(false, signal.reason || new Error(label + ' aborted'));
+      return;
+    }
+    timer = setTimeout(() => {
+      const err = new Error(label + ' exceeded ' + timeoutMs + 'ms deadline');
+      err.name = 'TimeoutError';
+      finish(false, err);
+    }, timeoutMs);
+    signal.addEventListener('abort', onAbort, { once: true });
+    Promise.resolve().then(() => promise).then(
+      value => finish(true, value),
+      err => finish(false, err),
+    );
+  });
+}
+
 class XFollowingConnector extends BaseConnector {
   constructor() {
     super('x-following');
+  }
+
+  /** Round 2 ① mode switch (static so the pipeline can consult it cheaply). */
+  static resolveMode() {
+    return resolveXMode();
   }
 
   /**
@@ -138,7 +280,7 @@ class XFollowingConnector extends BaseConnector {
     });
   }
 
-  _twitterPostToItem(username, p) {
+  _twitterPostToItem(username, p, opts = {}) {
     const cleanedText = (p.text || '')
       .replace(/^Quote\s+/i, '')
       .replace(/\s+/g, ' ')
@@ -159,7 +301,7 @@ class XFollowingConnector extends BaseConnector {
       sourcePayload: {
         tweetId: p.id,
         handle: username,
-        backend: 'twitter-cli',
+        backend: opts.backend || 'twitter-cli',
         views: p.views,
         likes: p.likes,
         retweets: p.retweets,
@@ -175,6 +317,295 @@ class XFollowingConnector extends BaseConnector {
         bookmarks: p.bookmarks,
       },
     });
+  }
+
+  // ─── Round 2 ① feed backend: incremental following timeline ────────────
+
+  /**
+   * Normalize a following-feed tweet to the same shape `_fetchUserTimelineTwitter`
+   * produces (feed and user-posts emit the same twitter-cli item schema), so
+   * `_twitterPostToItem` can be shared between both backends.
+   */
+  _normalizeFeedTweet(tw) {
+    const handle = tw.author?.screenName || '';
+    const text = String(tw.text || '').replace(/\s+/g, ' ').trim();
+    const tweetId = String(tw.id || '');
+    const url = tweetId ? `https://x.com/${handle}/status/${tweetId}` : '';
+    const m = tw.metrics || {};
+    return {
+      id: tweetId,
+      url,
+      text,
+      isoDate: tw.createdAtISO || new Date().toISOString(),
+      views: m.views || 0,
+      likes: m.likes || 0,
+      retweets: m.retweets || 0,
+      replies: m.replies || 0,
+      bookmarks: m.bookmarks || 0,
+      author: handle,
+      lang: tw.lang || 'und',
+    };
+  }
+
+  /**
+   * A previous failed feed attempt suppresses the next immediate upstream
+   * call. The cursor is never part of this ledger.
+   */
+  _feedAttemptAllowed(cooldownMs) {
+    if (!(cooldownMs > 0)) return true;
+    const state = readFailureState();
+    const last = Date.parse(state.last_failure_at || '');
+    const explicitNext = Date.parse(state.next_attempt_at || '');
+    const nextAt = Number.isFinite(explicitNext)
+      ? explicitNext
+      : Number.isFinite(last) ? last + cooldownMs : 0;
+    if (nextAt > Date.now()) {
+      const seconds = Math.ceil((nextAt - Date.now()) / 1000);
+      console.warn(`  ⛔ X Following: feed retry suppressed for ${seconds}s after ${state.last_failure_at}: ${state.reason || 'previous failure'}`);
+      return false;
+    }
+    return true;
+  }
+
+  _recordFeedFailure(reason) {
+    const now = Date.now();
+    const cooldownMs = envInt('X_FOLLOWING_FAILURE_COOLDOWN_MS', 30 * 60 * 1000, 0, 24 * 3600 * 1000);
+    const state = readFailureState();
+    writeFailureState({
+      last_failure_at: new Date(now).toISOString(),
+      next_attempt_at: new Date(now + cooldownMs).toISOString(),
+      reason: String(reason).slice(0, 300),
+      count: (state.count || 0) + 1,
+    });
+  }
+
+  /**
+   * Strict incremental feed mode: a feed fault is terminal for this run. It
+   * never invokes user-posts or the legacy serial scanner.
+   */
+  async fetchViaFeed(users, { signal } = {}) {
+    signal?.throwIfAborted();
+    const cooldownMs = envInt('X_FOLLOWING_FAILURE_COOLDOWN_MS', 30 * 60 * 1000, 0, 24 * 3600 * 1000);
+    if (!this._feedAttemptAllowed(cooldownMs)) {
+      const err = new Error('X Following feed retry suppressed by failure cooldown');
+      err.name = 'UpstreamCooldownError';
+      err.code = 'FEED_COOLDOWN';
+      throw err;
+    }
+
+    // Keep the connector-owned ceiling far below fetchSource's default 180s.
+    // The ceiling can be tuned downward, but is capped at two minutes so a bad
+    // environment value cannot recreate the multi-hour stall.
+    const totalMs = envInt('X_FOLLOWING_FEED_TOTAL_TIMEOUT_MS', 30000, 5000, 120000);
+    const deadline = Date.now() + totalMs;
+    const runController = new AbortController();
+    const runSignal = runController.signal;
+    const externalAbort = () => runController.abort(signal.reason);
+    signal?.addEventListener('abort', externalAbort, { once: true });
+    const totalError = new Error('X Following feed run exceeded ' + totalMs + 'ms budget');
+    totalError.name = 'TimeoutError';
+    const totalTimer = setTimeout(() => runController.abort(totalError), totalMs);
+    const state = { items: [] };
+
+    try {
+      await this._fetchViaFeedInner(users, {
+        signal: runSignal,
+        controller: runController,
+        callerSignal: signal,
+        deadline,
+        state,
+      });
+      return state.items;
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      console.warn(`  ⚠ X Following: feed mode failed (${err.message})`);
+      this._recordFeedFailure(err.message);
+      // Completed page batches and their cursor checkpoints stay durable, but
+      // the round must fail so source health and the X job expose the upstream
+      // outage instead of reporting a false zero-post success.
+      throw err;
+    } finally {
+      clearTimeout(totalTimer);
+      signal?.removeEventListener('abort', externalAbort);
+    }
+  }
+
+  async _fetchViaFeedInner(users, { signal, controller, callerSignal, deadline, state }) {
+    // Case-insensitive following set: config handles → canonical spelling.
+    const following = new Map();
+    for (const u of users) {
+      const handle = String(u).replace(/^@/, '');
+      following.set(handle.toLowerCase(), handle);
+    }
+
+    const cursorRow = readXCursor();
+    const sinceId = cursorRow?.cursor || null;
+    const pageSize = envInt('X_FOLLOWING_FEED_PAGE_SIZE', 200, 20, 400);
+    const maxPages = envInt('X_FOLLOWING_FEED_MAX_PAGES', 10, 1, 50);
+    const pageTimeoutMs = envInt('X_FOLLOWING_FEED_PAGE_TIMEOUT_MS', 8000, 1000, 30000);
+    const dbBatchSize = envInt('X_FOLLOWING_DB_BATCH_SIZE', 50, 1, 200);
+    // The feed is not strictly sorted: pinned/injected old tweets can land
+    // mid-page. Only a run of at/below-cursor entries confirms the watermark.
+    const confirmRun = envInt('X_FOLLOWING_CURSOR_CONFIRM_RUN', 8, 1, 100);
+    const includeRt = process.env.X_FOLLOWING_INCLUDE_RT === '1';
+
+    let checkpointId = sinceId;
+    let reachedCursor = false;
+    let hitBottom = false;
+    let pagesFetched = 0;
+    let nextToken = null;
+    let cursorRun = 0;
+
+    const maxId = (a, b) => (a === null || tweetIdLE(a, b) ? b : a);
+    const writeCheckpoint = (cursor, extra) => {
+      if (!cursor) return true;
+      if (checkpointId && !tweetIdLE(checkpointId, cursor)) return true;
+      if (checkpointId === cursor) return true;
+      const ok = writeXCursor(cursor, { mode: 'feed', checkpoint: true, ...extra });
+      if (!ok) {
+        this._recordFeedFailure('cursor checkpoint write failed');
+        return false;
+      }
+      checkpointId = cursor;
+      return true;
+    };
+    const persistPage = (pageNumber, pageItems, pageItemIds, pageMaxId) => {
+      const metadata = { pages: pageNumber, batch_size: dbBatchSize, page_complete: true };
+      if (pageItems.length === 0) {
+        return writeCheckpoint(pageMaxId, { ...metadata, items: 0 });
+      }
+
+      let persistedCount = 0;
+      for (let offset = 0; offset < pageItems.length; offset += dbBatchSize) {
+        const items = pageItems.slice(offset, offset + dbBatchSize);
+        const batchIds = pageItemIds.slice(offset, offset + dbBatchSize);
+        let outcome;
+        try {
+          outcome = this.saveItems(items, { returnDetails: true });
+        } catch (err) {
+          throw new Error('batch persistence failed: ' + err.message, { cause: err });
+        }
+        if (!outcome || outcome.error || outcome.failed > 0) {
+          throw new Error('batch persistence failed: ' + (outcome?.error || outcome?.failed + ' item(s)'));
+        }
+        state.items.push(...(outcome.items || []));
+        persistedCount += (outcome.items || []).length;
+        const batchMaxId = batchIds.reduce((acc, id) => maxId(acc, id), null);
+        const batchOk = writeCheckpoint(batchMaxId, {
+          ...metadata,
+          items: persistedCount,
+          page_complete: false,
+        });
+        if (!batchOk) throw new Error('cursor checkpoint write failed');
+      }
+
+      if (!writeCheckpoint(pageMaxId, { ...metadata, items: persistedCount })) {
+        throw new Error('cursor checkpoint write failed');
+      }
+      return true;
+    };
+
+    console.log(`  🐦 X Following: feed mode (page=${pageSize}, cap=${maxPages}, cursor=${sinceId || 'none'}, confirm_run=${confirmRun}, rt=${includeRt ? 'keep' : 'filter'})...`);
+
+    while (pagesFetched < maxPages) {
+      callerSignal?.throwIfAborted();
+      signal.throwIfAborted();
+      const remainingMs = deadline - Date.now();
+      const pageBudgetMs = Math.min(pageTimeoutMs, Math.max(1, remainingMs));
+      if (pageBudgetMs < 1000) {
+        const err = new Error('X Following feed run exhausted its time budget');
+        err.name = 'TimeoutError';
+        throw err;
+      }
+
+      const args = ['feed', '-t', 'following', '-n', String(pageSize), '--json'];
+      if (nextToken) args.push('--cursor', nextToken);
+      const pageError = new Error('X Following feed page exceeded ' + pageBudgetMs + 'ms deadline');
+      pageError.name = 'TimeoutError';
+      const pageTimer = setTimeout(() => controller.abort(pageError), pageBudgetMs);
+      let result;
+      try {
+        result = await withHardDeadline(
+          reach.runReach('twitter', args, { jsonMode: 'cli-json', signal, timeoutMs: pageBudgetMs }),
+          signal,
+          pageBudgetMs,
+          'X Following feed page',
+        );
+      } catch (err) {
+        if (callerSignal?.aborted) throw err;
+        console.warn(`  ⚠ X Following: feed page failed after ${pagesFetched} completed page(s): ${err.message}`);
+        throw err;
+      } finally {
+        clearTimeout(pageTimer);
+      }
+
+      pagesFetched++;
+      if (!result || result.ok !== true) {
+        const reason = `${result?.code || 'unknown'} — ${result?.message || ''}`;
+        console.warn(`  ⚠ X Following: feed failed after ${pagesFetched} page(s); keeping completed checkpoint: ${reason}`);
+        const err = new Error(`X Following feed failed: ${reason}`);
+        err.code = result?.code || 'FEED_FAILED';
+        throw err;
+      }
+
+      const tweets = Array.isArray(result.data) ? result.data
+        : (result.raw && Array.isArray(result.raw.data)) ? result.raw.data : [];
+      // twitter-cli can return {ok:true,data:[]} when its ClientTransaction
+      // bootstrap is broken. Treat an empty first page as an upstream failure,
+      // otherwise the source is recorded as healthy/empty indefinitely.
+      // Empty later pages remain a normal bottom-of-feed condition.
+      if (pagesFetched === 1 && tweets.length === 0) {
+        const err = new Error('X Following feed returned an empty first page');
+        err.name = 'UpstreamEmptyError';
+        err.code = 'EMPTY_FEED';
+        throw err;
+      }
+      const pageItems = [];
+      const pageItemIds = [];
+      const seenIds = new Set();
+      let pageMaxId = checkpointId;
+
+      for (const tw of tweets) {
+        if (!tw || tw.id === undefined || tw.id === null) continue;
+        const id = String(tw.id);
+        if (sinceId && tweetIdLE(id, sinceId)) {
+          cursorRun++;
+          if (cursorRun >= confirmRun) {
+            reachedCursor = true;
+            break;
+          }
+          continue;
+        }
+        cursorRun = 0;
+        pageMaxId = maxId(pageMaxId, id);
+        const handle = following.get(String(tw.author?.screenName || '').toLowerCase());
+        if (!handle) continue;
+        if (!includeRt && isRetweetTweet(tw)) continue;
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+        pageItems.push(this._twitterPostToItem(handle, this._normalizeFeedTweet(tw), { backend: 'twitter-feed' }));
+        pageItemIds.push(id);
+      }
+
+      if (!persistPage(pagesFetched, pageItems, pageItemIds, pageMaxId)) return;
+      if (reachedCursor) break;
+
+      const token = result.raw?.cursor ?? result.cursor;
+      const tokenStr = token === undefined || token === null ? '' : String(token);
+      if (!tokenStr) {
+        hitBottom = true;
+        break;
+      }
+      if (nextToken !== null && tokenStr === nextToken) {
+        console.warn('  ⚠ X Following: feed cursor token stopped advancing — treating as bottom');
+        hitBottom = true;
+        break;
+      }
+      nextToken = tokenStr;
+    }
+
+    const hitPageCap = !reachedCursor && !hitBottom && pagesFetched >= maxPages;
+    console.log(`  🐦 X Following: ${state.items.length} persisted post(s) from following feed (${pagesFetched} page(s)${reachedCursor ? ', cursor confirmed' : hitBottom ? ', hit bottom' : hitPageCap ? ', hit page cap' : ''})`);
   }
 
   // ─── Fallback backend: Jina Reader ─────────────────────────────────────
@@ -411,7 +842,19 @@ class XFollowingConnector extends BaseConnector {
       return [];
     }
 
-    const perUser = envInt('X_FOLLOWING_TWEETS_PER_USER', 10, 1, 40);
+    // Feed is the default and recommended incremental path. The serial
+    // scanner is available only through the explicit legacy switch.
+    if (resolveXMode() === 'per-user') {
+      console.warn('  ⚠ X Following: explicit legacy per-user mode — serially scanning configured accounts; prefer the feed default');
+      return this.fetchViaPerUser(users, { signal });
+    }
+    return this.fetchViaFeed(users, { signal });
+  }
+
+  async fetchViaPerUser(users, { signal } = {}) {
+    signal?.throwIfAborted();
+
+    const perUser = envInt('X_FOLLOWING_TWEETS_PER_USER', 5, 1, 40);
     const concurrency = envInt('X_FOLLOWING_CONCURRENCY', 4, 1, 8);
     const delayMs = envInt('X_FOLLOWING_BATCH_DELAY_MS', 0, 0, 60000);
 
@@ -507,6 +950,10 @@ class XFollowingConnector extends BaseConnector {
       } catch (err) {
         signal?.throwIfAborted();
         if (err.name === 'AbortError') throw err;
+        // D4: per-user network failures must not be silent — single failures
+        // were previously swallowed (only the circuit-breaker threshold
+        // logged anything), so log each one with the source name.
+        console.error(`[x-following] timeline for ${username} failed:`, err.message);
         // Only network errors bubble out of fetchUserTimelineJina.
         consecutiveFailures++;
         if (consecutiveFailures >= circuitThreshold && !circuitTripped) {

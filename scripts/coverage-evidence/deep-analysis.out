@@ -1,0 +1,90 @@
+DEEP_PULL file=feed-n500-max.json requested=500 items=500 truncated=False dup_ids=0 is_rt=69
+DEEP_PULL_N3000 file=feed-n3000.json items=200 (default maxCount=200 cap; same timeline)
+DEEP_TIME newest=2026-10-20T14:16:33+00:00 oldest=2024-04-02T01:39:55+00:00 oldest_age_h=22356.76 dense_reach_age_h=152.98 ancient_cutoff_days=7 snapshot_h_after_window_end=1.15
+WINDOW start=2026-10-19T13:16:13.688033+00:00 end=2026-10-20T13:16:13.688033+00:00
+SNAPSHOT window_items=364 cfg_author_in_window=198 distinct_authors=250 ancient_items=48 ancient_positions=[25, 71, 79, 85, 110, 138, 143, 158, 168, 174]
+HISTOGRAM 10-19-13=1 10-19-14=1 10-19-15=1 10-19-16=2 10-19-17=1 10-19-19=1 10-19-20=1 10-19-21=1 10-19-22=2 10-19-23=1 10-20-00=4 10-20-01=4 10-20-03=4 10-20-04=3 10-20-05=4 10-20-06=5 10-20-07=18 10-20-08=59 10-20-09=45 10-20-10=56 10-20-11=51 10-20-12=66 10-20-13=33
+LOAD cadence=1h observed_max_rolling_items=66 margin=15 effective=81
+LOAD cadence=2h observed_max_rolling_items=117 margin=15 effective=132
+ACCOUNT SML_RoyaleAPI src=orig fetched=40 baseline=0
+ACCOUNT ShengjieWa34067 src=orig fetched=40 baseline=0
+ACCOUNT goodside src=orig fetched=40 baseline=0
+ACCOUNT ericjang11 src=orig fetched=40 baseline=0
+ACCOUNT jeremysliew src=orig fetched=40 baseline=1
+ACCOUNT zst96687522 src=orig fetched=40 baseline=2
+ACCOUNT pranavrajpurkar src=orig fetched=40 baseline=0
+ACCOUNT TransluceAI src=orig fetched=40 baseline=0
+ACCOUNT ShenHuang src=orig fetched=40 baseline=0
+ACCOUNT vkhosla src=orig fetched=40 baseline=0
+ACCOUNT fraouf src=orig fetched=40 baseline=0
+ACCOUNT thinkymachines src=orig fetched=40 baseline=0
+ACCOUNT zhijianliu_ ERROR missing_or_invalid
+ACCOUNT CuiMao src=orig fetched=40 baseline=9
+ACCOUNT OnlyTerp src=orig fetched=40 baseline=4
+ACCOUNT KatrinaQWang2 src=orig fetched=40 baseline=0
+ACCOUNT Grad62304977 src=orig fetched=40 baseline=0
+ACCOUNT EMostaque src=orig fetched=40 baseline=0
+ACCOUNT SpaceTimeViking src=orig fetched=40 baseline=0
+ACCOUNT natolambert src=orig fetched=40 baseline=1
+ACCOUNT zihaozhou_ src=orig fetched=40 baseline=0
+ACCOUNT tphuang src=orig fetched=40 baseline=14
+ACCOUNT scaling01 src=orig fetched=40 baseline=10
+ACCOUNT dotey src=orig fetched=40 baseline=10
+ACCOUNT nick_fiacco src=orig fetched=40 baseline=0
+ACCOUNT AkariAsai src=orig fetched=40 baseline=5
+ACCOUNT Dong_Yu_AI src=orig fetched=9 baseline=0
+ACCOUNT nathanbenaich src=orig fetched=40 baseline=9
+ACCOUNT bozhou_ai src=orig fetched=40 baseline=4
+ACCOUNT fahdmirza src=orig fetched=40 baseline=2
+BASELINE accounts_ok=29 errors=1 items=71 union=70 rt=16 nonrt=54
+ERROR_ACCOUNTS zhijianliu_
+DIRECT matched=15 baseline=70 coverage_pct=21.43
+REPLAY cadence=1h n=200 matched=15 coverage_pct=21.43
+REPLAY cadence=1h n=500 matched=15 coverage_pct=21.43
+REPLAY cadence=2h n=200 matched=15 coverage_pct=21.43
+REPLAY cadence=2h n=500 matched=15 coverage_pct=21.43
+CADENCE cadence=1h n=200 catch_p=1.0 caught=70.0 coverage_pct=100.0 rt_off_coverage_pct=98.15
+CADENCE cadence=1h n=500 catch_p=1.0 caught=70.0 coverage_pct=100.0 rt_off_coverage_pct=98.15
+CADENCE cadence=2h n=200 catch_p=1.0 caught=70.0 coverage_pct=100.0 rt_off_coverage_pct=98.15
+CADENCE cadence=2h n=500 catch_p=1.0 caught=70.0 coverage_pct=100.0 rt_off_coverage_pct=98.15
+INTERVAL cadence=1h span=10-20 12:16..10-20 13:16 total=1 matched=1 elig_miss=0 reply_miss=0
+INTERVAL cadence=1h span=10-20 11:16..10-20 12:16 total=1 matched=1 elig_miss=0 reply_miss=0
+INTERVAL cadence=1h span=10-20 10:16..10-20 11:16 total=5 matched=5 elig_miss=0 reply_miss=0
+INTERVAL cadence=1h span=10-20 09:16..10-20 10:16 total=3 matched=3 elig_miss=0 reply_miss=0
+INTERVAL cadence=1h span=10-20 08:16..10-20 09:16 total=1 matched=1 elig_miss=0 reply_miss=0
+INTERVAL cadence=1h span=10-20 07:16..10-20 08:16 total=4 matched=2 elig_miss=2 reply_miss=0
+INTERVAL cadence=1h span=10-20 06:16..10-20 07:16 total=5 matched=0 elig_miss=5 reply_miss=0
+INTERVAL cadence=1h span=10-20 05:16..10-20 06:16 total=0 matched=0 elig_miss=0 reply_miss=0
+INTERVAL cadence=1h span=10-20 04:16..10-20 05:16 total=2 matched=0 elig_miss=2 reply_miss=0
+INTERVAL cadence=1h span=10-20 03:16..10-20 04:16 total=2 matched=0 elig_miss=2 reply_miss=0
+INTERVAL cadence=1h span=10-20 02:16..10-20 03:16 total=4 matched=0 elig_miss=4 reply_miss=0
+INTERVAL cadence=1h span=10-20 01:16..10-20 02:16 total=3 matched=0 elig_miss=3 reply_miss=0
+INTERVAL cadence=1h span=10-20 00:16..10-20 01:16 total=0 matched=0 elig_miss=0 reply_miss=0
+INTERVAL cadence=1h span=10-19 23:16..10-20 00:16 total=4 matched=2 elig_miss=2 reply_miss=0
+INTERVAL cadence=1h span=10-19 22:16..10-19 23:16 total=3 matched=0 elig_miss=3 reply_miss=0
+INTERVAL cadence=1h span=10-19 21:16..10-19 22:16 total=1 matched=0 elig_miss=1 reply_miss=0
+INTERVAL cadence=1h span=10-19 20:16..10-19 21:16 total=6 matched=0 elig_miss=6 reply_miss=0
+INTERVAL cadence=1h span=10-19 19:16..10-19 20:16 total=3 matched=0 elig_miss=3 reply_miss=0
+INTERVAL cadence=1h span=10-19 18:16..10-19 19:16 total=5 matched=0 elig_miss=5 reply_miss=0
+INTERVAL cadence=1h span=10-19 17:16..10-19 18:16 total=3 matched=0 elig_miss=3 reply_miss=0
+INTERVAL cadence=1h span=10-19 16:16..10-19 17:16 total=2 matched=0 elig_miss=2 reply_miss=0
+INTERVAL cadence=1h span=10-19 15:16..10-19 16:16 total=7 matched=0 elig_miss=6 reply_miss=1
+INTERVAL cadence=1h span=10-19 14:16..10-19 15:16 total=4 matched=0 elig_miss=4 reply_miss=0
+INTERVAL cadence=1h span=10-19 13:16..10-19 14:16 total=2 matched=0 elig_miss=2 reply_miss=0
+CADENCE_SUMMARY cadence=1h best_n=200 best_coverage_pct=100.0 pulls_per_24h=24
+INTERVAL cadence=2h span=10-20 11:16..10-20 13:16 total=2 matched=2 elig_miss=0 reply_miss=0
+INTERVAL cadence=2h span=10-20 09:16..10-20 11:16 total=8 matched=8 elig_miss=0 reply_miss=0
+INTERVAL cadence=2h span=10-20 07:16..10-20 09:16 total=5 matched=3 elig_miss=2 reply_miss=0
+INTERVAL cadence=2h span=10-20 05:16..10-20 07:16 total=5 matched=0 elig_miss=5 reply_miss=0
+INTERVAL cadence=2h span=10-20 03:16..10-20 05:16 total=4 matched=0 elig_miss=4 reply_miss=0
+INTERVAL cadence=2h span=10-20 01:16..10-20 03:16 total=7 matched=0 elig_miss=7 reply_miss=0
+INTERVAL cadence=2h span=10-19 23:16..10-20 01:16 total=4 matched=2 elig_miss=2 reply_miss=0
+INTERVAL cadence=2h span=10-19 21:16..10-19 23:16 total=4 matched=0 elig_miss=4 reply_miss=0
+INTERVAL cadence=2h span=10-19 19:16..10-19 21:16 total=9 matched=0 elig_miss=9 reply_miss=0
+INTERVAL cadence=2h span=10-19 17:16..10-19 19:16 total=8 matched=0 elig_miss=8 reply_miss=0
+INTERVAL cadence=2h span=10-19 15:16..10-19 17:16 total=9 matched=0 elig_miss=8 reply_miss=1
+INTERVAL cadence=2h span=10-19 13:16..10-19 15:16 total=6 matched=0 elig_miss=6 reply_miss=0
+CADENCE_SUMMARY cadence=2h best_n=200 best_coverage_pct=100.0 pulls_per_24h=12
+CURSOR_WARNING ancient_items_rank_positions=[25, 71, 79, 85, 110, 138, 143, 158, 168, 174] min_rank=25 — pure cursor-stop would truncate pulls; require a minimum page floor before honouring the cursor
+RECOMMENDED cadence=2h n=200 coverage_pct=100.0 coverage_ok=True gate=95.0
+LIMITATIONS single_snapshot_lower_bound=true rank_monotonicity_assumed=true load_bound_from_observed_histogram=true window_fixed_from_previous_run=true reply_classifier=leading_mention

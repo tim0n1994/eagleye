@@ -1,0 +1,46 @@
+CONFIG accounts=442 sample_n=30 seed=20261020
+SAMPLE SML_RoyaleAPI ShengjieWa34067 goodside ericjang11 jeremysliew zst96687522 pranavrajpurkar TransluceAI ShenHuang vkhosla fraouf thinkymachines zhijianliu_ CuiMao OnlyTerp KatrinaQWang2 Grad62304977 EMostaque SpaceTimeViking natolambert zihaozhou_ tphuang scaling01 dotey nick_fiacco AkariAsai Dong_Yu_AI nathanbenaich bozhou_ai fahdmirza
+ENV /home/user/.config/argus/independent.env:6vars; /home/user/.config/argus/eagleye-twitter.credentials:2vars
+FEED fetched=200 window_items=180 bad_ts=0 oldest_age_h=22355.6 truncated=False is_retweet=25 retweeted_by=25 dur_s=11.6
+WINDOW start=2026-10-19T13:16:13.688033+00:00 end=2026-10-20T13:16:13.688033+00:00
+ACCOUNT SML_RoyaleAPI fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=8.2
+ACCOUNT ShengjieWa34067 fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=7.8
+ACCOUNT goodside fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=10.2
+ACCOUNT ericjang11 fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=13.8
+ACCOUNT jeremysliew fetched=40 baseline=1 matched=0 coverage=0.0 truncated=False bad_ts=0 dur_s=10.5
+ACCOUNT zst96687522 fetched=40 baseline=2 matched=0 coverage=0.0 truncated=False bad_ts=0 dur_s=6.7
+ACCOUNT pranavrajpurkar fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=7.6
+ACCOUNT TransluceAI fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=20.6
+ACCOUNT ShenHuang fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=12.4
+ACCOUNT vkhosla fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=14.9
+ACCOUNT fraouf fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=7.5
+ACCOUNT thinkymachines fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=19.8
+ACCOUNT zhijianliu_ ERROR code=EXIT_1 msg=WARNING twitter_cli.client: Failed to init ClientTransaction: 'NoneType' object has no attribute 'group'
+
+ACCOUNT CuiMao fetched=40 baseline=9 matched=0 coverage=0.0 truncated=False bad_ts=0 dur_s=10.5
+ACCOUNT OnlyTerp fetched=40 baseline=4 matched=0 coverage=0.0 truncated=False bad_ts=0 dur_s=13.1
+ACCOUNT KatrinaQWang2 fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=8.6
+ACCOUNT Grad62304977 fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=7.1
+ACCOUNT EMostaque fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=8.7
+ACCOUNT SpaceTimeViking fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=11.5
+ACCOUNT natolambert ERROR code=EXIT_1 msg=WARNING twitter_cli.client: Failed to init ClientTransaction: 'NoneType' object has no attribute 'group'
+WARNING twitter
+ACCOUNT zihaozhou_ ERROR code=EXIT_1 msg=WARNING twitter_cli.client: Failed to init ClientTransaction: 'NoneType' object has no attribute 'group'
+WARNING twitter
+ACCOUNT tphuang ERROR code=EXIT_1 msg=WARNING twitter_cli.client: Failed to init ClientTransaction: 'NoneType' object has no attribute 'group'
+WARNING twitter
+ACCOUNT scaling01 ERROR code=EXIT_1 msg=WARNING twitter_cli.client: Failed to init ClientTransaction: 'NoneType' object has no attribute 'group'
+WARNING twitter
+ACCOUNT dotey ERROR code=EXIT_1 msg=WARNING twitter_cli.client: Failed to init ClientTransaction: 'NoneType' object has no attribute 'group'
+WARNING twitter
+ACCOUNT nick_fiacco ERROR code=EXIT_1 msg=WARNING twitter_cli.client: Failed to init ClientTransaction: 'NoneType' object has no attribute 'group'
+WARNING twitter
+ACCOUNT AkariAsai fetched=40 baseline=5 matched=0 coverage=0.0 truncated=False bad_ts=0 dur_s=47.5
+ACCOUNT Dong_Yu_AI fetched=9 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=8.3
+ACCOUNT nathanbenaich fetched=40 baseline=9 matched=0 coverage=0.0 truncated=False bad_ts=0 dur_s=6.9
+ACCOUNT bozhou_ai fetched=40 baseline=4 matched=0 coverage=0.0 truncated=False bad_ts=0 dur_s=8.4
+ACCOUNT fahdmirza fetched=40 baseline=2 matched=0 coverage=0.0 truncated=False bad_ts=0 dur_s=7.4
+────────────────────────────────────────────────────────────
+AGGREGATE baseline_union=35 matched=0 coverage_pct=0.0 coverage_pct_cfg_author_filter=0.0
+SUMMARY sample=30 seed=20261020 window_h=24 accounts_with_baseline=8 baseline_total=35 matched_total=0 coverage_pct=0.0 cli_calls=31 elapsed_sec=709.9 errors=7 baseline_truncated=0 feed_truncated=False raw_dir=/tmp/shadow-coverage-raw-1792502162
+ERROR_ACCOUNTS zhijianliu_ natolambert zihaozhou_ tphuang scaling01 dotey nick_fiacco
