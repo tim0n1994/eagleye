@@ -65,7 +65,9 @@ describe('restart recovery for interrupted background jobs', () => {
       CREATE TABLE information_items (id TEXT PRIMARY KEY, source_id INTEGER, digest_date TEXT);
       INSERT INTO sources VALUES (1, 'Test source', 'test-source');
     `);
-    db.prepare('INSERT INTO information_items VALUES (?, ?, ?)').run('item-1', 1, require('../date-contract').todayDigestDate());
+    // Anchor the fixture to the persisted fetch date. todayDigestDate() made
+    // this recovery assertion drift when the suite crossed midnight locally.
+    db.prepare('INSERT INTO information_items VALUES (?, ?, ?)').run('item-1', 1, '2026-10-23');
     calls = [];
     const stage = (name, result) => vi.fn(async () => { calls.push(name); return result; });
     mocks = {

@@ -277,14 +277,24 @@ describe('x-following strict feed budget and checkpoint behavior', () => {
       pages: [{ failure: true, code: 'FEED_DOWN' }],
     });
 
-    const result = await harness.connector.fetch('20261023');
-
-    expect(result).toEqual([]);
+    await expect(harness.connector.fetch('20261023')).rejects.toThrow('FEED_DOWN');
     expect(feedArgs(harness.runReach)).toHaveLength(1);
     expect(feedArgs(harness.runReach)[0]).toEqual(expect.arrayContaining(['-t', 'following', '--json']));
     expect(harness.twitterUserPosts).not.toHaveBeenCalled();
     expect(harness.getUserData().has('x_following_cursor')).toBe(false);
     expect(failureValue(harness.getUserData())?.reason).toContain('FEED_DOWN');
+  });
+
+  it('treats an empty first feed page as a failed upstream round', async () => {
+    setEnv('X_FOLLOWING_FAILURE_COOLDOWN_MS', '0');
+    const harness = buildHarness({ pages: [{ tweets: [] }] });
+
+    await expect(harness.connector.fetch('20261023')).rejects.toMatchObject({
+      name: 'UpstreamEmptyError',
+      code: 'EMPTY_FEED',
+    });
+    expect(harness.getUserData().has('x_following_cursor')).toBe(false);
+    expect(failureValue(harness.getUserData())?.reason).toContain('empty first page');
   });
 
   it('keeps explicit per-user as legacy while feed remains the default route', async () => {
@@ -338,8 +348,7 @@ describe('x-following strict feed budget and checkpoint behavior', () => {
     `);
 
     try {
-      const result = await harness.connector.fetchViaFeed(['alice']);
-      expect(result).toHaveLength(1);
+      await expect(harness.connector.fetchViaFeed(['alice'])).rejects.toThrow('forced persistence failure');
       expect(db.prepare('SELECT COUNT(*) AS count FROM information_items').get().count).toBe(1);
       expect(db.prepare('SELECT COUNT(*) AS count FROM outbox').get().count).toBe(1);
       expect(cursorValue(harness.getUserData())?.cursor).toBe(`${BASE_ID}401`);
@@ -359,8 +368,7 @@ describe('x-following strict feed budget and checkpoint behavior', () => {
       ],
     });
 
-    const firstResult = await harness.connector.fetchViaFeed(['alice']);
-    expect(firstResult).toHaveLength(1);
+    await expect(harness.connector.fetchViaFeed(['alice'])).rejects.toThrow('controlled upstream failure');
     expect(cursorValue(harness.getUserData())?.cursor).toBe(`${BASE_ID}501`);
 
     harness.getUserData().set('x_following_failure', {
@@ -388,7 +396,7 @@ describe('x-following strict feed budget and checkpoint behavior', () => {
       ],
     });
 
-    await expect(harness.connector.fetchViaFeed(['alice'])).resolves.toEqual([]);
+    await expect(harness.connector.fetchViaFeed(['alice'])).rejects.toThrow('controlled upstream failure');
     expect(harness.feedCallCount()).toBe(1);
     expect(cursorValue(harness.getUserData())).toBeNull();
     const cooldown = failureValue(harness.getUserData());
@@ -414,16 +422,15 @@ describe('x-following strict feed budget and checkpoint behavior', () => {
 
     const originalAbortController = globalThis.AbortController;
     globalThis.AbortController = ProductionShapedAbortController;
-    let result;
     try {
       const run = harness.connector.fetchViaFeed(['alice']);
+      const assertion = expect(run).rejects.toThrow('exceeded');
       await vi.advanceTimersByTimeAsync(4001);
-      result = await run;
+      await assertion;
     } finally {
       globalThis.AbortController = originalAbortController;
     }
 
-    expect(result).toEqual([]);
     expect(feedArgs(harness.runReach)[0]).toEqual(expect.arrayContaining(['-t', 'following', '-n', '200']));
     const upstreamSignal = harness.runReach.mock.calls[0][2]?.signal;
     expect(typeof upstreamSignal?.abort).toBe('undefined');

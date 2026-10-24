@@ -236,6 +236,20 @@ class TopicsLiteButNoDynamicTests(unittest.TestCase):
         self.assertEqual(metrics["processed"], len(expected))
         self.assertEqual(metrics["vectors"], len(expected))
 
+    def test_pending_run_converges_after_terminal_no_topic_dispositions(self) -> None:
+        expected = len(self._caliber(NO_DYNAMIC))
+        first = discover_topics(self.conn, None, 100, 5, pending=True)
+        self.assertEqual(first["total"], expected)
+        self.assertEqual(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM item_topic_assignments WHERE topic_id = 'kdt_no_stable_dynamic_topic'"
+            ).fetchone()[0],
+            len(self.NO_DYNAMIC_IDS),
+        )
+        second = discover_topics(self.conn, None, 100, 5, pending=True)
+        self.assertEqual(second["total"], 0)
+        self.assertEqual(second["processed"], 0)
+
     # -- convergence guard ---------------------------------------------------------------
 
     def test_pending_never_reselects_items_that_have_both_lite_and_dynamic(self) -> None:

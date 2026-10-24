@@ -415,7 +415,10 @@ class XFollowingConnector extends BaseConnector {
       if (signal?.aborted) throw err;
       console.warn(`  ⚠ X Following: feed mode failed (${err.message})`);
       this._recordFeedFailure(err.message);
-      return state.items;
+      // Completed page batches and their cursor checkpoints stay durable, but
+      // the round must fail so source health and the X job expose the upstream
+      // outage instead of reporting a false zero-post success.
+      throw err;
     } finally {
       clearTimeout(totalTimer);
       signal?.removeEventListener('abort', externalAbort);
@@ -475,12 +478,10 @@ class XFollowingConnector extends BaseConnector {
         try {
           outcome = this.saveItems(items, { returnDetails: true });
         } catch (err) {
-          this._recordFeedFailure('batch persistence failed: ' + err.message);
-          return false;
+          throw new Error('batch persistence failed: ' + err.message, { cause: err });
         }
         if (!outcome || outcome.error || outcome.failed > 0) {
-          this._recordFeedFailure('batch persistence failed: ' + (outcome?.error || outcome?.failed + ' item(s)'));
-          return false;
+          throw new Error('batch persistence failed: ' + (outcome?.error || outcome?.failed + ' item(s)'));
         }
         state.items.push(...(outcome.items || []));
         persistedCount += (outcome.items || []).length;
@@ -490,10 +491,13 @@ class XFollowingConnector extends BaseConnector {
           items: persistedCount,
           page_complete: false,
         });
-        if (!batchOk) return false;
+        if (!batchOk) throw new Error('cursor checkpoint write failed');
       }
 
-      return writeCheckpoint(pageMaxId, { ...metadata, items: persistedCount });
+      if (!writeCheckpoint(pageMaxId, { ...metadata, items: persistedCount })) {
+        throw new Error('cursor checkpoint write failed');
+      }
+      return true;
     };
 
     console.log(`  🐦 X Following: feed mode (page=${pageSize}, cap=${maxPages}, cursor=${sinceId || 'none'}, confirm_run=${confirmRun}, rt=${includeRt ? 'keep' : 'filter'})...`);
@@ -524,9 +528,8 @@ class XFollowingConnector extends BaseConnector {
         );
       } catch (err) {
         if (callerSignal?.aborted) throw err;
-        this._recordFeedFailure(err.message);
         console.warn(`  ⚠ X Following: feed page failed after ${pagesFetched} completed page(s): ${err.message}`);
-        return;
+        throw err;
       } finally {
         clearTimeout(pageTimer);
       }
@@ -534,13 +537,24 @@ class XFollowingConnector extends BaseConnector {
       pagesFetched++;
       if (!result || result.ok !== true) {
         const reason = `${result?.code || 'unknown'} — ${result?.message || ''}`;
-        this._recordFeedFailure(reason);
         console.warn(`  ⚠ X Following: feed failed after ${pagesFetched} page(s); keeping completed checkpoint: ${reason}`);
-        return;
+        const err = new Error(`X Following feed failed: ${reason}`);
+        err.code = result?.code || 'FEED_FAILED';
+        throw err;
       }
 
       const tweets = Array.isArray(result.data) ? result.data
         : (result.raw && Array.isArray(result.raw.data)) ? result.raw.data : [];
+      // twitter-cli can return {ok:true,data:[]} when its ClientTransaction
+      // bootstrap is broken. Treat an empty first page as an upstream failure,
+      // otherwise the source is recorded as healthy/empty indefinitely.
+      // Empty later pages remain a normal bottom-of-feed condition.
+      if (pagesFetched === 1 && tweets.length === 0) {
+        const err = new Error('X Following feed returned an empty first page');
+        err.name = 'UpstreamEmptyError';
+        err.code = 'EMPTY_FEED';
+        throw err;
+      }
       const pageItems = [];
       const pageItemIds = [];
       const seenIds = new Set();

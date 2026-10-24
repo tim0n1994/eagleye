@@ -48,7 +48,7 @@ function tail(text, length = 2000) {
 function classifyError(stdout, stderr, exitCode, signal) {
   const blob = `${stdout}\n${stderr}`;
   if (signal === 'SIGTERM' || signal === 'SIGKILL' || /timeout|timed out/i.test(blob)) return { code: 'TIMEOUT', message: 'agent-reach command timed out' };
-  if (/AUTH_REQUIRED|not.*log(?:ged)?\s*in|login\s*(?:required|expired)|unauthor/i.test(blob)) {
+  if (/AUTH_REQUIRED|not.*log(?:ged)?\s*in|login\s*(?:required|expired)|unauthor|access forbidden(?::\s*resource)?|\b403\s+forbidden|(?:invalid|expired|stale)\s+(?:cookie|session)/i.test(blob)) {
     return { code: 'AUTH_REQUIRED', message: 'login required or session expired' };
   }
   if (/bridge|connectivity|extension|daemon|ECONNREF.*19825/i.test(blob)) {
@@ -230,6 +230,7 @@ function invalidateDoctorCache() {
 
 module.exports = {
   runReach,
+  classifyError,
   twitterUserPosts,
   redditSubreddit,
   xiaohongshuSearch,
