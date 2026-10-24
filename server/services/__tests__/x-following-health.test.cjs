@@ -71,3 +71,8 @@ test('dedicated X sync records the full successful fetch duration', async () => 
     delete require.cache[subjectPath];
   }
 });
+
+test('connector registry exports the successful fetch duration recorder', () => {
+  const { recordFetchDuration } = require('../../connectors/index');
+  assert.equal(typeof recordFetchDuration, 'function');
+});
