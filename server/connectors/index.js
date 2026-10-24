@@ -447,4 +447,4 @@ async function fetchAllSources(date, opts = {}) {
   return finalResults;
 }
 
-module.exports = { fetchSource, fetchAllSources, recordFailedAttempt };
+module.exports = { fetchSource, fetchAllSources, recordFailedAttempt, recordFetchDuration };
