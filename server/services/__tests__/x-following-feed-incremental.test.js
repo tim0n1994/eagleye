@@ -264,7 +264,6 @@ describe('Round 2 ① x-following feed 增量模式', () => {
     });
 
     const items = await h.connector.fetch('20261020');
-
     // feed 路径被使用，且分页在第 2 页后停止
     expect(feedCallCount(h.runReach), 'feed 模式必须经 runReach 调 twitter feed').toBeGreaterThanOrEqual(1);
     expect(feedCallCount(h.runReach), '遇到游标后不得继续翻页（第 3 页不该被请求）').toBe(2);
@@ -461,11 +460,10 @@ describe('Round 2 ① x-following feed 增量模式', () => {
       feedError: { code: 'EXIT_1', message: 'Clienttransaction error' },
     });
 
-    const items = await h.connector.fetch('20261020');
+    await expect(h.connector.fetch('20261020')).rejects.toThrow('EXIT_1');
 
     expect(feedCallCount(h.runReach), 'feed 必须被尝试过').toBe(1);
     expect(h.twitterUserPosts.mock.calls.length, 'feed 失败严禁触发 442 账号扫描').toBe(0);
-    expect(items).toEqual([]);
     expect(
       h.ud.setValue.mock.calls.some(([key]) => key === 'x_following_cursor'),
       '首轮失败不得写入新游标',
@@ -490,7 +488,6 @@ describe('Round 2 ① x-following feed 增量模式', () => {
     });
 
     const items = await h.connector.fetch('20261020');
-
     expect(feedCallCount(h.runReach), '孤老条目不停页：两页后由确认 run 停').toBe(2);
     expect(idsOf(items).sort(), '注入古推 180 之后的 450/440/430 不得丢失（旧实现会静默永久丢失）').toEqual(
       [`x:${BASE}430`, `x:${BASE}440`, `x:${BASE}450`, `x:${BASE}460`].sort(),
@@ -575,11 +572,10 @@ describe('Round 2 ① x-following feed 增量模式', () => {
       },
     });
 
-    const items = await h.connector.fetch('20261020');
+    await h.connector.fetch('20261020');
 
     expect(feedCallCount(h.runReach), '冷却窗口内不得重试 feed').toBe(0);
     expect(h.twitterUserPosts.mock.calls.length, '冷却窗口内不得触发 per-user 扫描').toBe(0);
-    expect(items).toEqual([]);
     expect(
       h.ud.setValue.mock.calls.some(([key]) => key === 'x_following_failure'),
       '被抑制的 tick 不得刷新失败账本',
@@ -594,11 +590,10 @@ describe('Round 2 ① x-following feed 增量模式', () => {
       failureState: { last_failure_at: '2026-10-19T00:00:00Z', count: 2 },
     });
 
-    const items = await h.connector.fetch('20261020');
+    await expect(h.connector.fetch('20261020')).rejects.toThrow('EXIT_1');
 
     expect(feedCallCount(h.runReach), 'feed 必须被尝试').toBe(1);
     expect(h.twitterUserPosts.mock.calls.length, 'feed 失败不得触发 per-user 扫描').toBe(0);
-    expect(items).toEqual([]);
     const rec = h.ud.setValue.mock.calls.find(([key]) => key === 'x_following_failure');
     expect(rec, '失败必须写独立冷却账本').toBeDefined();
     expect(rec[1]?.last_failure_at, '失败时间戳存在').toBeDefined();

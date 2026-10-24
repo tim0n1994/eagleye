@@ -1,0 +1,17 @@
+[Unit]
+Description=Eagleye transactional outbox drain
+After=argus-eagleye.service
+Wants=argus-eagleye.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jc/projects/eagleye
+Environment=PATH=/home/jc/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=TZ=Asia/Shanghai
+Environment=EAGLEYE_DB_PATH=/home/jc/projects/eagleye/eagleye.db
+Environment=EAGLEYE_OUTBOX_DRAIN_LIMIT=5000
+ExecStart=/home/jc/.local/share/argus/gates/gates.sh gate_heavy 5 1200 outbox-drain -- /home/jc/.local/bin/node /home/jc/projects/eagleye/scripts/outbox-drain.js
+Nice=19
+
+[Install]
+WantedBy=default.target
