@@ -5,7 +5,7 @@
  */
 
 const { XFollowingConnector } = require('../connectors/x-following');
-const { recordFailedAttempt } = require('../connectors/index');
+const { recordFailedAttempt, recordFetchDuration } = require('../connectors/index');
 const { isJobCancelled } = require('./jobs');
 
 const connector = new XFollowingConnector();
@@ -19,6 +19,7 @@ async function syncXFollowing(opts = {}) {
   try {
     const items = await connector.fetch();
     const saved = connector.saveItems(items);
+    recordFetchDuration('x-following', Math.max(0, Date.now() - startedAt));
     return { posts: items.length, saved: saved.length };
   } catch (err) {
     const durationMs = Math.max(0, Date.now() - startedAt);

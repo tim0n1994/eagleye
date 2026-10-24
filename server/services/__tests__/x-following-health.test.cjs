@@ -35,3 +35,39 @@ test('dedicated X sync records connector failures before rethrowing', async () =
     delete require.cache[subjectPath];
   }
 });
+
+test('dedicated X sync records the full successful fetch duration', async () => {
+  const originalRequire = Module.prototype.require;
+  const recordFetchDuration = (...args) => { recordFetchDuration.calls.push(args); };
+  recordFetchDuration.calls = [];
+  class HealthyConnector {
+    async fetch() {
+      await new Promise(resolve => setTimeout(resolve, 15));
+      return [{ id: 'item-1' }];
+    }
+    saveItems() {
+      return [{ id: 'item-1' }];
+    }
+  }
+
+  Module.prototype.require = function patchedRequire(name, ...rest) {
+    if (name === '../connectors/x-following') return { XFollowingConnector: HealthyConnector };
+    if (name === '../connectors/index') return { recordFailedAttempt: () => {}, recordFetchDuration };
+    if (name === './jobs') return { isJobCancelled: () => false };
+    return originalRequire.call(this, name, ...rest);
+  };
+
+  const subjectPath = require.resolve('../x-following');
+  delete require.cache[subjectPath];
+  try {
+    const { syncXFollowing } = require('../x-following');
+    const result = await syncXFollowing();
+    assert.deepEqual(result, { posts: 1, saved: 1 });
+    assert.equal(recordFetchDuration.calls.length, 1);
+    assert.equal(recordFetchDuration.calls[0][0], 'x-following');
+    assert.ok(recordFetchDuration.calls[0][1] >= 15);
+  } finally {
+    Module.prototype.require = originalRequire;
+    delete require.cache[subjectPath];
+  }
+});
