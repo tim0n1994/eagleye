@@ -4,7 +4,7 @@
   "engines": {
     "node": "^22.21.0 || >=24.5.0"
   },
-  "description": "",
+  "description": "Evidence-linked intelligence collection, enrichment, knowledge graph, and briefing pipeline.",
   "main": "server.js",
   "scripts": {
     "lint": "eslint . --ignore-pattern 'kg-worker/**' --ignore-pattern '_*.js'",
