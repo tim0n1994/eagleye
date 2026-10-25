@@ -170,8 +170,8 @@ async function handleMcpPost(req, res) {
     }
     if (Array.isArray(parsed)) {
       status = 'bad_request';
-      sendText(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch requests are not supported; send one request per HTTP call.' } });
       audit({ requestId, tool: 'batch_rejected', argsJson: JSON.stringify(parsed), status, durationMs: Date.now() - started });
+      sendText(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch requests are not supported; send one request per HTTP call.' } });
       return;
     }
     await acquireSlot();
