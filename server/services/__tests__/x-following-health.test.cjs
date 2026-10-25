@@ -38,11 +38,15 @@ test('dedicated X sync records connector failures before rethrowing', async () =
 
 test('dedicated X sync records the full successful fetch duration', async () => {
   const originalRequire = Module.prototype.require;
+  const originalNow = Date.now;
+  let now = 1000;
+  Date.now = () => now;
   const recordFetchDuration = (...args) => { recordFetchDuration.calls.push(args); };
   recordFetchDuration.calls = [];
   class HealthyConnector {
     async fetch() {
-      await new Promise(resolve => setTimeout(resolve, 15));
+      await Promise.resolve();
+      now += 15;
       return [{ id: 'item-1' }];
     }
     saveItems() {
@@ -68,6 +72,7 @@ test('dedicated X sync records the full successful fetch duration', async () => 
     assert.ok(recordFetchDuration.calls[0][1] >= 15);
   } finally {
     Module.prototype.require = originalRequire;
+    Date.now = originalNow;
     delete require.cache[subjectPath];
   }
 });
