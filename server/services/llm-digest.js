@@ -107,7 +107,7 @@ ${itemsText}
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const { data, metadata } = await callWithMetadata(provider, prompt, {
-        task: 'digest', signal: context.signal, temperature: 0.3, maxTokens: 16384, json: true,
+        task: 'digest', signal: context.signal, temperature: 0.3, maxTokens: 4096, json: true,
         validate: output => validDigest(output, allowedIds),
       });
       context.check();
