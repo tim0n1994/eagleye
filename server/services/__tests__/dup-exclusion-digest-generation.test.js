@@ -115,6 +115,29 @@ describe('R3.0 — generateDailyDigest excludes soft-marked duplicate rows', () 
     expect(db.prepare('SELECT item_count FROM daily_digests').get().item_count, 'item_count 按非 dup 条数落库').toBe(2);
   });
 
+  it('keeps routed digest prompts within the verified 25-item budget', async () => {
+    const previousLimit = process.env.DIGEST_ITEM_LIMIT;
+    try {
+      process.env.DIGEST_ITEM_LIMIT = '200';
+      addItem('first', { score: 100 });
+      for (let index = 0; index < 30; index++) addItem(`item-${index}`, { score: 30 - index });
+      provider.callWithMetadata.mockImplementationOnce(async prompt => {
+        prompts.push(prompt);
+        return response(digestOf(['first']));
+      });
+
+      await digest.generateDailyDigest('2026-10-19');
+
+      expect(prompts[0]).toContain('今日重要新闻（25条）');
+      expect(prompts[0]).toContain('item_id=item-23');
+      expect(prompts[0]).not.toContain('item_id=item-24');
+      expect(db.prepare('SELECT item_count FROM daily_digests').get().item_count).toBe(25);
+    } finally {
+      if (previousLimit === undefined) delete process.env.DIGEST_ITEM_LIMIT;
+      else process.env.DIGEST_ITEM_LIMIT = previousLimit;
+    }
+  });
+
   it('a date whose rows are all dups is skipped: no LLM call, no daily_digests row, non-dup caliber reason', async () => {
     addItem('first', { score: 10, date: '2026-10-18' });          // 组首行落在前一天
     addItem('dup-a', { score: 100, duplicateOf: 'first' });        // 10-19 全是重插行

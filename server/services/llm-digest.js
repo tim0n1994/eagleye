@@ -46,7 +46,10 @@ async function generateDailyDigest(date, opts = {}) {
   const provider = getProvider();
   if (!provider) return null;
 
-  const digestLimit = Math.max(10, Math.min(parseInt(process.env.DIGEST_ITEM_LIMIT || '50', 10), 200));
+  // The routed production models reject or exhaust output on larger digest
+  // contexts. Keep the cap explicit and configurable downward, but never let
+  // an environment override exceed the verified 25-item request budget.
+  const digestLimit = Math.max(10, Math.min(parseInt(process.env.DIGEST_ITEM_LIMIT || '25', 10), 25));
 
   // Prefer items with summaries; fall back to raw titles
   let items = db.prepare(`
@@ -86,14 +89,14 @@ async function generateDailyDigest(date, opts = {}) {
   // Build a shorter, Chinese-only digest prompt to prevent token exhaustion
   const prompt = `请为 ${date} 生成中文每日技术情报摘要。
 
-要求：输出JSON，不要输出Markdown。按信号重要性排序，合并重复。每个判断必须引用输入中真实的 item_id，不得引用序号或编造ID；不确定时明确说明。
+要求：只输出合法JSON。每个数组最多1项；top_signals必须恰好1项，其余数组可为空；每个文本字段不超过30字；每个判断必须引用输入中真实的 item_id，不得引用序号或编造ID；禁止复述输入。
 
 今日重要新闻（${items.length}条）：
 ${itemsText}
 
 输出JSON: {
   "headline": "今日最重要判断（一句话）",
-  "executive_summary": "100字以内中文摘要",
+  "executive_summary": "30字以内中文摘要",
   "top_signals": [{"title": "", "reason": "", "item_ids": []}],
   "emerging_topics": [{"topic": "", "why_now": "", "item_ids": []}],
   "repo_watch": [{"repo": "", "why": "", "item_id": ""}],
