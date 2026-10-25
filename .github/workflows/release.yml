@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   verify-and-release:
-    name: Verify and publish internal release
+    name: Verify and publish stable release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +30,12 @@ jobs:
         run: |
           npm test
           npm run test:pipeline
+      - name: Runtime dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: KG worker tests
+        run: |
+          uv sync --locked --project kg-worker
+          uv run --project kg-worker python -m unittest discover -s kg-worker/tests -v
       - name: Create source archive
         env:
           RELEASE_TAG: ${{ github.ref_name }}
@@ -42,4 +48,4 @@ jobs:
           gh release create "${RELEASE_TAG}" "eagleye-${RELEASE_TAG}.tar.gz" \
             --title "Eagleye ${RELEASE_TAG}" \
             --generate-notes \
-            --prerelease
+            --verify-tag
