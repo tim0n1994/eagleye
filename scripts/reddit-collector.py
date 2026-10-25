@@ -11,7 +11,7 @@ import re
 import socket
 import time
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
@@ -34,8 +34,6 @@ def _env_bool(name, default=False):
 
 
 def _read_saved_credential():
-    from rdt_cli.auth import Credential
-
     credential_file = Path(os.environ.get('EAGLEYE_REDDIT_CREDENTIAL_FILE', '~/.config/rdt-cli/credential.json')).expanduser()
     try:
         with credential_file.open() as stream:
@@ -45,24 +43,30 @@ def _read_saved_credential():
             raise ValueError()
     except (OSError, ValueError, AttributeError, TypeError):
         raise RuntimeError('AUTH_REQUIRED: valid application credential file required') from None
-    return Credential, saved
+    return saved
 
 
-def _collect_authenticated(subreddit, sort, limit, credential_cls, saved):
-    from rdt_cli.client import RedditClient
+def _reddit_api_headers(saved):
+    cookies = saved.get('cookies', {})
+    return {
+        'Accept': 'application/json',
+        'User-Agent': os.environ.get('REDDIT_API_USER_AGENT', 'Eagleye/1.6.0 Reddit collector'),
+        'Cookie': '; '.join(f'{name}={value}' for name, value in cookies.items()),
+    }
 
-    cred = credential_cls.from_dict(saved)
-    with RedditClient(credential=cred) as client:
-        try:
-            identity = client.get_me()
-        except Exception:
-            raise RuntimeError('AUTH_REQUIRED: identity verification failed') from None
-        if isinstance(identity, dict) and isinstance(identity.get('data'), dict):
-            identity = identity['data']
-        username = (identity.get('name') or identity.get('username')) if isinstance(identity, dict) else None
-        if not isinstance(username, str) or not username.strip():
-            raise RuntimeError('AUTH_REQUIRED: authenticated identity required')
-        listing = client.get_subreddit(subreddit, sort=sort, limit=limit)
+
+def _urllib_reddit_json(path, params, saved):
+    query = urlencode(params)
+    url = f'https://www.reddit.com{path}'
+    if query:
+        url = f'{url}?{query}'
+    request = Request(url, headers=_reddit_api_headers(saved))
+    timeout = max(5, int(os.environ.get('REDDIT_API_TIMEOUT_S', '20')))
+    with urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read(8 * 1024 * 1024))
+
+
+def _normalize_authenticated_listing(listing):
     try:
         children = listing['data']['children']
         if not isinstance(children, list):
@@ -78,6 +82,43 @@ def _collect_authenticated(subreddit, sort, limit, credential_cls, saved):
         return posts
     except (KeyError, TypeError, ValueError):
         raise RuntimeError('SCHEMA_ERROR: invalid Reddit listing') from None
+
+
+def _collect_authenticated_urllib(subreddit, sort, limit, saved):
+    clean = re.sub(r'^r/', '', str(subreddit), flags=re.IGNORECASE)
+    if not re.fullmatch(r'[A-Za-z0-9_]+', clean):
+        raise RuntimeError('COLLECTION_FAILED: invalid subreddit')
+    path = f'/r/{quote(clean, safe="")}.json' if sort == 'hot' else f'/r/{quote(clean, safe="")}/{quote(sort, safe="")}.json'
+    params = {'limit': limit, 'raw_json': 1}
+    identity = _urllib_reddit_json('/api/me.json', {'raw_json': 1}, saved)
+    if isinstance(identity, dict) and isinstance(identity.get('data'), dict):
+        identity = identity['data']
+    username = (identity.get('name') or identity.get('username')) if isinstance(identity, dict) else None
+    if not isinstance(username, str) or not username.strip():
+        raise RuntimeError('AUTH_REQUIRED: authenticated identity required')
+    return _normalize_authenticated_listing(_urllib_reddit_json(path, params, saved))
+
+
+def _collect_authenticated(subreddit, sort, limit, saved):
+    if _env_bool('REDDIT_AUTH_URLLIB'):
+        return _collect_authenticated_urllib(subreddit, sort, limit, saved)
+
+    from rdt_cli.auth import Credential
+    from rdt_cli.client import RedditClient
+
+    cred = Credential.from_dict(saved)
+    with RedditClient(credential=cred) as client:
+        try:
+            identity = client.get_me()
+        except Exception:
+            raise RuntimeError('AUTH_REQUIRED: identity verification failed') from None
+        if isinstance(identity, dict) and isinstance(identity.get('data'), dict):
+            identity = identity['data']
+        username = (identity.get('name') or identity.get('username')) if isinstance(identity, dict) else None
+        if not isinstance(username, str) or not username.strip():
+            raise RuntimeError('AUTH_REQUIRED: authenticated identity required')
+        listing = client.get_subreddit(subreddit, sort=sort, limit=limit)
+    return _normalize_authenticated_listing(listing)
 
 
 def _rss_sort_path(sort):
@@ -321,9 +362,9 @@ def _collect_rss(subreddit, sort, limit):
 
 
 def collect(subreddit, sort, limit):
-    credential_cls, saved = _read_saved_credential()
+    saved = _read_saved_credential()
     try:
-        return _collect_authenticated(subreddit, sort, limit, credential_cls, saved)
+        return _collect_authenticated(subreddit, sort, limit, saved)
     except Exception as error:
         if not _env_bool('REDDIT_RSS_FALLBACK'):
             if isinstance(error, RuntimeError):
