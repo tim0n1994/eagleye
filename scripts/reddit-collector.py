@@ -22,6 +22,7 @@ except ImportError:  # pragma: no cover - Eagleye runs on Linux.
 
 ATOM = '{http://www.w3.org/2005/Atom}'
 RSS_USER_AGENT = 'Mozilla/5.0 (compatible; Eagleye/1.0; Reddit RSS collector)'
+ARCTIC_METRICS_URL = 'https://arctic-shift.photon-reddit.com/api/posts/ids'
 
 
 def _env_bool(name, default=False):
@@ -235,6 +236,64 @@ def _parse_rss(body, limit):
     return posts
 
 
+def _optional_count(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        return None
+    return int(value)
+
+
+def _enrich_arctic_metrics(posts):
+    """Backfill listing metrics after RSS using one credential-free batch lookup."""
+    if not posts or not _env_bool('REDDIT_ARCTIC_METRICS', True):
+        return posts
+    identifiers = []
+    seen = set()
+    for post in posts:
+        identifier = post.get('id')
+        if identifier and identifier not in seen:
+            identifiers.append(identifier)
+            seen.add(identifier)
+    if not identifiers:
+        return posts
+
+    base_url = os.environ.get('REDDIT_ARCTIC_METRICS_URL', ARCTIC_METRICS_URL)
+    url = f'{base_url}?ids={quote(",".join(identifiers), safe="")}'
+    timeout = max(5, int(os.environ.get('REDDIT_ARCTIC_TIMEOUT_S', '10')))
+    request = Request(url, headers={
+        'Accept': 'application/json',
+        'User-Agent': RSS_USER_AGENT,
+    })
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read(4 * 1024 * 1024))
+        rows = payload.get('data') if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            raise ValueError
+    except HTTPError as error:
+        print(f'  🔖 Reddit: Arctic metrics unavailable (HTTP {error.code})')
+        return posts
+    except (OSError, URLError, ValueError, TypeError, json.JSONDecodeError):
+        print('  🔖 Reddit: Arctic metrics unavailable')
+        return posts
+
+    metrics = {row.get('id'): row for row in rows if isinstance(row, dict)}
+    for post in posts:
+        row = metrics.get(post.get('id'))
+        if not row:
+            continue
+        score = _optional_count(row.get('score'))
+        if score is None:
+            score = _optional_count(row.get('ups'))
+        comments = _optional_count(row.get('num_comments'))
+        if score is not None:
+            post['score'] = score
+            post['ups'] = score
+        if comments is not None:
+            post['num_comments'] = comments
+            post['comments'] = comments
+    return posts
+
+
 def _collect_rss(subreddit, sort, limit):
     clean = re.sub(r'^r/', '', str(subreddit), flags=re.IGNORECASE)
     if not re.fullmatch(r'[A-Za-z0-9_]+', clean):
@@ -250,7 +309,7 @@ def _collect_rss(subreddit, sort, limit):
             })
             try:
                 with urlopen(request, timeout=timeout) as response:
-                    return _parse_rss(response.read(8 * 1024 * 1024), limit)
+                    return _enrich_arctic_metrics(_parse_rss(response.read(8 * 1024 * 1024), limit))
             except HTTPError as error:
                 if error.code != 429 or attempt >= retries:
                     raise RuntimeError(f'COLLECTION_FAILED: RSS HTTP {error.code}') from None
