@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from html import unescape
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -237,7 +238,7 @@ def _parse_rss(body, limit):
 
 
 def _optional_count(value):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
         return None
     return int(value)
 
