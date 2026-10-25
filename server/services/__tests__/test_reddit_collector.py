@@ -67,6 +67,28 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(result[0]['url'], 'https://reddit.com/r/test/comments/abc/title/')
         self.assertEqual(result[0]['url_overridden_by_dest'], 'https://example.org')
 
+    def test_urllib_authenticated_transport_verifies_identity_and_listing(self):
+        self.file.write_text('{"cookies":{"session":"synthetic"}}')
+        identity = b'{"kind":"t2","data":{"name":"fixture-user"}}'
+        listing = b'{"data":{"children":[{"data":{"id":"url123","permalink":"/r/test/comments/url123/title/","num_comments":4,"title":"fixture"}}]}}'
+
+        class Response:
+            def __init__(self, body): self.body = body
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self, _limit): return self.body
+
+        with patch.dict(os.environ, {'REDDIT_AUTH_URLLIB': '1'}), patch.object(
+            collector, 'urlopen', side_effect=[Response(identity), Response(listing)]
+        ) as fetch:
+            posts = collector.collect('test', 'hot', 1)
+
+        self.assertEqual(fetch.call_count, 2)
+        self.assertIn('session=synthetic', fetch.call_args_list[0].args[0].headers['Cookie'])
+        self.assertEqual(posts[0]['id'], 'url123')
+        self.assertEqual(posts[0]['comments'], 4)
+        self.assertEqual(posts[0]['url'], 'https://reddit.com/r/test/comments/url123/title/')
+
     def test_malformed_listing_throws(self):
         self.file.write_text('{"cookies":{"session":"synthetic"}}')
         for listing in [{}, {'data': {'children': {}}}, {'data': {'children': [{}]}}]:
