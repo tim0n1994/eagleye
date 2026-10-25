@@ -3,7 +3,9 @@
 > An evidence-linked intelligence pipeline for turning noisy sources into inspectable signals, graph edges, and briefs.
 
 [![CI](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml?query=branch%3Amain)
-[![Latest internal release](https://img.shields.io/github/v/release/tim0n1994/eagleye?include_prereleases&label=release)](https://github.com/tim0n1994/eagleye/releases)
+[![Latest release](https://img.shields.io/github/v/release/tim0n1994/eagleye?label=release)](https://github.com/tim0n1994/eagleye/releases)
+[![License](https://img.shields.io/github/license/tim0n1994/eagleye)](LICENSE)
+[![Security policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
 
 A scraper stops at documents. A chatbot stops at prose. **Eagleye keeps the chain between source and brief inspectable.**
 
@@ -72,6 +74,8 @@ Requirements:
 - [`uv`](https://docs.astral.sh/uv/)
 
 ```sh
+cp .env.example .env
+
 npm ci
 npm run lint
 npm test
@@ -81,6 +85,18 @@ uv sync --locked --project kg-worker
 uv run --project kg-worker python -m unittest discover -s kg-worker/tests
 ```
 
+Set `EAGLEYE_DB_PATH` to a disposable local database before starting the
+server. The default server listens on port `3019`:
+
+```sh
+EAGLEYE_DB_PATH=./eagleye.db node server.js 3019
+```
+
+Credentials, authenticated source sessions, model gateway configuration, and
+production databases are intentionally absent from this repository. Use
+`.env.example` as the configuration inventory and keep real values in `.env`
+or the host's secret manager.
+
 The useful contract is small and deliberate:
 
 - `npm run lint` catches JavaScript and repository hygiene errors.
@@ -88,12 +104,38 @@ The useful contract is small and deliberate:
 - `npm run test:pipeline` checks cross-language pipeline behavior.
 - The `kg-worker` command runs the graph worker's Python tests against its locked environment.
 
+## Deployment and readback
+
+The repository includes Docker templates in `deploy/` and the ThinkPad
+systemd runbook in [`deploy/thinkpad/README.md`](deploy/thinkpad/README.md).
+The public release contains deployment instructions and service contracts; a
+production deployment still requires a separately managed database, secrets,
+source sessions, egress policy, and host service units.
+
+After a deployment, verify the process, the authenticated business path, and
+the pipeline state separately:
+
+```sh
+systemctl --user is-active argus-eagleye.service
+curl --fail http://127.0.0.1:3019/
+node scripts/restore-verify.js --backup /path/to/verified-backup.db
+```
+
+Do not treat an HTTP health response or a running process as proof that source
+authentication, digest generation, Outbox dispatch, or knowledge graph
+convergence is working. The ThinkPad runbook documents the bounded production
+readback and rollback sequence.
+
 ## Release line
 
-The current verified code line is available as [`v1.1.0-internal.1`](https://github.com/tim0n1994/eagleye/releases/tag/v1.1.0-internal.1). The main branch is continuously checked by [GitHub Actions](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml).
+The current stable code line is [`v1.1.0`](https://github.com/tim0n1994/eagleye/releases/tag/v1.1.0). The main branch is continuously checked by [GitHub Actions](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml). Dependency updates are proposed by [Dependabot](https://github.com/tim0n1994/eagleye/security/dependabot), and every release tag runs the release verification workflow.
 
 A release packages code. It does not package the live intelligence corpus, external accounts, credentials, or a production host.
 
-## Repository status
+## Public repository status
 
-Eagleye is currently kept private while the repository completes a broader provenance, secret, dependency, and licensing review. The README is intentionally honest about that boundary: passing CI establishes a reproducible code line, not public-release clearance.
+Eagleye is released under the [ISC License](LICENSE). The public repository is
+the reproducible application code and its operational contracts. Live data,
+credentials, authenticated sessions, model access, and host-specific runtime
+state remain outside Git. See the [security policy](SECURITY.md) before
+reporting a vulnerability.
