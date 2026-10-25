@@ -118,6 +118,7 @@ class CollectorTest(unittest.TestCase):
             'REDDIT_RSS_FALLBACK': '1',
             'REDDIT_RSS_MAX_RETRIES': '0',
             'REDDIT_RSS_STATE_FILE': str(Path(self.tmp.name) / 'rss-state.json'),
+            'REDDIT_ARCTIC_METRICS': '0',
         }))
         with patch.object(collector, 'urlopen', return_value=Response()) as fetch:
             posts = collector.collect('test', 'hot', 1)
@@ -158,6 +159,98 @@ class CollectorTest(unittest.TestCase):
         with patch.object(collector, 'urlopen', side_effect=[rate_limited, Response()]), patch.object(collector.time, 'sleep') as pause:
             self.assertEqual(collector.collect('test', 'hot', 1), [])
         pause.assert_called_once_with(4)
+
+    def test_rss_metrics_are_backfilled_by_one_public_batch_lookup(self):
+        self.file.write_text('{"cookies":{"session":"synthetic"}}')
+        rss = b'''<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>t3_rss123</id>
+    <title>RSS fixture</title>
+    <link rel="alternate" href="https://www.reddit.com/r/test/comments/rss123/title/" />
+    <content type="html">fixture body</content>
+  </entry>
+</feed>'''
+        metrics = b'{"data":[{"id":"rss123","score":12,"ups":12,"num_comments":3}]}'
+
+        class Response:
+            def __init__(self, body): self.body = body
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self, _limit): return self.body
+
+        class Credential:
+            @classmethod
+            def from_dict(cls, data): return data
+
+        class Client:
+            def __init__(self, *, credential): pass
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def get_me(self): raise RuntimeError('403 Blocked')
+
+        self.enterContext(patch.dict(sys.modules, {
+            'rdt_cli': types.ModuleType('rdt_cli'),
+            'rdt_cli.auth': types.SimpleNamespace(Credential=Credential),
+            'rdt_cli.client': types.SimpleNamespace(RedditClient=Client),
+        }))
+        self.enterContext(patch.dict(os.environ, {
+            'REDDIT_RSS_FALLBACK': '1',
+            'REDDIT_RSS_MAX_RETRIES': '0',
+            'REDDIT_RSS_STATE_FILE': str(Path(self.tmp.name) / 'rss-state.json'),
+            'REDDIT_ARCTIC_METRICS_URL': 'https://mirror.test/posts/ids',
+        }))
+        with patch.object(collector, 'urlopen', side_effect=[Response(rss), Response(metrics)]) as fetch:
+            posts = collector.collect('test', 'hot', 1)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertIn('ids=rss123', fetch.call_args.args[0].full_url)
+        self.assertNotIn('Cookie', fetch.call_args.args[0].headers)
+        self.assertEqual(posts[0]['score'], 12)
+        self.assertEqual(posts[0]['comments'], 3)
+
+    def test_public_metrics_failure_keeps_rss_posts(self):
+        self.file.write_text('{"cookies":{"session":"synthetic"}}')
+        rss = b'''<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>t3_rss123</id>
+    <title>RSS fixture</title>
+    <link rel="alternate" href="https://www.reddit.com/r/test/comments/rss123/title/" />
+    <content type="html">fixture body</content>
+  </entry>
+</feed>'''
+
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self, _limit): return rss
+
+        class Credential:
+            @classmethod
+            def from_dict(cls, data): return data
+
+        class Client:
+            def __init__(self, *, credential): pass
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def get_me(self): raise RuntimeError('403 Blocked')
+
+        self.enterContext(patch.dict(sys.modules, {
+            'rdt_cli': types.ModuleType('rdt_cli'),
+            'rdt_cli.auth': types.SimpleNamespace(Credential=Credential),
+            'rdt_cli.client': types.SimpleNamespace(RedditClient=Client),
+        }))
+        self.enterContext(patch.dict(os.environ, {
+            'REDDIT_RSS_FALLBACK': '1',
+            'REDDIT_RSS_MAX_RETRIES': '0',
+            'REDDIT_RSS_STATE_FILE': str(Path(self.tmp.name) / 'rss-state.json'),
+        }))
+        unavailable = HTTPError('https://mirror.test', 503, 'unavailable', {}, None)
+        with patch.object(collector, 'urlopen', side_effect=[Response(), unavailable]):
+            posts = collector.collect('test', 'hot', 1)
+        self.assertEqual(posts[0]['id'], 'rss123')
+        self.assertEqual(posts[0]['score'], 0)
+        self.assertEqual(posts[0]['comments'], 0)
 
 
 if __name__ == '__main__': unittest.main()
