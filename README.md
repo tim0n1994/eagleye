@@ -22,7 +22,7 @@ source → provenance → enrichment → graph → brief
 - **Evidence first:** every derived item keeps a path back to source material.
 - **State is data:** cooldowns, authentication failures, retries, cancellation, and partial convergence stay visible.
 - **Boundaries stay explicit:** collectors, workers, APIs, MCP tools, storage, and deployment each have their own failure surface.
-- **Current public line:** `v1.1.1` packages the reproducible application code and its operational contracts.
+- **Current public line:** `v1.1.2` packages the reproducible application code and its operational contracts.
 
 ## The pipeline
 
@@ -141,7 +141,7 @@ readback and rollback sequence.
 
 ## Release line
 
-The current stable code line is [`v1.1.1`](https://github.com/tim0n1994/eagleye/releases/tag/v1.1.1). The main branch is continuously checked by [GitHub Actions](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml). Dependency updates are proposed by [Dependabot](https://github.com/tim0n1994/eagleye/security/dependabot), and every release tag runs the release verification workflow.
+The current stable code line is [`v1.1.2`](https://github.com/tim0n1994/eagleye/releases/tag/v1.1.2). The main branch is continuously checked by [GitHub Actions](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml). Dependency updates are proposed by [Dependabot](https://github.com/tim0n1994/eagleye/security/dependabot), and every release tag runs the release verification workflow.
 
 A release packages code. It does not package the live intelligence corpus, external accounts, credentials, or a production host.
 
