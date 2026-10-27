@@ -1,15 +1,28 @@
 # Eagleye
 
-> An evidence-linked intelligence pipeline for turning noisy sources into inspectable signals, graph edges, and briefs.
+> Evidence-linked intelligence pipeline for collecting noisy sources, preserving provenance, building graph edges, and producing inspectable briefs.
+
+[简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml?query=branch%3Amain)
 [![Latest release](https://img.shields.io/github/v/release/tim0n1994/eagleye?label=release)](https://github.com/tim0n1994/eagleye/releases)
 [![License](https://img.shields.io/github/license/tim0n1994/eagleye)](LICENSE)
 [![Security policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
 
-A scraper stops at documents. A chatbot stops at prose. **Eagleye keeps the chain between source and brief inspectable.**
+A scraper stops at documents. A chatbot stops at prose. **Eagleye keeps the path from source to brief inspectable.**
 
-It collects signals, preserves their provenance, enriches them, connects them into a knowledge graph, and produces operator-facing briefs without pretending that an unverified output is an observed fact.
+It collects signals, preserves their provenance, enriches them, connects them into a knowledge graph, and produces operator-facing briefs without turning an unverified output into an observed fact.
+
+```text
+source → provenance → enrichment → graph → brief
+```
+
+## Why Eagleye
+
+- **Evidence first:** every derived item keeps a path back to source material.
+- **State is data:** cooldowns, authentication failures, retries, cancellation, and partial convergence stay visible.
+- **Boundaries stay explicit:** collectors, workers, APIs, MCP tools, storage, and deployment each have their own failure surface.
+- **Current public line:** `v1.1.1` packages the reproducible application code and its operational contracts.
 
 ## The pipeline
 
