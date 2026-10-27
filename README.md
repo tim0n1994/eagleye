@@ -141,7 +141,7 @@ readback and rollback sequence.
 
 ## Release line
 
-The current stable code line is [`v1.1.0`](https://github.com/tim0n1994/eagleye/releases/tag/v1.1.0). The main branch is continuously checked by [GitHub Actions](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml). Dependency updates are proposed by [Dependabot](https://github.com/tim0n1994/eagleye/security/dependabot), and every release tag runs the release verification workflow.
+The current stable code line is [`v1.1.1`](https://github.com/tim0n1994/eagleye/releases/tag/v1.1.1). The main branch is continuously checked by [GitHub Actions](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml). Dependency updates are proposed by [Dependabot](https://github.com/tim0n1994/eagleye/security/dependabot), and every release tag runs the release verification workflow.
 
 A release packages code. It does not package the live intelligence corpus, external accounts, credentials, or a production host.
 
