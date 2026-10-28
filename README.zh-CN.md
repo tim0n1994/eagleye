@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tim0n1994/eagleye/actions/workflows/ci.yml?query=branch%3Amain)
 [![最新发布](https://img.shields.io/github/v/release/tim0n1994/eagleye?label=release)](https://github.com/tim0n1994/eagleye/releases)
-[![许可证](https://img.shields.io/github/license/tim0n1994/eagleye)](LICENSE)
+[![许可证](https://img.shields.io/github/license/tim0n1994/eagleye)](LICENSE) [安全策略](SECURITY.md)
 
 Eagleye 不停在“抓到文档”或“生成一段话”。它保留从来源到结论的路径：采集信号、保存来源关系、做富化处理、连接知识图谱，并生成面向操作者的简报。
 
