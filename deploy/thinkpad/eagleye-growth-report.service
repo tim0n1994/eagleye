@@ -1,0 +1,9 @@
+[Unit]
+Description=Record Eagleye storage and incremental ingestion metrics (read only)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/bin/eagleye-growth-report.py --db %h/projects/eagleye/eagleye.db --log %h/.local/share/argus/eagleye-growth/observations.jsonl
+Nice=10
+PrivateTmp=true
+UMask=0077

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily lightweight Eagleye growth accounting (no database copies)
+
+[Timer]
+OnCalendar=*-*-* 04:15 Asia/Shanghai
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target
