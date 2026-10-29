@@ -1,0 +1,7 @@
+[Unit]
+Description=Prune Eagleye deployment backups (keep newest verified one)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash %h/.local/bin/eagleye-backup-prune.sh
+Nice=10

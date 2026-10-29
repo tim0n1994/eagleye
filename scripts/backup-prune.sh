@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# backup-prune.sh — keep only the latest 2 full-DB backups in a directory.
+# backup-prune.sh — keep only the latest 1 full-DB backup in a directory.
 #
 # Usage:
 #   backup-prune.sh [--dry-run] <backup-dir>
@@ -10,7 +10,7 @@
 #     '*.db-wal' / '*.db-shm' are NOT standalone backups and are ignored;
 #     '*.sqlite.bak*' is out of scope by spec.
 #   * Sorts by mtime (newest first, ties broken deterministically), keeps the
-#     newest KEEP=2, deletes the rest — listing each file (name + size)
+#     newest KEEP=1, deletes the rest — listing each file (name + size)
 #     immediately before deleting it.
 #   * Idempotent: with <= KEEP backups prints NOTHING_TO_PRUNE, deletes
 #     nothing, exits 0.  Safe to run repeatedly / from the deploy script.
@@ -29,7 +29,7 @@
 
 set -euo pipefail
 
-KEEP=2
+KEEP=1
 DRY_RUN=0
 DIR=""
 
