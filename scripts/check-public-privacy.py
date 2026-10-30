@@ -55,6 +55,13 @@ def findings(path, text):
                 elif isinstance(node, list):
                     for item in node:
                         walk(item)
+                elif isinstance(node, str) and node.lstrip().startswith(('{', '[')):
+                    # Database evidence can serialize metadata inside a JSON string.
+                    try:
+                        decoded = json.loads(node)
+                    except ValueError:
+                        return
+                    walk(decoded)
             walk(value)
     return sorted(set(result))
 
