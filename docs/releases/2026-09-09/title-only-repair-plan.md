@@ -1,6 +1,6 @@
 # RC title-only correction: prepared, not executed
 
-Target database ONLY: `/Users/user/.codex/tmp/eagleye-1.1-acceptance.sqlite`.
+Target database ONLY: `~/.codex/tmp/eagleye-1.1-acceptance.sqlite`.
 Do not import the application's DB connection before setting this exact path.
 The parent executor owns execution and summary replacement. This document and
 `title-only-repair-before.json` were generated using a SQLite `mode=ro` connection.

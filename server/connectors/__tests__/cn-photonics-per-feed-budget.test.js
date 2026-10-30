@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * P0 热修 B① · per-feed 超时保护 — RED 契约测试（测试作者·P0热修）
- * worktree /home/user/projects/eagleye-p0-wt（自 main ec93cec）
+ * worktree ~/projects/eagleye-p0-wt（自 main ec93cec）
  *
  * 事故（CTO 2026-10-23 02:10 巡检 + 01:00-03:30 journal 实况）：
  * physical-ai-cn-photonics 于 10-23 01:00 轮 ERRORED ——

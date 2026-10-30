@@ -1,6 +1,6 @@
 {
   "executed_at": "2026-09-09T04:12:44.320Z",
-  "database": "/Users/user/.codex/tmp/eagleye-1.1-acceptance.sqlite",
+  "database": "~/.codex/tmp/eagleye-1.1-acceptance.sqlite",
   "prior_trace": "ebc86058-4840-4f75-a2ec-1a2f7e2461d0",
   "changed": {
     "item_tags": 15,

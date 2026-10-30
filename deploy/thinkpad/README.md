@@ -2,24 +2,25 @@
 
 ## Remote development
 
-In Codex Desktop select `application-host` and open `/home/user/projects/eagleye`.
-Shell access from the Mac uses the existing SSH identity:
+Select your application host and checkout in Codex Desktop. Keep its SSH alias,
+network addresses, credentials and model selections in private host configuration.
+Shell access uses your own SSH identity:
 
 ```sh
-ssh -F ~/.local/share/argus/ssh/thinkpad-ssh.conf application-host
+ssh "$EAGLEYE_SSH_HOST"
 export PATH="$HOME/.local/bin:$PATH"
-cd /home/user/projects/eagleye
+cd "$HOME/projects/eagleye"
 ```
 
 The API is pinned to the validated release directory via a systemd drop-in.
 Inspect `systemctl --user show argus-eagleye.service -p WorkingDirectory -p ExecStart`
 instead of treating the development checkout as the running release. The live
-database remains `/home/user/projects/eagleye/eagleye.db`. Make feature changes in
+database is selected by the private `EAGLEYE_DB_PATH` setting. Make feature changes in
 a separate worktree, with an isolated database and port; merge and deploy after checks.
 Do not restart the API while a collection or backfill job is active.
 
 ```sh
-git worktree add -b codex/my-change /home/user/worktrees/eagleye-my-change main
+git worktree add -b codex/my-change "$HOME/worktrees/eagleye-my-change" main
 ```
 
 Code, jobs, dependencies and data stay on the ThinkPad SSD. Historical WDC HDD
@@ -29,8 +30,8 @@ mounts remain read-only and must not be used for new backups or runtime state.
 
 ```sh
 systemctl --user is-active argus-eagleye.service argus-eagleye-mcp.service argus-eagleye-mcp-proxy.service argus-eagleye-xhs.service
-loginctl show-user jc -p Linger
-curl --fail http://192.0.2.1:3019/ -o /dev/null
+loginctl show-user "$USER" -p Linger
+curl --fail "${EAGLEYE_API_BASE_URL:?set your private API URL}/" -o /dev/null
 curl --fail http://127.0.0.1:3020/health
 ```
 
@@ -86,19 +87,22 @@ Storage timers specify Asia/Shanghai explicitly.
 
 ## LLM task routing recovery
 
-The October 29 production policy routes all seven task types to Gemini 3.8
-Flash first (four slots, matching the global concurrency limit). DeepSeek
-V4.1 Flash is a bounded one-slot fallback for every task. The duplicate
-DeepSeek graph lane is disabled; its private configuration is preserved.
+The October 29 production policy routes all seven task types to the configured
+primary model (four slots, matching the global concurrency limit). A separately
+configured model is a bounded one-slot fallback for every task. Duplicate
+routes are disabled; their private configuration is preserved.
 This prevents normal translation concurrency from overflowing onto the
 reasoning model, and gives digest/classify/graph an alternative route.
 
-After restoring private credentials and the existing `configured-model-10`/`lane-3`
-endpoints, inspect and explicitly apply the policy through the running API:
+After restoring private credentials and verified endpoints, copy
+`deploy/thinkpad/deployment.example.json` outside the checkout, set mode `600`,
+and fill its host, live database path, API bind address, endpoint IDs and model
+identities locally. Never commit the filled file. Inspect and explicitly apply
+the policy through the running API:
 
 ```sh
-node scripts/apply-thinkpad-llm-policy.js --db /home/user/projects/eagleye/eagleye.db
-node scripts/apply-thinkpad-llm-policy.js --db /home/user/projects/eagleye/eagleye.db --apply
+node scripts/apply-thinkpad-llm-policy.js --db "$EAGLEYE_DB_PATH" --config "$HOME/.config/eagleye/deployment.json"
+node scripts/apply-thinkpad-llm-policy.js --db "$EAGLEYE_DB_PATH" --config "$HOME/.config/eagleye/deployment.json" --apply
 ```
 
 The installer uses a read-only database connection to obtain an existing admin
@@ -115,13 +119,13 @@ fallback, not independent gateway availability. Upstream HTTP failures on
 October 27–28 were recorded only as `HTTP_ERROR`, so their original status/body
 cannot be reconstructed from Eagleye telemetry. After the October 29 gateway
 catalog sync, real requests succeeded again. Historical `TRUNCATED` failures
-also show why DeepSeek remains a fallback: its reasoning consumes the same
+also show why the reasoning model remains a fallback: its reasoning consumes the same
 output budget as the requested JSON. Keep monitoring fallback outcomes.
 
 Production acceptance on October 29: 100/100 translations, a persisted 25-item
 daily digest, and hierarchy coverage of 240/240 selected tags (7 domains,
-23 topics, 71 subtopics). One Gemini translation hit `TRUNCATED`; the same
-trace completed on DeepSeek attempt 2, with zero failed translation items.
+23 topics, 71 subtopics). One primary translation hit `TRUNCATED`; the same
+trace completed on fallback attempt 2, with zero failed translation items.
 
 ## On-demand backup and restore verification
 
@@ -131,7 +135,7 @@ changes consistently while the production service continues running.
 ```sh
 umask 077
 mkdir -p "$HOME/.local/share/argus/eagleye-backups"
-node scripts/backup-eagleye.js --db /home/user/projects/eagleye/eagleye.db --out "$HOME/.local/share/argus/eagleye-backups"
+node scripts/backup-eagleye.js --db "$EAGLEYE_DB_PATH" --out "$HOME/.local/share/argus/eagleye-backups"
 node scripts/restore-verify.js --backup "$HOME/.local/share/argus/eagleye-backups/CHOSEN-BACKUP.db"
 sha256sum "$HOME/.local/share/argus/eagleye-backups/CHOSEN-BACKUP.db"
 ```
@@ -171,7 +175,7 @@ service. Never upload the database or credentials into the Git repository.
 ## Historical backlog
 
 Backfill state is outside Git in
-`/home/user/.local/share/argus/eagleye-backfill/20261016/`.
+`~/.local/share/argus/eagleye-backfill/`.
 Inspect the current job and persisted request ID before resuming it; never
 create a duplicate job after an unknown response. The daily scheduler is paused
 during backlog processing and is restored by the controller on successful

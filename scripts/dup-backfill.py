@@ -37,9 +37,9 @@ NOT NULL、生产 0 个 NULL source_id —— 诊断已验证 grouping clean）:
     （或 env EAGLEYE_HEAVY_LOCK）与其他 heavy 任务互斥。busy_timeout 30s 兼容 live WAL。
 
 生产执行示例（部署时才执行，R3.0 上线窗口 10-22 白天）:
-    python3 /home/user/projects/eagleye/scripts/dup-backfill.py \\
-        --db /home/user/projects/eagleye/eagleye.db \\
-        --lock /home/user/projects/eagleye/heavy.lock
+    python3 scripts/dup-backfill.py \\
+        --db ~/projects/eagleye/eagleye.db \\
+        --lock ~/projects/eagleye/heavy.lock
 
 注意: UPDATE 会触发 items_fts_au 触发器（FTS 影子行重写，内容不变），生产首跑约写
 32,446 行 —— 属预期的重操作，请在部署窗口执行。

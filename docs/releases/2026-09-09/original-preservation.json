@@ -2,11 +2,11 @@
   "files_unchanged": true,
   "counts_unchanged": true,
   "files": {
-    "/Users/user/Proj/eagleye/eagleye.db": {
+    "~/Proj/eagleye/eagleye.db": {
       "size": 1018732544,
       "mtime_ns": 1785604787274241121
     },
-    "/Users/user/Proj/eagleye/eagleye.db-wal": {
+    "~/Proj/eagleye/eagleye.db-wal": {
       "size": 60308592,
       "mtime_ns": 1787037043795695703
     }

@@ -19,8 +19,8 @@ uv sync --project kg-worker
 ## 本次隔离候选
 
 ```sh
-cd /Users/user/Proj/eagleye
-EAGLEYE_DB_PATH=/Users/user/.codex/tmp/eagleye-1.1-acceptance.sqlite \
+cd ~/Proj/eagleye
+EAGLEYE_DB_PATH=~/.codex/tmp/eagleye-1.1-acceptance.sqlite \
 EAGLEYE_HOST=127.0.0.1 \
 PYTHONDONTWRITEBYTECODE=1 \
 node server.js 3029

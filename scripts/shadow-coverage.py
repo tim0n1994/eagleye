@@ -28,8 +28,8 @@ Usage:
   python3 scripts/shadow-coverage.py              # real run (needs twitter CLI env)
 
 Env: sources (first-wins, PATH never overridden) at startup:
-  /home/user/.config/argus/independent.env          (HTTP(S)_PROXY to reach x.com)
-  /home/user/.config/argus/eagleye-twitter.credentials (TWITTER_AUTH_TOKEN/CT0)
+  ~/.config/argus/independent.env          (HTTP(S)_PROXY to reach x.com)
+  ~/.config/argus/eagleye-twitter.credentials (TWITTER_AUTH_TOKEN/CT0)
 Credential values are never printed or written anywhere.
 Raw CLI responses are dumped under /tmp/shadow-coverage-raw-<epoch>/ for audit.
 """
@@ -55,9 +55,10 @@ UP_N = 40                  # per-account depth == connector max (X_FOLLOWING_TWE
 INTERCALL_SLEEP_S = 5.0    # serial pacing between CLI calls
 SUBPROCESS_TIMEOUT_S = 300
 
+ARGUS_CONFIG_DIR = Path.home() / ".config" / "argus"
 ENV_FILES = [
-    "/home/user/.config/argus/independent.env",
-    "/home/user/.config/argus/eagleye-twitter.credentials",
+    ARGUS_CONFIG_DIR / "independent.env",
+    ARGUS_CONFIG_DIR / "eagleye-twitter.credentials",
 ]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -72,7 +73,7 @@ def load_env_files(paths, environ):
 
     Mirrors systemd EnvironmentFile semantics for our purpose: a variable set
     by an earlier file is not overridden by a later one, and our own PATH
-    (which must contain /home/user/.local/bin) always wins.
+    (which must contain ~/.local/bin) always wins.
     """
     applied = []
     for path in paths:
@@ -159,7 +160,7 @@ class TwitterCLI:
 
     def _run(self, args, tag):
         if not self.bin:
-            raise SystemExit("FATAL: twitter CLI not found on PATH (expected /home/user/.local/bin/twitter)")
+            raise SystemExit("FATAL: twitter CLI not found on PATH (expected ~/.local/bin/twitter)")
         self.calls += 1
         t0 = time.monotonic()
         proc = subprocess.run(
@@ -347,7 +348,7 @@ def main():
 
     t_start = time.monotonic()
     environ = dict(os.environ)
-    environ["PATH"] = "/home/user/.local/bin:" + environ.get("PATH", "")
+    environ["PATH"] = str(Path.home() / ".local" / "bin") + os.pathsep + environ.get("PATH", "")
     env_report = load_env_files(ENV_FILES, environ)
     if not environ.get("TWITTER_AUTH_TOKEN") or not environ.get("TWITTER_CT0"):
         print("FATAL: TWITTER_AUTH_TOKEN/TWITTER_CT0 not present after loading env files")

@@ -2,24 +2,30 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   Eagleye main app (API + frontend) — LaunchAgent artifact (R0-09).
-  Install: see deploy/README.md. NOT loaded on this machine by the R0-09 work.
+  Install: customize this template for the installing user and repository
+  paths, including EAGLEYE_DB_PATH, before loading. NOT loaded by R0-09.
 -->
 <plist version="1.0">
+<!--
+  Install template: replace every example path component with the installing
+  user name, then adjust EAGLEYE_DB_PATH and repository paths before loading.
+  Do not load until all placeholders are replaced.
+-->
 <dict>
   <key>Label</key>
   <string>com.eagleye.server</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/user/.local/bin/node</string>
-    <string>/Users/user/Proj/eagleye/server.js</string>
+    <string>/Users/example/.local/bin/node</string>
+    <string>/Users/example/Proj/eagleye/server.js</string>
     <string>3019</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/user/Proj/eagleye</string>
+  <string>/Users/example/Proj/eagleye</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>EAGLEYE_DB_PATH</key>
-    <string>/Users/user/Proj/eagleye/eagleye.db</string>
+    <string>/Users/example/Proj/eagleye/eagleye.db</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -28,8 +34,8 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>/Users/user/Proj/eagleye/logs/com.eagleye.server.out.log</string>
+  <string>/Users/example/Proj/eagleye/logs/com.eagleye.server.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/user/Proj/eagleye/logs/com.eagleye.server.err.log</string>
+  <string>/Users/example/Proj/eagleye/logs/com.eagleye.server.err.log</string>
 </dict>
 </plist>

@@ -57,7 +57,7 @@
  *     的 violations 计数不变（该 fixture 全量带 features/topics，新判定不触发）。
  *   - 测量错误语义不变（exit 2，不含 FAIL 行）。
  *
- * RED 门: export PATH=/home/user/.local/bin:$PATH &&
+ * RED 门: export PATH=$HOME/.local/bin:$PATH &&
  *         npx vitest run server/services/__tests__/slo-baseline-r31.test.js
  *         在未实现的 b745270 上 16 例全部断言失败，退出码 1。
  */

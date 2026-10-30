@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * P0 热修 B② · 死 feed 从 config 移除后其余 feed 正常 — RED 契约测试（测试作者·P0热修）
- * worktree /home/user/projects/eagleye-p0-wt（自 main ec93cec）
+ * worktree ~/projects/eagleye-p0-wt（自 main ec93cec）
  *
  * 事实（CTO 2026-10-23 02:33 CST 探活，双路由=经代理 127.0.0.1:17898 + 直连各一次）：
  * server/connectors/cn-photonics.js:19-28 的 CN_FEEDS 全部 8 个 feed 已死 ——

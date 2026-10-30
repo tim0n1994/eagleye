@@ -2,11 +2,11 @@
   "id": "lane-2",
   "status": 200,
   "latency_ms": 3507,
-  "model": "configured-model",
+  "model": "redacted-model",
   "usage": {
     "input_tokens": 269,
     "output_tokens": 58
   },
   "stop_reason": "end_turn",
-  "response": "{\"category\":\"new_tool\",\"summary\":\"Acme released an MIT-licensed Python library for JSON validation that includes tests.\",\"missing_evidence\":[\"benchmark data\",\"revenue data\"]}"
+  "response": "{\n  \"category\": \"new_tool\",\n  \"summary\": \"Acme released an MIT-licensed Python library for JSON validation that includes tests.\",\n  \"missing_evidence\": [\n    \"benchmark data\",\n    \"revenue data\"\n  ]\n}"
 }

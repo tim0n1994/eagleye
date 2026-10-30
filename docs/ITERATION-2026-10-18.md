@@ -29,7 +29,7 @@ Eagleye = **个人技术情报管线**：多源采集（X/小红书/Reddit/RSS/H
 
 ## 归总
 
-- 模型接入对齐 THINKPAD-MODEL-CONFIG.md：唯一入口 http://192.0.2.1:4000、
+- 模型接入对齐 THINKPAD-MODEL-CONFIG.md：唯一入口 http://<private-test-address>:4000、
   global_concurrency 6→4（规范 §0.6 批量并发 ≤4）、.env 清死配置并落 LLM_* 规范变量。
 - 搜索统一 FTS5；llm_config 兜底指向网关 auto。
 
@@ -48,9 +48,9 @@ Eagleye = **个人技术情报管线**：多源采集（X/小红书/Reddit/RSS/H
 x-following 本就是 priority 0（用户关注流），问题不是选择而是吞吐与持续性。
 
 **三步落地**：
-1. 快车道：lane-1 → configured-model-16（p2），新增 lane-3 auto 兜底（p3）；configured-model-10 保持
+1. 快车道：lane-1 → configured-primary-model（p2），新增 lane-3 auto 兜底（p3）；configured-fallback-model 保持
    enrich/translate 优先（p1，实测 18.8s/4卡批 ≈ 主力）。
-2. 持续消化：/home/user/.local/bin/eagleye-drain.py + argus-eagleye-drain.timer
+2. 持续消化：~/.local/bin/eagleye-drain.py + argus-eagleye-drain.timer
    （每 2h，积压>200 时自动 fire batch=600 后台 enrich）。
 3. 实测稳定吞吐 ~2700 卡/小时、零失败 → 日增 1400 需 ~35min 消化，积压可在数个
    窗口内清零。每日 01:00 pipeline 照旧。

@@ -1,6 +1,6 @@
 CONFIG accounts=442 sample_n=30 seed=20261020
 SAMPLE SML_RoyaleAPI ShengjieWa34067 goodside ericjang11 jeremysliew zst96687522 pranavrajpurkar TransluceAI ShenHuang vkhosla fraouf thinkymachines zhijianliu_ CuiMao OnlyTerp KatrinaQWang2 Grad62304977 EMostaque SpaceTimeViking natolambert zihaozhou_ tphuang scaling01 dotey nick_fiacco AkariAsai Dong_Yu_AI nathanbenaich bozhou_ai fahdmirza
-ENV /home/user/.config/argus/independent.env:6vars; /home/user/.config/argus/eagleye-twitter.credentials:2vars
+ENV ~/.config/argus/independent.env:6vars; ~/.config/argus/eagleye-twitter.credentials:2vars
 FEED fetched=200 window_items=180 bad_ts=0 oldest_age_h=22355.6 truncated=False is_retweet=25 retweeted_by=25 dur_s=11.6
 WINDOW start=2026-10-19T13:16:13.688033+00:00 end=2026-10-20T13:16:13.688033+00:00
 ACCOUNT SML_RoyaleAPI fetched=40 baseline=0 matched=0 coverage=n/a truncated=False bad_ts=0 dur_s=8.2

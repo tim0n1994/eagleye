@@ -1,5 +1,5 @@
 {
-  "database": "/Users/user/.codex/tmp/eagleye-1.1-acceptance.sqlite",
+  "database": "~/.codex/tmp/eagleye-1.1-acceptance.sqlite",
   "captured_at": "2026-09-09T04:08:49.743294+00:00",
   "trace_id": "ebc86058-4840-4f75-a2ec-1a2f7e2461d0",
   "item_ids": [

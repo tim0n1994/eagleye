@@ -58,3 +58,7 @@ __pycache__/
 *.dump
 .env*
 !.env.example
+
+# Operator-specific routing and deployment identity stay outside the repository.
+deployment.local.json
+deployment.private.json

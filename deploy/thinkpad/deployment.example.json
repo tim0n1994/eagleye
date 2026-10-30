@@ -1,0 +1,16 @@
+{
+  "hostname": "your-app-host",
+  "database_path": "/srv/eagleye/eagleye.db",
+  "api_base_url": "http://127.0.0.1:3019",
+  "routes": {
+    "primary": {
+      "id": "primary",
+      "model": "configured-primary-model"
+    },
+    "fallback": {
+      "id": "fallback",
+      "model": "configured-fallback-model"
+    },
+    "disabled_endpoint_ids": []
+  }
+}

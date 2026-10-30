@@ -1,10 +1,12 @@
 [Unit]
 Description=Eagleye X Following 2h incremental sync trigger (Round 2 feed mode)
-Documentation=file:///home/user/projects/eagleye/deploy/thinkpad/README-x-following-incremental.md
+Documentation=file://%h/projects/eagleye/deploy/thinkpad/README-x-following-incremental.md
 # Static oneshot, only started by argus-eagleye-x-following.timer.
 # Mirrors argus-eagleye-drain.service (python3 oneshot, no lock needed —
 # the API side dedupes singleton X_FOLLOWING_SYNC jobs).
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /home/user/.local/bin/eagleye-x-following.py
+# Optional local overrides, including the local server API base URL.
+EnvironmentFile=-%h/.config/argus/eagleye-pipeline.env
+ExecStart=/usr/bin/python3 %h/.local/bin/eagleye-x-following.py

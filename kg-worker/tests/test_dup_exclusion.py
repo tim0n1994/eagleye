@@ -31,7 +31,7 @@ from __future__ import annotations
 
 fixture: 内存库 + 生产 migrations 001/006/030（与 test_drain_selection.py
 同源）, 再 ALTER TABLE 加 duplicate_of 列（生产由新迁移提供）。绝不触
-生产库 /home/user/projects/eagleye/eagleye.db。
+生产库 ~/projects/eagleye/eagleye.db。
 
 运行（与 kg-worker 既有套件同一入口）:
   PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=kg-worker python3 -m unittest \

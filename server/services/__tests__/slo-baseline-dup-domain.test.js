@@ -30,7 +30,7 @@
  * 提供）。绝不触生产库。
  *
  * RED 门:
- *   export PATH=/home/user/.local/bin:$PATH &&
+ *   export PATH=$HOME/.local/bin:$PATH &&
  *   npx vitest run server/services/__tests__/slo-baseline-dup-domain.test.js
  */
 
