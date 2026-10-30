@@ -216,7 +216,7 @@ eagleye.udify.fun → Cloudflare Edge → cloudflared tunnel (本机) → 127.0.
 
 ```bash
 # 手动添加（换网络后需重跑）
-sudo bash /Users/user/Proj/eagleye/scripts/cloudflared-route-install.sh
+sudo bash ~/Proj/eagleye/scripts/cloudflared-route-install.sh
 
 # 或直接
 sudo route -n add -net 198.41.0.0/16 <物理网关>

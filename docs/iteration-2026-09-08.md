@@ -12,7 +12,7 @@
 
 ## VERIFIED 基线
 
-- 实际项目为 /Users/user/Proj/eagleye；Documents/eagleye 是空初始化目录。起始工作树干净。
+- 实际项目为 ~/Proj/eagleye；Documents/eagleye 是空初始化目录。起始工作树干净。
 - 原库只读观测：41,008 条信息，最新 digest_date 为 20260801；18,401 条 KG 特征（44.9%）。当前 3019 无监听。
 - KG 全流水线只选六个固定源；选择器先按源优先级再按待处理状态排序。X 有 20,127 条，200/500/5000 的窗口长期落在 X，其他源得不到处理。
 - topic 局部运行会全局清除 semantic-lite 主题；已有动态主题关联只覆盖 X。
@@ -67,7 +67,7 @@
 
 所有日志与真实副本结果保存在：
 
-`/Users/user/.codex/visualizations/2026/09/08/01a07e71-d2ec-7691-9bd3-de7d45bf4b0d/eagleye-acceptance/`
+`~/.codex/visualizations/2026/09/08/01a07e71-d2ec-7691-9bd3-de7d45bf4b0d/eagleye-acceptance/`
 
 - `npm run test:coverage -- --maxWorkers=2`：exit 0，19 文件、271 测试通过。前端模块覆盖率 statements 22.95%、branches 18.30%、functions 23.00%、lines 24.36%；覆盖范围不包含整个后端，不把它当作全系统质量证明。日志 `coverage.log`。
 - `npm run lint`：exit 0，0 errors、91 warnings；`git diff --check` 通过。日志 `lint.log`。

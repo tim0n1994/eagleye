@@ -22,11 +22,12 @@ this trigger defers to the next 2h tick. The job-lease recycler reaps stale
 
 Idempotent — the server dedupes X_FOLLOWING_SYNC singleton jobs itself.
 """
-import json, re, sqlite3, sys, urllib.request
+import json, os, re, sqlite3, sys, urllib.request
+from pathlib import Path
 
-DB = '/home/user/projects/eagleye/eagleye.db'
-BASE = 'http://192.0.2.1:3019'
-ENV_FILE = '/home/user/.config/argus/eagleye-pipeline.env'  # service EnvironmentFile
+DB = os.environ.get('EAGLEYE_DB_PATH', str(Path.home() / 'projects/eagleye/eagleye.db'))
+BASE = os.environ.get('EAGLEYE_API_BASE_URL', 'http://127.0.0.1:3019').rstrip('/')
+ENV_FILE = os.environ.get('EAGLEYE_PIPELINE_ENV_FILE', str(Path.home() / '.config/argus/eagleye-pipeline.env'))
 
 # Mode guard (see docstring): fire only on an EXPLICIT X_FOLLOWING_MODE=feed
 # in the service EnvironmentFile. Default (unset) is per-user per the CTO

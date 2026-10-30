@@ -3,7 +3,7 @@
 """Eagleye R3 收敛层 SLO 基准测量（确定性输出、只读生产库）。
 
 用法:
-    python3 /home/user/projects/eagleye-r3-wt/scripts/slo-baseline.py
+    python3 scripts/slo-baseline.py
 
 SLO（CTO Round-3 验收口径 + R3.1 裁决 B/Q5 判定域扩容）与判定:
     R3.0 判定域 = 非 dup 行（BACKLOG_REAL 口径）: 四个 pending 计数
@@ -74,7 +74,14 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
-DB_PATH = os.environ.get("EAGLEYE_SLO_DB", "/home/user/projects/eagleye/eagleye.db")
+DB_PATH = os.environ.get(
+    "EAGLEYE_SLO_DB",
+    os.environ.get(
+        "EAGLEYE_DB_PATH",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "eagleye.db"),
+    ),
+)
 
 TH_BACKLOG = 500      # SLO: 积压 < 500（>= 500 违约）
 TH_EXTRACT = 500      # SLO: features 积压 EXTRACT_PENDING < 500（>= 500 违约; R3.1）

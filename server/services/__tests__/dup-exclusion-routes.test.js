@@ -33,7 +33,7 @@ import { beforeEach, afterEach, describe, expect, it } from 'vitest';
  * duplicate_of 列（生产由新迁移提供）。内存库，绝不触生产库。
  *
  * RED 门:
- *   export PATH=/home/user/.local/bin:$PATH &&
+ *   export PATH=$HOME/.local/bin:$PATH &&
  *   npx vitest run server/services/__tests__/dup-exclusion-routes.test.js
  */
 

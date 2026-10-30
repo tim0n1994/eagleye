@@ -49,7 +49,7 @@
     "digest_date": "20260909",
     "short_summary_zh": "仅据来源标题：“27.5KB language-agnostic WebGPU syntax highlighter”。未获取正文，细节及结论未核验。",
     "model_provider": "deterministic",
-    "model_name": "",
+    "model_name": "configured-model",
     "llm_metadata": "{\"generation_method\":\"source_title_only\",\"provider\":\"deterministic\",\"model\":null,\"requested_model\":null,\"endpoint_id\":null,\"protocol\":null,\"trace_id\":null,\"attempts\":0,\"usage\":null,\"latency_ms\":0}",
     "alpha_score": 0.49119398949644766,
     "kg_feature_id": "63b5b8eb-19e1-40c6-aeee-187912db160f"
@@ -60,7 +60,7 @@
     "digest_date": "20260909",
     "short_summary_zh": "仅据来源标题：“AI Responsibility – OpenAI and Anthropic”。未获取正文，细节及结论未核验。",
     "model_provider": "deterministic",
-    "model_name": "",
+    "model_name": "configured-model",
     "llm_metadata": "{\"generation_method\":\"source_title_only\",\"provider\":\"deterministic\",\"model\":null,\"requested_model\":null,\"endpoint_id\":null,\"protocol\":null,\"trace_id\":null,\"attempts\":0,\"usage\":null,\"latency_ms\":0}",
     "alpha_score": 0.5286939894964477,
     "kg_feature_id": "7f7a5e29-5310-4f7d-a523-6b934b1e349f"
@@ -71,7 +71,7 @@
     "digest_date": "20260909",
     "short_summary_zh": "仅据来源标题：“Harvard study predicts most suicide attempts a week in advance”。未获取正文，细节及结论未核验。",
     "model_provider": "deterministic",
-    "model_name": "",
+    "model_name": "configured-model",
     "llm_metadata": "{\"generation_method\":\"source_title_only\",\"provider\":\"deterministic\",\"model\":null,\"requested_model\":null,\"endpoint_id\":null,\"protocol\":null,\"trace_id\":null,\"attempts\":0,\"usage\":null,\"latency_ms\":0}",
     "alpha_score": 0.49119398949644766,
     "kg_feature_id": "98677b4a-b353-4bed-a8e1-d43c16f45e9b"

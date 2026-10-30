@@ -8,7 +8,8 @@ set -e
 
 PLIST=/Library/LaunchDaemons/com.eagleye.cloudflared-route.plist
 LABEL=com.eagleye.cloudflared-route
-SCRIPT=/Users/user/Proj/eagleye/scripts/cloudflared-route-ensure.sh
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+SCRIPT="$SCRIPT_DIR/cloudflared-route-ensure.sh"
 
 if [ "$1" = "uninstall" ]; then
     launchctl bootout system/"$LABEL" 2>/dev/null || true

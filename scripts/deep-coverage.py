@@ -86,9 +86,10 @@ RETRY_BACKOFF_S = [20, 60]
 SUBPROCESS_TIMEOUT_S = 300
 UP_CALL_BUDGET = 35
 
+ARGUS_CONFIG_DIR = Path.home() / ".config" / "argus"
 ENV_FILES = [
-    "/home/user/.config/argus/independent.env",
-    "/home/user/.config/argus/eagleye-twitter.credentials",
+    ARGUS_CONFIG_DIR / "independent.env",
+    ARGUS_CONFIG_DIR / "eagleye-twitter.credentials",
 ]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -268,7 +269,7 @@ def refetch_errors():
     raw_dir = Path(RAW_DIR)
 
     environ = dict(os.environ)
-    environ["PATH"] = "/home/user/.local/bin:" + environ.get("PATH", "")
+    environ["PATH"] = str(Path.home() / ".local" / "bin") + os.pathsep + environ.get("PATH", "")
     load_env_files(ENV_FILES, environ)
     if not environ.get("TWITTER_AUTH_TOKEN") or not environ.get("TWITTER_CT0"):
         print("FATAL: credentials not loaded")

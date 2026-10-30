@@ -7,23 +7,23 @@
     "exit_code": 0,
     "files": 36,
     "passed": 542,
-    "log": "/Users/user/.codex/tmp/eagleye-final-suite-20260909.log"
+    "log": "~/.codex/tmp/eagleye-final-suite-20260909.log"
   },
   "python": {
     "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=kg-worker python3 -B -m unittest discover -s kg-worker/tests -v",
     "exit_code": 0,
     "passed": 11,
-    "log": "/Users/user/.codex/tmp/eagleye-python-20260909.log"
+    "log": "~/.codex/tmp/eagleye-python-20260909.log"
   },
   "lint": {
     "exit_code": 0,
     "errors": 0,
     "warnings": 86,
-    "log": "/Users/user/.codex/tmp/eagleye-final-lint-20260909.log"
+    "log": "~/.codex/tmp/eagleye-final-lint-20260909.log"
   },
   "knip": {
     "exit_code": 0,
-    "log": "/Users/user/.codex/tmp/eagleye-final-knip-20260909.log"
+    "log": "~/.codex/tmp/eagleye-final-knip-20260909.log"
   },
   "audit": {
     "exit_code": 0,

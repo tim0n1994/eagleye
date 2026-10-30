@@ -5,8 +5,8 @@
   "results": [
     {
       "id": "lane-1",
-      "requested_model": "configured-model",
-      "actual_model": "configured-model",
+      "requested_model": "redacted-requested-model",
+      "actual_model": "redacted-actual-model",
       "endpoint_url": "http://127.0.0.1:56185/v1/messages",
       "status": 200,
       "latency_ms": 5925,
@@ -27,8 +27,8 @@
     },
     {
       "id": "lane-2",
-      "requested_model": "configured-model",
-      "actual_model": "configured-model",
+      "requested_model": "redacted-requested-model",
+      "actual_model": "redacted-actual-model",
       "endpoint_url": "http://127.0.0.1:56185/v1/messages-2",
       "status": 200,
       "latency_ms": 8925,
@@ -44,8 +44,8 @@
     },
     {
       "id": "lane-3",
-      "requested_model": "configured-model",
-      "actual_model": "configured-model",
+      "requested_model": "redacted-requested-model",
+      "actual_model": "redacted-actual-model",
       "endpoint_url": "http://127.0.0.1:56185/v1/messages-3",
       "status": 200,
       "latency_ms": 5539,
@@ -61,8 +61,8 @@
     },
     {
       "id": "lane-4",
-      "requested_model": "configured-model",
-      "actual_model": "configured-model",
+      "requested_model": "redacted-requested-model",
+      "actual_model": "redacted-actual-model",
       "endpoint_url": "http://127.0.0.1:56185/v1/messages-4",
       "status": 200,
       "latency_ms": 8277,
@@ -78,8 +78,8 @@
     },
     {
       "id": "lane-5",
-      "requested_model": "configured-model",
-      "actual_model": "configured-model",
+      "requested_model": "redacted-requested-model",
+      "actual_model": "redacted-actual-model",
       "endpoint_url": "http://127.0.0.1:56185/v1/messages-5",
       "status": 200,
       "latency_ms": 3850,
@@ -92,7 +92,7 @@
       "stop_reason": "end_turn",
       "valid_json": true,
       "category_ok": true,
-      "response": "{\"category\":\"new_tool\",\"summary\":\"Acme released an MIT-licensed open-source Python library for local JSON validation, including tests.\",\"missing_evidence\":[\"benchmarks\",\"revenue\",\"pricing\"]}",
+      "response": "{\"category\": \"new_tool\", \"summary\": \"Acme released an MIT-licensed open-source Python library for local JSON validation, including tests.\", \"missing_evidence\": [\"benchmarks\", \"revenue\", \"pricing\"]}",
       "error": null
     }
   ]

@@ -3,7 +3,7 @@
 """Eagleye R3.0 — BACKLOG_REAL 测量（软标记 dup 排除后的真实积压, 只读）。
 
 用法:
-    python3 /home/user/projects/eagleye-r3-wt/scripts/backlog-real.py
+    python3 scripts/backlog-real.py
 
 口径（与 scripts/slo-baseline.py 的 BACKLOG lane 同 lane, 只差排除 dup 行）:
     BACKLOG_REAL = information_items 中 duplicate_of IS NULL 且无任何
@@ -15,9 +15,9 @@
     10-17:2,869 / 10-18:503 / 10-19:555 / 10-20:687, 全部为近 4 天行）。
 
 输出: 整行标记 BACKLOG_REAL=<n>, 退出码 0。
-      库路径经 env EAGLEYE_BACKLOG_REAL_DB 注入（单测钩子）; 不设时默认
-      生产库 /home/user/projects/eagleye/eagleye.db（生产巡检只做 mode=ro
-      只读查询）。
+      库路径优先级: EAGLEYE_BACKLOG_REAL_DB（单测/任务钩子）,
+      EAGLEYE_DB_PATH（标准共享配置）, <repo>/eagleye.db。
+      生产巡检只做 mode=ro 只读查询。
 只读: file:...?mode=ro + PRAGMA query_only（slo-baseline.open_ro 同纪律）,
       不写库、不产生 -wal/-journal 副本。
 测量错误: 库缺失/不可开 → stderr + 退出码 2; stdout 绝不打印 BACKLOG_REAL=
@@ -27,8 +27,14 @@ import os
 import sqlite3
 import sys
 
-DB_PATH = os.environ.get("EAGLEYE_BACKLOG_REAL_DB",
-                         "/home/user/projects/eagleye/eagleye.db")
+DB_PATH = os.environ.get(
+    "EAGLEYE_BACKLOG_REAL_DB",
+    os.environ.get(
+        "EAGLEYE_DB_PATH",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "eagleye.db"),
+    ),
+)
 
 # 与 slo-baseline.py BACKLOG lane 同款（无任何 item_vectors 行口径）,
 # 加上 R3.0 的软标记排除。

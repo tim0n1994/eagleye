@@ -10,7 +10,7 @@
   server/services/__tests__/slo-baseline-r31.test.js（vitest，子进程 + env 注入）。
 
 运行:
-    python3 /home/user/projects/eagleye-r3-wt/scripts/test_slo_baseline.py
+    python3 ~/projects/eagleye-r3-wt/scripts/test_slo_baseline.py
 """
 import importlib.util
 import io

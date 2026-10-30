@@ -4,7 +4,7 @@ CTO 方案要求「覆盖率先行影子对比（同 24h 窗、30 随机账号�
 按 canonical_url），<95% 停下不部署」。本目录保全判定所用的两个只读测量
 工具与 2026-10-20 会话的三份判定输出快照（原文见 `coverage-evidence/`），
 使合并/部署裁定的事后审计可复现。两工具均 READ-ONLY、不触碰 DB；凭据从
-`/home/user/.config/argus/eagleye-twitter.credentials` 等 env 文件加载，值
+`~/.config/argus/eagleye-twitter.credentials` 等 env 文件加载，值
 never printed or written（见 shadow-coverage.py 头注）。
 
 ## 工具与口径
@@ -56,7 +56,7 @@ never printed or written（见 shadow-coverage.py 头注）。
   CLI 拉取时被单调用 200 条上限截断，交集被人为压小。
 - JC 手动导出核对实况：**439/442** 配置账号在关注列表（仅 alex_prompter /
   pluvio9yte / PunkAnimates 不在）。静态导出位于
-  `/home/user/.config/argus/x-following-set.json`；本更正以「只计数、不打印
+  `~/.config/argus/x-following-set.json`；本更正以「只计数、不打印
   内容」方式复核：`config_n=442 exported_n=455 in_both=439
   config_not_in_export=3`。
 - **裁决不变、理由更正**：「默认回退 per-user」维持，理由只写「字面覆盖率

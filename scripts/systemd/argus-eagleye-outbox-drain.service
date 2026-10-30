@@ -5,12 +5,12 @@ Wants=argus-eagleye.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/user/projects/eagleye
-Environment=PATH=/home/user/.local/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=%h/projects/eagleye
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=TZ=Asia/Shanghai
-Environment=EAGLEYE_DB_PATH=/home/user/projects/eagleye/eagleye.db
+Environment=EAGLEYE_DB_PATH=%h/projects/eagleye/eagleye.db
 Environment=EAGLEYE_OUTBOX_DRAIN_LIMIT=5000
-ExecStart=/home/user/.local/share/argus/gates/gates.sh gate_heavy 5 1200 outbox-drain -- /home/user/.local/bin/node /home/user/projects/eagleye/scripts/outbox-drain.js
+ExecStart=%h/.local/share/argus/gates/gates.sh gate_heavy 5 1200 outbox-drain -- %h/.local/bin/node %h/projects/eagleye/scripts/outbox-drain.js
 Nice=19
 
 [Install]

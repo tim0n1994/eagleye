@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * 案1 · 重试退避 × 每源预算 冲突 — RED 契约测试（测试作者·预算重试）
- * 分支 fix-morning-1022（worktree /home/user/projects/eaglye-fix-wt，自 main dc1fe65）
+ * 分支 fix-morning-1022（worktree ~/projects/eaglye-fix-wt，自 main dc1fe65）
  *
  * 事故（CTO 早间裁决要点）：2026-10-22 01:00 三个源
  * （app-store-trend / physical-ai-cn-photonics / physical-ai-humanoid）

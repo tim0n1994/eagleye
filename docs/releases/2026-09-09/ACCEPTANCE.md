@@ -33,7 +33,7 @@
 - KG：Hacker News 与 GitHub 受控提取完成，8 条新条目都有特征；提取没有使用模型生成的摘要。哈希向量仍不是语义模型，本轮没有声称修复全部语义聚类覆盖。
 - 标题无正文的 3 条 HN 摘要最初出现不支持的扩写，已在本轮 RC 按精确 ID/trace/时间戳纠正，撤销其 15 条 v1 标签关联、4 条主题关联、23 条图边并重算 3 条评分。完整前值、事务条件和执行结果保存在 `title-only-repair-*`，原始资料及有效 KG v2 数据保留。
 - 初始研究报告混淆了发布者元数据、AI 派生内容与推理，并加入没有依据的定量判断，已在 RC 标记 superseded。React/Next.js 标签确实存在于原始仓库 topics，不能说这些名称凭空生成，但它们也不等同代码核验。修后真实报告为 844 字符，只有真实材料、逐字引文、待核验假设与问题，实际模型为 GLM。见 `live-research-corrected.json`；原失败报告留作回归证据。
-- 20260907 单条新 GitHub 内容的真实简报任务 completed，实际 lane-3 / configured-model-15，引用的 item ID 与输入一致；输出明确生成质量与生产可用性未知。见 `live-digest-result.json`。该样本验证简报落库与模型归属，不代表大批量简报质量。
+- 20260907 单条新 GitHub 内容的真实简报任务 completed，实际 lane-3 / gpt-5.6-luna，引用的 item ID 与输入一致；输出明确生成质量与生产可用性未知。见 `live-digest-result.json`。该样本验证简报落库与模型归属，不代表大批量简报质量。
 
 ## 可靠性与权限
 
@@ -49,7 +49,7 @@ RC 进程收到 SIGTERM 后以 0 退出。重启后五路配置保留；专门�
 
 ## 验收边界
 
-原始 `eagleye.db` 和 WAL 的大小、纳秒修改时间以及五类关键表计数均与开工基线一致，见 `original-preservation.json`。隔离库为 `/Users/user/.codex/tmp/eagleye-1.1-acceptance.sqlite`；原 41,008 条信息没有被本轮试跑改写。
+原始 `eagleye.db` 和 WAL 的大小、纳秒修改时间以及五类关键表计数均与开工基线一致，见 `original-preservation.json`。隔离库为 `~/.codex/tmp/eagleye-1.1-acceptance.sqlite`；原 41,008 条信息没有被本轮试跑改写。
 
 尚未验证：真实邮件投递、公网反向代理/域名部署、多实例共享并发、所有来源的实时可用性、长时间持续负载及全量历史内容的事实质量。邮件未配置或投递失败时现在明确失败，不显示已发送。旧历史报告不自动批量重写。
 

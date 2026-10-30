@@ -1,7 +1,7 @@
 # Eagleye → Alpha Radar — 项目进度
 
 更新日期：2026-09-09
-仓库路径：`/Users/user/Proj/eagleye`  
+仓库路径：`~/Proj/eagleye`
 
 ---
 
@@ -530,7 +530,7 @@ lint 0 error；test 零回归。
 
 **验证（实跑）**：
 - 静态：`/eagleye.db`、`/server/services/auth.js`、`/server.log`、`/package.json`、`/config/x-following.txt` → 全 404；`/`、`/index.html`、`/css/style.css`、`/js/modules/pages.js`、`/icons/icon.svg`、`/signals` → 全 200
-- SSRF：`:9188` / `:3019/api/items` / `192.0.2.2` / `169.254.169.254` → 全 403；已注册的 solidot feed → 200 正常解析
+- SSRF：`:9188` / `:3019/api/items` / `<private-test-address>` / `169.254.169.254` → 全 403；已注册的 solidot feed → 200 正常解析
 - 限流：连续 13 次错误登录 → `401×10` 然后 `429`
 - XSS：浏览器内实跑 `renderMarkdown` → 拦截裸 HTML + `javascript:`，保留 `**粗体**`/引用/表格/代码块/安全链接；控制台 0 error
 - `vitest` 208/208；改动文件 `eslint` 0 error

@@ -9,7 +9,7 @@
 # 撤销: sudo route -n delete -net 198.41.0.0/16
 
 set -u
-LOG=/Users/user/.cloudflared/logs/route-ensure.log
+LOG="${EAGLEYE_CLOUDFLARED_LOG:-$HOME/.cloudflared/logs/route-ensure.log}"
 mkdir -p "$(dirname "$LOG")"
 
 log() { echo "[$(date '+%F %T')] $*" >> "$LOG"; }

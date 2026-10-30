@@ -19,7 +19,9 @@ To enable feed mode (incremental timeline):
 
 ```sh
 # 1. pin the mode in the service EnvironmentFile
-echo 'X_FOLLOWING_MODE=feed' >> /home/user/.config/argus/eagleye-pipeline.env
+echo 'X_FOLLOWING_MODE=feed' >> "$HOME/.config/argus/eagleye-pipeline.env"
+# Set EAGLEYE_DB_PATH and EAGLEYE_API_BASE_URL in that private file if the
+# database or API binding differs from the local defaults. Do not commit it.
 # 2. install the trigger (files above)
 cp deploy/thinkpad/eagleye-x-following.py ~/.local/bin/ && chmod +x ~/.local/bin/eagleye-x-following.py
 cp deploy/thinkpad/argus-eagleye-x-following.{service,timer} ~/.config/systemd/user/
@@ -48,7 +50,7 @@ botched order degrades to a skipped tick, logged, not a storm.)
 
 | switch | default | to enable | to roll back |
 |---|---|---|---|
-| `X_FOLLOWING_MODE=feed\|per-user` | `per-user` (CTO ruling 2026-10-20, amended 2026-10-21: literal shadow coverage 0.0/4.29/5.71/21.43 < 95%; CADENCE 100% is a model value not admissible — the ruling stands on the literal coverage gate alone. The earlier "only 89/551 session-followed accounts are in the configured 442" was a list_fetched=200 truncation artifact; the manual-export cross-check shows 439/442 configured accounts ARE followed, and programs must never pull the following list via the JC account — twitter following/whoami forbidden, list checks read the static export /home/user/.config/argus/x-following-set.json, counts only) | set `X_FOLLOWING_MODE=feed` in `/home/user/.config/argus/eagleye-pipeline.env` (service `EnvironmentFile`, per `systemctl --user cat argus-eagleye.service`) + restart service | **Step 1**: `systemctl --user disable --now argus-eagleye-x-following.timer`; **Step 2**: remove/unset the env var + restart → pipeline re-includes X with the legacy per-account path. |
+| `X_FOLLOWING_MODE=feed\|per-user` | `per-user` (coverage must pass the literal gate; account-list checks use a private static export, counts only) | set `X_FOLLOWING_MODE=feed` in `~/.config/argus/eagleye-pipeline.env` (service `EnvironmentFile`, per `systemctl --user cat argus-eagleye.service`) + restart service | **Step 1**: `systemctl --user disable --now argus-eagleye-x-following.timer`; **Step 2**: remove/unset the env var + restart → pipeline re-includes X with the legacy per-account path. |
 | 2h trigger timer | inert by default (trigger self-skips off-feed) | `systemctl --user enable --now argus-eagleye-x-following.timer` (after pinning feed) | `systemctl --user disable --now argus-eagleye-x-following.timer` |
 | `X_FOLLOWING_INCLUDE_RT=1` keeps retweets | unset (filtered) | set the env var | unset the env var |
 | `X_FOLLOWING_CURSOR_CONFIRM_RUN` (watermark confirmation run; lone injected old tweets are scanned past) | `8` | — | `1` restores first-hit cursor stop (not recommended — field data shows injected old tweets mid-page) |

@@ -5,21 +5,26 @@
   Requires the DB path below to match the main app. NOT loaded by the R0-09 work.
 -->
 <plist version="1.0">
+<!--
+  Install template: replace every example path component with the installing
+  user name, then adjust EAGLEYE_DB_PATH and repository paths before loading.
+  Do not load until all placeholders are replaced.
+-->
 <dict>
   <key>Label</key>
   <string>com.eagleye.mcp</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/user/.local/bin/node</string>
-    <string>/Users/user/Proj/eagleye/mcp/server.js</string>
+    <string>/Users/example/.local/bin/node</string>
+    <string>/Users/example/Proj/eagleye/mcp/server.js</string>
     <string>3020</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/user/Proj/eagleye</string>
+  <string>/Users/example/Proj/eagleye</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>EAGLEYE_DB_PATH</key>
-    <string>/Users/user/Proj/eagleye/eagleye.db</string>
+    <string>/Users/example/Proj/eagleye/eagleye.db</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -28,8 +33,8 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>/Users/user/Proj/eagleye/logs/com.eagleye.mcp.out.log</string>
+  <string>/Users/example/Proj/eagleye/logs/com.eagleye.mcp.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/user/Proj/eagleye/logs/com.eagleye.mcp.err.log</string>
+  <string>/Users/example/Proj/eagleye/logs/com.eagleye.mcp.err.log</string>
 </dict>
 </plist>

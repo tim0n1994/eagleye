@@ -20,14 +20,14 @@
  *
  * 实现约定（与 slo-baseline.py:72 EAGLEYE_SLO_DB 同款钩子）: 库路径经
  * env EAGLEYE_BACKLOG_REAL_DB 注入; 不设时默认生产库
- * /home/user/projects/eagleye/eagleye.db（默认路径不在本测试内运行 —
+ * ~/projects/eagleye/eagleye.db（默认路径不在本测试内运行 —
  * 2.18GB 生产库的重扫描不属于单测; 生产巡检由门禁 checklist 的
  * mode=ro 流程执行）。features lane 等附加输出行允许并存，本契约只钉
  * BACKLOG_REAL= 一行的值与上述三条款。
  *
  * RED 门（脚本尚不存在 → 第一条用例失败、其余 skip，kg-drain-script
  * .test.js 的 implemented 守卫惯例）:
- *   export PATH=/home/user/.local/bin:$PATH &&
+ *   export PATH=$HOME/.local/bin:$PATH &&
  *   npx vitest run server/services/__tests__/backlog-real-script.test.js
  */
 

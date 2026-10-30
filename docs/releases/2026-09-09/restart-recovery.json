@@ -15,31 +15,31 @@
     {
       "id": "lane-1",
       "endpoint_url": "http://127.0.0.1:56185/v1/messages",
-      "model": "configured-model",
+      "model": "redacted-model",
       "key_masked": true
     },
     {
       "id": "lane-2",
       "endpoint_url": "http://127.0.0.1:56185/v1/messages-2",
-      "model": "configured-model",
+      "model": "redacted-model",
       "key_masked": true
     },
     {
       "id": "lane-3",
       "endpoint_url": "http://127.0.0.1:56185/v1/messages-3",
-      "model": "configured-model",
+      "model": "redacted-model",
       "key_masked": true
     },
     {
       "id": "lane-4",
       "endpoint_url": "http://127.0.0.1:56185/v1/messages-4",
-      "model": "configured-model",
+      "model": "redacted-model",
       "key_masked": true
     },
     {
       "id": "lane-5",
       "endpoint_url": "http://127.0.0.1:56185/v1/messages-5",
-      "model": "configured-model",
+      "model": "redacted-model",
       "key_masked": true
     }
   ],

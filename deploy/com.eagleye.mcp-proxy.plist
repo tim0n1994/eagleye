@@ -6,17 +6,22 @@
   exits if missing). NOT loaded by the R0-09 work.
 -->
 <plist version="1.0">
+<!--
+  Install template: replace every example path component with the installing
+  user name, then adjust EAGLEYE_DB_PATH and repository paths before loading.
+  Do not load until all placeholders are replaced.
+-->
 <dict>
   <key>Label</key>
   <string>com.eagleye.mcp-proxy</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/user/.local/bin/node</string>
-    <string>/Users/user/Proj/eagleye/mcp/chatgpt-proxy.js</string>
+    <string>/Users/example/.local/bin/node</string>
+    <string>/Users/example/Proj/eagleye/mcp/chatgpt-proxy.js</string>
     <string>3021</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/user/Proj/eagleye</string>
+  <string>/Users/example/Proj/eagleye</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -24,8 +29,8 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>/Users/user/Proj/eagleye/logs/com.eagleye.mcp-proxy.out.log</string>
+  <string>/Users/example/Proj/eagleye/logs/com.eagleye.mcp-proxy.out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/user/Proj/eagleye/logs/com.eagleye.mcp-proxy.err.log</string>
+  <string>/Users/example/Proj/eagleye/logs/com.eagleye.mcp-proxy.err.log</string>
 </dict>
 </plist>

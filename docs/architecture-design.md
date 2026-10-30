@@ -59,7 +59,7 @@ Eagleye 不能只是 RSS 阅读器。它应该是“原始信号 + AI 理解 + �
 
 ### 4.1 当前项目基线
 
-当前项目路径：`/Users/user/Proj/eagleye`
+当前项目路径：`~/Proj/eagleye`
 
 现有实现不是空项目，Gemini 必须在此基础上演进：
 
@@ -1150,7 +1150,7 @@ saved_items (
 请 Gemini 严格按以下顺序实施：
 
 1. 不要先做营销页，直接搭建真实应用。
-2. 必须基于 `/Users/user/Proj/eagleye` 当前项目演进，不要删除现有 `server.js`、`index.html`、`css/`、`js/`、`eagleye.db`。
+2. 必须基于 `~/Proj/eagleye` 当前项目演进，不要删除现有 `server.js`、`index.html`、`css/`、`js/`、`eagleye.db`。
 3. 先把 `server.js` 中的数据库初始化、connectors、LLM、routes 逐步拆分为模块；如果改动太大，先保留兼容导出。
 4. 先实现 SQLite schema migration 和 seed sources，再写页面。
 5. 所有页面必须使用真实 URL 路径；当前 server 可继续 fallback 到 `index.html`，但前端要根据 pathname 渲染对应页面，不要只做单页假 Tab。
