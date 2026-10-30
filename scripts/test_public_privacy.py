@@ -1,5 +1,6 @@
 """Privacy checks must catch leaks without printing the confidential value."""
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -40,6 +41,17 @@ class PublicPrivacyTests(unittest.TestCase):
         self.assertEqual(privacy.findings('server/provider-catalog.json', evidence), [])
         self.assertEqual(privacy.findings('docs/releases/sample/result.json',
             '{"actual_model":"operator-private-selection"}'), [(1, 'deployment-model-selection')])
+
+    def test_string_encoded_metadata_is_checked_recursively(self):
+        metadata = json.dumps({'requested_model': 'operator-private-selection'})
+        evidence = json.dumps({'rows': [{'llm_metadata': metadata}]})
+        self.assertEqual(privacy.findings('docs/releases/sample/result.json', evidence), [
+            (1, 'deployment-model-selection'),
+        ])
+        clean = json.dumps({'llm_metadata': json.dumps({'model': 'configured-model'})})
+        self.assertEqual(privacy.findings('docs/releases/sample/result.json', clean), [])
+        self.assertEqual(privacy.findings('docs/releases/sample/result.json',
+            json.dumps({'content': '{ordinary non-JSON article text'})), [])
 
     def test_symlink_targets_are_scanned_without_following_them(self):
         with tempfile.TemporaryDirectory() as directory:
