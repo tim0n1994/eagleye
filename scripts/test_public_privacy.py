@@ -1,6 +1,7 @@
 """Privacy checks must catch leaks without printing the confidential value."""
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location('public_privacy', Path(__file__).with_name('check-public-privacy.py'))
@@ -39,6 +40,22 @@ class PublicPrivacyTests(unittest.TestCase):
         self.assertEqual(privacy.findings('server/provider-catalog.json', evidence), [])
         self.assertEqual(privacy.findings('docs/releases/sample/result.json',
             '{"actual_model":"operator-private-selection"}'), [(1, 'deployment-model-selection')])
+
+    def test_symlink_targets_are_scanned_without_following_them(self):
+        with tempfile.TemporaryDirectory() as directory:
+            link = Path(directory) / 'private-skill'
+            target = '/home/' + 'operator-private' + '/missing-skill'
+            link.symlink_to(target)
+            content = privacy.read_publishable_content(link)
+            self.assertEqual(content.decode(), target)
+            self.assertEqual(privacy.findings('.agents/skills/private-skill', content.decode()),
+                             [(1, 'personal-home-path')])
+
+            link.unlink()
+            outside = Path(directory) / 'target.txt'
+            outside.write_text('contents must not be read through the link')
+            link.symlink_to(outside)
+            self.assertEqual(privacy.read_publishable_content(link).decode(), str(outside))
 
 
 if __name__ == '__main__':

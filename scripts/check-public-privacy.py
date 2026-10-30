@@ -2,6 +2,7 @@
 """Reject deployment details in publishable files without echoing their values."""
 import ipaddress
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -58,6 +59,14 @@ def findings(path, text):
     return sorted(set(result))
 
 
+def read_publishable_content(path):
+    # Git publishes the link target itself, not the target file. Never follow
+    # links into private operator files (including dangling absolute links).
+    if path.is_symlink():
+        return os.readlink(path).encode('utf-8')
+    return path.read_bytes() if path.is_file() else None
+
+
 def main():
     root = Path(__file__).resolve().parent.parent
     paths = subprocess.check_output(
@@ -66,10 +75,8 @@ def main():
     count = 0
     for name in sorted(set(filter(None, paths))):
         path = root / name
-        if not path.is_file() or path.is_symlink():
-            continue
-        data = path.read_bytes()
-        if b'\0' in data:
+        data = read_publishable_content(path)
+        if data is None or b'\0' in data:
             continue
         for number, category in findings(name, data.decode('utf-8', errors='replace')):
             print(f'{name}:{number}: {category}')
