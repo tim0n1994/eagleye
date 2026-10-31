@@ -71,7 +71,7 @@ function registerTools(server, enabledRef) {
 
   register('system_overview', {
     title: 'System overview',
-    description: 'Row counts and freshness watermarks for all Eagleye business data (items, AI summaries, topics, entities, digests, research).',
+    description: 'Row counts and freshness watermarks for Eagleye business data, plus optional sanitized local monitor issues and backlog/disk metrics with explicit freshness.',
     inputSchema: {},
   }, wrap(() => queries.systemOverview()));
 

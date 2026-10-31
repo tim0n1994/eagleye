@@ -10,6 +10,7 @@
 
 const Database = require('better-sqlite3');
 const { getDBPath } = require('../server/config');
+const { readRuntimeMonitor } = require('./runtime-monitor');
 
 const MAX_LIMIT = 200;
 const TEXT_CLAMP = 2000;
@@ -193,6 +194,7 @@ function systemOverview() {
     latest_fetched_at: scalar('SELECT MAX(fetched_at) FROM information_items'),
     latest_digest_date: scalar('SELECT MAX(digest_date) FROM daily_digests'),
     score_scale: { alpha_score: '0-1' },
+    runtime_monitor: readRuntimeMonitor(),
     summary_record_coverage: {
       as_of: coverageRows[0].as_of,
       scope: 'all_items',
