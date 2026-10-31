@@ -440,7 +440,7 @@ class BaseConnector {
     });
 
     try {
-      tx();
+      tx.immediate();
     } catch (err) {
       console.error(`Error saving items for ${this.slug}:`, err.message);
       saved.length = 0;
