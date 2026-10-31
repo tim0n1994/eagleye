@@ -3,5 +3,5 @@
   "entry": ["js/app.js", "scripts/*.js"],
   "project": ["js/**/*.js", "server/**/*.js"],
   "ignore": ["js/lib/**"],
-  "ignoreBinaries": ["python3"]
+  "ignoreBinaries": ["flock"]
 }
