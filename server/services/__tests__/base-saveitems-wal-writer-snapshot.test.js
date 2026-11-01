@@ -234,5 +234,9 @@ describe('BaseConnector.saveItems under a competing WAL writer', () => {
         succeeded: 1,
         produced: 1,
       });
-  });
+    // This regression must cross a real worker-thread boundary while the CI
+    // runner may still be compiling/loading modules. SQLite's own busy timeout
+    // still bounds an actual deadlock, so allow scheduler headroom without
+    // masking a SQLITE_BUSY failure.
+  }, 15_000);
 });
