@@ -70,6 +70,16 @@ describe('CTO 裁决: X_FOLLOWING_MODE 默认 feed', () => {
     expect(XFollowingConnector.resolveMode()).toBe('per-user');
   });
 
+  it('R2.1 GUARD 显式 X_FOLLOWING_MODE="hybrid" 时 resolveXMode() === "hybrid"', () => {
+    process.env.X_FOLLOWING_MODE = 'hybrid';
+    expect(XFollowingConnector.resolveMode()).toBe('hybrid');
+  });
+
+  it('R2.1 GUARD hybrid 大小写不敏感（"HYBRID" → hybrid）', () => {
+    process.env.X_FOLLOWING_MODE = 'HYBRID';
+    expect(XFollowingConnector.resolveMode()).toBe('hybrid');
+  });
+
   it('GUARD 非 per-user 取值仍走 feed', () => {
     process.env.X_FOLLOWING_MODE = 'per_user';
     expect(XFollowingConnector.resolveMode()).toBe('feed');

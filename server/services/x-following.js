@@ -11,13 +11,15 @@ const { isJobCancelled } = require('./jobs');
 const connector = new XFollowingConnector();
 
 async function syncXFollowing(opts = {}) {
-  const { jobId } = opts;
+  const { jobId, signal } = opts;
   if (jobId && isJobCancelled(jobId)) {
     return { cancelled: true, posts: 0 };
   }
   const startedAt = Date.now();
   try {
-    const items = await connector.fetch();
+    // Pass the job cancellation signal through so an aborted job also aborts
+    // in-flight feed pages instead of only being checked once up front.
+    const items = await connector.fetch(undefined, { signal });
     const saved = connector.saveItems(items);
     recordFetchDuration('x-following', Math.max(0, Date.now() - startedAt));
     return { posts: items.length, saved: saved.length };

@@ -32,6 +32,10 @@ function registry(fetch, env = {}) {
   const mocks = Object.fromEntries([...code.matchAll(/require\('(\.\/[^']+)'\)/g)]
     .map(([, name]) => [name, new Proxy({}, { get: () => Connector })]));
   mocks['./base'] = { parseItemLimit: value => value };
+  class XConnector extends Connector {
+    static resolveMode() { return 'per-user'; }
+  }
+  mocks['./x-following'] = { XFollowingConnector: XConnector };
   mocks['../services/date-contract'] = { compactDigestDate: value => value };
   // CTO 03:40 retry patch: connectors/index.js now requires the shared utils
   // for runWithFetchContext (per-source stats/signal propagation). The real
@@ -107,6 +111,7 @@ test('sync full and single source pass cancellation through registry and skip en
       '../connectors/index': h,
       './llm': { enrichItems: () => { enrichCalls++; } },
       './jobs': { isJobCancelled: () => false },
+      './scheduler': { expectedIntervalHours: () => 24 },
       './date-contract': { normalizeDigestDate: value => value, todayDigestDate: () => '20261016' },
     });
     const controller = new AbortController();

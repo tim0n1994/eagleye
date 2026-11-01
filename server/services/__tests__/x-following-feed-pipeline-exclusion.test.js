@@ -171,4 +171,19 @@ describe('Round 2 ① pipeline 在 feed 模式下不含 X 抓取', () => {
     const accounts = new Set(reach.twitterUserPosts.mock.calls.map((c) => String(c[0]).replace(/^@/, '')));
     expect(accounts.has('alice'), 'per-user 模式下 pipeline 必须照常逐账号抓 X').toBe(true);
   });
+
+  it('T8b R2.1 X_FOLLOWING_MODE=hybrid：pipeline 同样零 CLI 调用（2h lane 连降级一起负责）', async () => {
+    process.env.X_FOLLOWING_MODE = 'hybrid';
+    const { results, reach } = await runPipelineFetchAll();
+
+    const cliCalls = reach.runReach.mock.calls.length + reach.twitterUserPosts.mock.calls.length;
+    expect(
+      cliCalls,
+      'hybrid 模式下 pipeline 对 x-following 不得产生任何 twitter CLI 调用（含降级路径，否则与 2h tick 双重全量扫）',
+    ).toBe(0);
+
+    const xRow = results.find((r) => r.source === 'x-following');
+    expect(xRow?.skipped_by, '跳过行须标记 incremental-mode').toBe('incremental-mode');
+    expect(xRow ? (xRow.items || 0) : 0, 'hybrid 模式 pipeline 结果中 x-following 不得有条目').toBe(0);
+  });
 });

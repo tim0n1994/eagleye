@@ -127,6 +127,14 @@ describe('durable daily scheduling', () => {
     expect(runJob).not.toHaveBeenCalled();
   });
 
+  it('exposes the source-fetch cadence only for an enabled daily pipeline', () => {
+    expect(scheduler.expectedIntervalHours()).toBe(24);
+    scheduler.saveConfig({ task: 'rescore' });
+    expect(scheduler.expectedIntervalHours()).toBeNull();
+    scheduler.saveConfig({ enabled: false, task: 'pipeline' });
+    expect(scheduler.expectedIntervalHours()).toBeNull();
+  });
+
   it('holds the schedule while a required runtime switch is paused and resumes without consuming an attempt', async () => {
     testSwitches = { collect: true, enrich: false, digest: true };
     await scheduler.tick();

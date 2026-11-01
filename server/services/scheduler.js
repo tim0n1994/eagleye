@@ -129,6 +129,14 @@ function saveConfig(patch) {
   return getConfig();
 }
 
+function expectedIntervalHours(config = getConfig()) {
+  const normalized = normalizeConfig(config);
+  // Only the pipeline task fetches sources. Rescore and an inactive scheduler
+  // provide no observed source-fetch cadence to infer.
+  if (!normalized.enabled || normalized.task !== 'pipeline') return null;
+  return 24;
+}
+
 function shouldFire(cfg, now = new Date()) {
   if (!cfg.enabled || cfg.lastRun?.slice(0, 10) === nowLocalStamp(now).slice(0, 10)) return false;
   if (now < scheduledTime(cfg, now)) return false;
@@ -201,4 +209,16 @@ function stop() {
   _timer = null;
 }
 
-module.exports = { start, stop, getConfig, saveConfig, nowLocalStamp, tick, shouldFire, TICK_MS, DEFAULTS, CONFIG_KEY };
+module.exports = {
+  start,
+  stop,
+  getConfig,
+  saveConfig,
+  expectedIntervalHours,
+  nowLocalStamp,
+  tick,
+  shouldFire,
+  TICK_MS,
+  DEFAULTS,
+  CONFIG_KEY,
+};

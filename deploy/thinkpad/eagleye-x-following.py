@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Eagleye X Following 2h incremental trigger (Round 2 feed mode).
+"""Eagleye X Following 2h incremental trigger (Round 2 feed mode, R2.1 hybrid).
 
 Runs from a systemd timer (every 2h, offset from the enrich drainer's
 00/2:40 and from the 01:00 pipeline). Fires the existing admin endpoint
 POST /api/x-following/sync?background=true, which queues the singleton
-X_FOLLOWING_SYNC job; with an explicit X_FOLLOWING_MODE=feed the connector
-then does ONE cursor-bounded following-feed pull instead of a 442-account
-per-user scan. Clones eagleye-drain.py: read-only sqlite + one POST.
+x-following-sync job; with the connector default (X_FOLLOWING_MODE unset,
+effective "feed") or an explicit hybrid pin, it does ONE cursor-bounded
+following-feed pull — hybrid additionally degrades a failed feed round to
+a per-user scan at most once per X_FOLLOWING_FULL_FALLBACK_COOLDOWN_MS
+(default 24h) — instead of a 442-account per-user scan. Clones
+eagleye-drain.py: read-only sqlite + one POST.
 
-Mode guard (CTO ruling 2026-10-20): per-user is the DEFAULT and the 01:00
-pipeline owns X. This trigger fires ONLY when the service env file pins
-X_FOLLOWING_MODE=feed explicitly; unset or any other value skips (an unset
-default plus a live timer would otherwise run a full 442-account scan every
-2h on top of the pipeline's own scan — the CLI red-line storm).
+Mode guard: the effective mode follows the CONNECTOR default — unset means
+"feed", so the 2h lane owns X and the 01:00 pipeline stage skips it. Only
+an explicit X_FOLLOWING_MODE=per-user in the env file hands X back to the
+pipeline and makes this trigger self-skip (a skipped tick is logged, not a
+storm: feed has no full-scan path, and hybrid caps fallback frequency).
 
 Overlap guard: X_FOLLOWING_SYNC and FULL_PIPELINE are DIFFERENT singleton
 types, so the server would happily run both in parallel (executeJob is
@@ -29,24 +32,23 @@ DB = os.environ.get('EAGLEYE_DB_PATH', str(Path.home() / 'projects/eagleye/eagle
 BASE = os.environ.get('EAGLEYE_API_BASE_URL', 'http://127.0.0.1:3019').rstrip('/')
 ENV_FILE = os.environ.get('EAGLEYE_PIPELINE_ENV_FILE', str(Path.home() / '.config/argus/eagleye-pipeline.env'))
 
-# Mode guard (see docstring): fire only on an EXPLICIT X_FOLLOWING_MODE=feed
-# in the service EnvironmentFile. Default (unset) is per-user per the CTO
-# ruling — the 01:00 pipeline's own full scan owns X, and this trigger firing
-# would add a second full 442-account scan every 2h (CLI red-line storm).
-mode = None
+# Mode guard (see docstring): effective mode follows the connector default —
+# unset -> feed. Only an explicit pin in the EnvironmentFile changes it;
+# per-user hands X back to the 01:00 pipeline and keeps this lane inert.
+mode = 'feed'
 try:
     with open(ENV_FILE) as f:
         for line in f:
             m = re.match(r'\s*(?:export\s+)?X_FOLLOWING_MODE\s*=\s*["\']?([\w-]+)', line)
             if m:
-                mode = m.group(1).strip().lower()
+                mode = m.group(1).strip().lower() or 'feed'
                 break
 except FileNotFoundError:
-    pass  # no env file → default per-user → skip below
-if mode != 'feed':
-    print(json.dumps({'skipped': True, 'mode': mode or 'unset',
-                      'reason': 'X_FOLLOWING_MODE not explicitly "feed" (CTO ruling: '
-                                'per-user default, 01:00 pipeline owns X)'}))
+    pass  # no env file -> connector default feed -> 2h lane owns X
+if mode not in ('feed', 'hybrid'):
+    print(json.dumps({'skipped': True, 'mode': mode,
+                      'reason': 'X_FOLLOWING_MODE=%s: X owned by the 01:00 pipeline '
+                                '(legacy per-user); 2h lane stays inert' % mode}))
     sys.exit(0)
 
 con = sqlite3.connect('file:' + DB + '?mode=ro', uri=True)

@@ -288,15 +288,13 @@ describe('D2 connector date-window filtering (01:00 CST schedule)', () => {
     expectWindowContract(items, { in: 'https://example.com/cn-in', old: 'https://example.com/cn-old', fut: 'https://example.com/cn-fut' });
   });
 
-  it('physical-ai-cn-photonics empty-feed placeholder fallback keeps the passed-in digest date (regression canary)', async () => {
-    // 全部 feed 失败/为空 → 生成公司 placeholder。现状 digest_date 已取传入日期，
-    // D2 改造后必须保持（该用例在修复前后都应为绿）。
+  it('physical-ai-cn-photonics empty-feed round returns genuine empty instead of placeholders', async () => {
+    // 全部 feed 失败/为空时不得伪造公司占位内容；该来源由迁移软禁用，
+    // connector 保留真实空结果以便未来替换 feed 后重新启用。
     const h = buildHarness(db, () => '');
     const { CNPhotonicsConnector } = h.load('connectors/cn-photonics.js');
     const items = await new CNPhotonicsConnector().fetch(DIGEST);
-    expect(items).toHaveLength(10);
-    expect(items.every((i) => JSON.parse(i.source_payload).is_placeholder === true)).toBe(true);
-    expect(items.every((i) => normalizeDigestDate(i.digest_date) === DIGEST_CANONICAL)).toBe(true);
+    expect(items).toEqual([]);
   });
 
   it('startup-archive window-filters the <time> day string and takes digest_date from the request (D2 review gap)', async () => {
@@ -348,7 +346,7 @@ describe('D2 connector date-window filtering (01:00 CST schedule)', () => {
 
   it('app-store takes digest_date from the requested digest date instead of UTC today', async () => {
     const h = buildHarness(db, (url) => {
-      if (url === 'https://rss.marketingtools.apple.com/api/v2/us/apps/top-free/50/apps.json') {
+      if (url === 'https://rss.marketingtools.apple.com/api/v2/us/apps/top-free/25/apps.json') {
         return JSON.stringify({
           feed: { results: [{ id: '1', name: 'MockApp', artistName: 'MockCorp', url: 'https://apps.apple.com/us/app/id1', genres: [{ name: 'Tools' }] }] },
         });

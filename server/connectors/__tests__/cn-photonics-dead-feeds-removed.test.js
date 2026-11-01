@@ -179,10 +179,11 @@ describe('P0 B② 死 feed 从 config 移除 — 其余 feed 正常（fixture）
     const sleep = (ms) => { sleeps.push(ms); return Promise.resolve(); };
     const r = await settle(connector.fetch(dateContract.compactDigestDate(dateContract.todayDigestDate()), { sleep, stats: {} }), '②');
 
-    // 1) fetch 必须 settle 且 resolve（每 feed try/catch 已存在；占位兜底保证非空产出）
+    // 1) fetch 必须 settle 且 resolve（每 feed try/catch 已存在；CN_FEEDS 为空
+    //    时返回真实空数组，不再生成 CN_COMPANIES 占位条目）
     expect(r.ok, `${RED}: ② connector.fetch 必须在守卫内结束 —— config 移除不应引入任何挂死/真退避路径。err=${r.err && r.err.message}`).toBe(true);
     const items = Array.isArray(r.body) ? r.body : [];
-    expect(Array.isArray(r.body) && items.length >= 1, `${RED}: ② fetch 必须返回非空数组（活 feed 条目或 CN_COMPANIES 占位 10 条）；实际 ${items.length} 条`).toBe(true);
+    expect(Array.isArray(r.body), `${RED}: ② fetch 必须返回数组（活 feed 条目或真实空轮）；实际 ${typeof r.body}`).toBe(true);
 
     // 2) 核心 RED 断言：8 个确认死亡的 feed URL 一个都不得被请求
     const deadHits = calls.filter(c => DEAD_FEED_STEPS.has(c.key));
@@ -198,8 +199,7 @@ describe('P0 B② 死 feed 从 config 移除 — 其余 feed 正常（fixture）
       expect(items.every(i => !isPlaceholder(i)), `${RED}: ② 有活 feed 条目时不得混入占位（cn-photonics.js:66-71 items.length>0 不触发占位）`).toBe(true);
     } else {
       // 形态 B：CN_FEEDS 全移（CTO 建议）—— 必须落 CN_COMPANIES 占位兜底，恰好 10 条
-      expect(items.length, `${RED}: ② CN_FEEDS 全移后应走 CN_COMPANIES 占位路径（cn-photonics.js:66-71），恰好 10 条；实际 ${items.length}`).toBe(10);
-      expect(items.every(isPlaceholder), `${RED}: ② 全移形态下全部条目应为占位（is_placeholder=true）`).toBe(true);
+      expect(items.length, `${RED}: ② CN_FEEDS 全移后应返回真实空数组（0 条，占位已移除）；实际 ${items.length}`).toBe(0);
     }
   });
 });

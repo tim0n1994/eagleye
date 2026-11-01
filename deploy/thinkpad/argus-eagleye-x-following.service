@@ -1,5 +1,5 @@
 [Unit]
-Description=Eagleye X Following 2h incremental sync trigger (Round 2 feed mode)
+Description=Eagleye X Following 2h incremental sync trigger (feed/hybrid mode; per-user hands X back to the pipeline)
 Documentation=file://%h/projects/eagleye/deploy/thinkpad/README-x-following-incremental.md
 # Static oneshot, only started by argus-eagleye-x-following.timer.
 # Mirrors argus-eagleye-drain.service (python3 oneshot, no lock needed —

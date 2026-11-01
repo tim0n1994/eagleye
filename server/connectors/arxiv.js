@@ -95,13 +95,8 @@ class ArxivConnector extends BaseConnector {
   }
 
   async fetch(date) {
-    try {
-      const xml = await fetchURL(this.buildUrl());
-      return this.parseAtom(xml, date);
-    } catch (err) {
-      console.error(`arXiv fetch error for ${this.slug}:`, err.message);
-      return [];
-    }
+    const xml = await fetchURL(this.buildUrl());
+    return this.parseAtom(xml, date);
   }
 
   parseAtom(xml, date) {

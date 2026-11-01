@@ -10,7 +10,7 @@ class GitHubConnector extends BaseConnector {
     super('github-trending');
   }
 
-  async fetch(date, options = {}) {
+  async fetch(date) {
     // Accept canonical (YYYY-MM-DD) and compact (YYYYMMDD) day strings; the
     // old positional slice produced NaN day parts for canonical input and
     // crashed toISOString() with Invalid time value.
@@ -19,14 +19,12 @@ class GitHubConnector extends BaseConnector {
     const baseMs = Number.isFinite(dateObj.getTime()) ? dateObj.getTime() : Date.now();
     const sevenDaysAgo = new Date(baseMs - 7 * 24 * 60 * 60 * 1000);
     const dateStr = sevenDaysAgo.toISOString().split('T')[0];
-    
-const searchUrl = `https://api.github.com/search/repositories?q=created:>${dateStr}+stars:>50&sort=stars&order=desc&per_page=25`;
-    
-    try {
-      const body = await fetchURL(searchUrl);
-      const data = JSON.parse(body);
-      
-      return (data.items || []).map(repo => {
+  const searchUrl = `https://api.github.com/search/repositories?q=created:>${dateStr}+stars:>50&sort=stars&order=desc&per_page=25`;
+
+  const body = await fetchURL(searchUrl);
+  const data = JSON.parse(body);
+
+  return (data.items || []).map(repo => {
         const dateStr2 = (repo.created_at || '').slice(0, 10).replace(/-/g, '');
         return {
           ...this.normalize({
@@ -60,12 +58,7 @@ const searchUrl = `https://api.github.com/search/repositories?q=created:>${dateS
           }),
           digest_date: dateStr2 || date,
         };
-      });
-    } catch (err) {
-      if (options.limit !== undefined) throw err;
-      console.error('GitHub fetch error:', err.message);
-      return [];
-    }
+  });
   }
 }
 

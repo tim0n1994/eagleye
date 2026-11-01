@@ -28,15 +28,20 @@ describe('complete migrations on fresh and legacy SQLite databases', () => {
   afterEach(() => { db.close(); vi.restoreAllMocks(); });
 
   function expectAllApplied() {
-    // 42 = 38 (R0) + 041_source_consecutive_empty (Round1 D4) + 042_xiaohongshu_disable (Round1 D5) + 043_source_fetch_duration (Round2 ⑤) + 044_information_items_duplicate_of (R3.0 dup 软标记; renumbered 043→044 at merge: 043 taken by Round2 ⑤ already applied in prod)
+    // 45 = 42 existing migrations + 045 cadence + 046 CN Photonics + 047 lane operators.
     // 【主脚本仲裁接管：机械更新迁移文件计数】
-    expect(files).toHaveLength(42);
+    expect(files).toHaveLength(45);
     expect(db.prepare('SELECT name FROM _migrations ORDER BY name').all().map(row => row.name)).toEqual(files);
     expect(db.pragma('foreign_key_check')).toEqual([]);
     expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
     for (const table of ['ai_summaries', 'daily_digests', 'research_reports']) {
       expect(db.pragma(`table_info(${table})`).map(column => column.name)).toContain('llm_metadata');
     }
+    expect(db.pragma('table_info(sources)').map(column => column.name)).toContain('expected_interval_hours');
+    expect(db.prepare("SELECT expected_interval_hours FROM sources WHERE slug='x-following'").get())
+      .toEqual({ expected_interval_hours: 2 });
+    expect(db.prepare("SELECT is_active FROM sources WHERE slug='startup-archive'").get())
+      .toEqual({ is_active: 0 });
   }
 
   it('applies all 36 migrations to an empty database and skips their markers on restart', () => {
