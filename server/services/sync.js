@@ -9,6 +9,7 @@ const { fetchAllSources, fetchSource } = require('../connectors/index');
 const { enrichItems } = require('./llm');
 const { isJobCancelled } = require('./jobs');
 const { normalizeDigestDate, todayDigestDate } = require('./date-contract');
+const { expectedIntervalHours: schedulerExpectedIntervalHours } = require('./scheduler');
 
 // Circular dependency: runJob/JOB_TYPES imported lazily inside runFullPipeline()
 
@@ -48,6 +49,7 @@ async function syncAllSources(opts = {}) {
     checkpoint,
     isCancelled: () => !!jobId && isJobCancelled(jobId),
     onProgress: (progress) => updateProgress({ date, ...progress }),
+    schedulerIntervalHours: schedulerExpectedIntervalHours(),
   });
   console.log(`📡 Sync results:`, results);
   opts.signal?.throwIfAborted();

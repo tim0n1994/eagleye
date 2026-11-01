@@ -34,29 +34,26 @@ function round1(n) {
   return Math.round(n * 10) / 10;
 }
 
-// Estimate the expected interval between fetch passes from a 5-field cron.
-// Deliberately conservative: anything it cannot confidently read falls back
-// to 48h (e.g. weekly cron "30 8 * * 1" is under-read as 48h, which can only
-// make health reporting more pessimistic, never silently healthier).
-function expectedIntervalHoursFromCron(cron) {
-  if (typeof cron !== 'string') return FALLBACK_INTERVAL_HOURS;
-  const fields = cron.trim().split(/\s+/);
-  if (fields.length !== 5) return FALLBACK_INTERVAL_HOURS;
-  const [, hour, dayOfMonth, month, dayOfWeek] = fields;
-  const stepOf = (field) => {
-    const m = /^\*\/(\d+)$/.exec(field);
-    const n = m ? Number(m[1]) : NaN;
-    return Number.isInteger(n) && n > 0 ? n : null;
-  };
-  const hourStep = stepOf(hour);
-  if (hourStep) return Math.min(hourStep, 24);            // "0 */2 * * *" -> 2h
-  if (hour === '*') return 1;                             // "15 * * * *" -> 1h
-  const domStep = stepOf(dayOfMonth);
-  if (domStep) return Math.min(domStep * 24, FAILING_AFTER_HOURS);
-  const monthStep = stepOf(month);
-  if (monthStep) return Math.min(monthStep * 24 * 30, FAILING_AFTER_HOURS);
-  if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') return 24; // daily
-  return FALLBACK_INTERVAL_HOURS;
+function positiveIntervalHours(value) {
+  const hours = Number(value);
+  return Number.isFinite(hours) && hours > 0 ? hours : null;
+}
+
+// Resolve cadence from an explicit source contract first, then the durable
+// daily fetch scheduler. sources.refresh_cron is intentionally ignored: the
+// current runtime has no cron executor and its 2-hour seed/default previously
+// made health and /sources imply a schedule that never ran. The final fallback
+// preserves the old conservative 48-hour grading floor for unconfigured rigs.
+function expectedIntervalForSource(source = {}, schedulerIntervalHours = null) {
+  const explicitHours = positiveIntervalHours(source?.expected_interval_hours);
+  if (explicitHours !== null) {
+    return { hours: explicitHours, basis: 'source_expected_interval' };
+  }
+  const scheduledHours = positiveIntervalHours(schedulerIntervalHours);
+  if (scheduledHours !== null) {
+    return { hours: scheduledHours, basis: 'scheduler_config' };
+  }
+  return { hours: FALLBACK_INTERVAL_HOURS, basis: 'fallback_no_active_scheduler' };
 }
 
 // Grade one source from its recorded health fields.
@@ -119,13 +116,9 @@ function evaluateHealth(input = {}) {
 // Recompute health_status for every source from its stored fields. Called by
 // the scheduler after fetch passes; cheap enough (one row per source) that
 // callers needing fresher numbers may also run it right before reading.
-function recomputeSourceHealth(db, { now = new Date() } = {}) {
+function recomputeSourceHealth(db, { now = new Date(), schedulerIntervalHours = null } = {}) {
   if (!db) return { total: 0, updated: 0, byStatus: {} };
-  const rows = db.prepare(`
-    SELECT id, refresh_cron, last_attempt_at, last_success_at,
-           last_new_content_at, last_error_class
-    FROM sources
-  `).all();
+  const rows = db.prepare('SELECT * FROM sources').all();
   const update = db.prepare('UPDATE sources SET health_status = ? WHERE id = ?');
   const byStatus = {};
   db.transaction(() => {
@@ -135,7 +128,7 @@ function recomputeSourceHealth(db, { now = new Date() } = {}) {
         lastSuccessAt: row.last_success_at,
         lastNewContentAt: row.last_new_content_at,
         lastErrorClass: row.last_error_class,
-        expectedIntervalHours: expectedIntervalHoursFromCron(row.refresh_cron),
+        expectedIntervalHours: expectedIntervalForSource(row, schedulerIntervalHours).hours,
         now,
       });
       update.run(status, row.id);
@@ -211,7 +204,7 @@ module.exports = {
   STALE_AFTER_HOURS,
   FAILING_AFTER_HOURS,
   FALLBACK_INTERVAL_HOURS,
-  expectedIntervalHoursFromCron,
+  expectedIntervalForSource,
   evaluateHealth,
   recomputeSourceHealth,
   healthDistribution,

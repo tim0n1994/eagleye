@@ -15,9 +15,8 @@ class V2EXConnector extends BaseConnector {
 
   async fetch(date) {
     const digestDate = date || compactDigestDate(todayDigestDate());
-    try {
-      const body = await fetchURL('https://www.v2ex.com/api/topics/hot.json');
-      const data = JSON.parse(body);
+    const body = await fetchURL('https://www.v2ex.com/api/topics/hot.json');
+    const data = JSON.parse(body);
 
       return data.map(item => {
         // D2 time-window freshness replaces the digest-day == item-UTC-day
@@ -45,10 +44,6 @@ class V2EXConnector extends BaseConnector {
           digest_date: digestDate,
         };
       }).filter(Boolean);
-    } catch (err) {
-      console.error(`[${this.slug}] fetch error:`, err.message);
-      return [];
-    }
   }
 }
 

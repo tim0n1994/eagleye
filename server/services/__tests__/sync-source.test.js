@@ -21,6 +21,7 @@ function harness(db, options = {}) {
     id: index + 1, title: `Story ${index + 1}`, url: `https://example.com/story-${index + 1}`,
     by: 'author', score: 20, descendants: 3, time: Math.floor(Date.now() / 1000) - 7 * 3600,
   }));
+  const schedulerIntervalHours = options.schedulerIntervalHours ?? null;
   const fetchURL = async (url) => {
     requests.push(url);
     if (options.fetchError) throw options.fetchError;
@@ -46,6 +47,7 @@ function harness(db, options = {}) {
         if (name === '../services/x-following-config') return { readBlocklist: () => new Set(), isBlocked: () => false };
         if (name === './llm') return { enrichItems: async (...args) => { enrichCalls.push(args); return { enriched: 1 }; } };
         if (name === './jobs') return { isJobCancelled: () => cancelled };
+        if (name === './scheduler') return { expectedIntervalHours: () => schedulerIntervalHours };
         if (name === './date-contract') return require('../date-contract');
         if (name === '../connectors/index') return load('connectors/index.js');
         if (name === '../services/outbox') return require('../outbox');
@@ -138,13 +140,13 @@ describe('bounded single-source sync', () => {
     expect(db.prepare('SELECT COUNT(*) count FROM information_items').get().count).toBe(2);
   });
 
-  it.each(['github-trending', 'hugging-face'])('propagates bounded %s network failures while preserving legacy empty results', async (slug) => {
+  it.each(['github-trending', 'hugging-face'])('propagates bounded and legacy %s network failures', async (slug) => {
     const h = harness(db, { realDescriptionConnectors: true, fetchError: new Error('upstream TLS failed') });
     await expect(h.sync.syncSource(slug, '20260909', { limit: 5, skipEnrich: true })).rejects.toThrow('upstream TLS failed');
     expect(h.requests).toHaveLength(1);
     expect(h.enrichCalls).toEqual([]);
     expect(db.prepare('SELECT COUNT(*) count FROM information_items').get().count).toBe(0);
-    await expect(h.registry.fetchSource(slug, '20260909')).resolves.toEqual([]);
+    await expect(h.registry.fetchSource(slug, '20260909')).rejects.toThrow('upstream TLS failed');
     expect(h.requests).toHaveLength(2);
   });
 

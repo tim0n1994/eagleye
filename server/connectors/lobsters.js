@@ -15,9 +15,8 @@ class LobstersConnector extends BaseConnector {
 
   async fetch(date) {
     const digestDate = date || compactDigestDate(todayDigestDate());
-    try {
-      const body = await fetchURL('https://lobste.rs/hottest.json');
-      const data = JSON.parse(body);
+    const body = await fetchURL('https://lobste.rs/hottest.json');
+    const data = JSON.parse(body);
 
       return data.map(item => {
         // D2 time-window freshness replaces the digest-day == item-UTC-day
@@ -44,10 +43,6 @@ class LobstersConnector extends BaseConnector {
           digest_date: digestDate,
         };
       }).filter(Boolean);
-    } catch (err) {
-      console.error(`[${this.slug}] fetch error:`, err.message);
-      return [];
-    }
   }
 }
 

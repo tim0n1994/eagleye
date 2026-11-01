@@ -349,18 +349,20 @@ async function fetchAllSources(date, opts = {}) {
   }, 5000) : null;
 
   const settled = await Promise.allSettled(pendingSources.map(async (source) => {
-    // Round 2 ①: in feed mode the x-following source is owned by its own 2h
-    // incremental schedule (deploy/thinkpad/argus-eagleye-x-following.timer →
-    // POST /api/x-following/sync), so the 01:00 pipeline stage must make ZERO
-    // twitter-cli calls for it. The skip comes from the mode switch, not from
-    // deactivating the source — X_FOLLOWING_MODE=per-user restores the legacy
-    // in-pipeline behavior immediately. Resolved via the static mode helper
-    // (not an instance protocol) so registry stubs/proxies in other tests
-    // (source-cancellation, fetch-duration harnesses) stay unaffected.
-    if (source.slug === 'x-following'
-      && typeof XFollowingConnector.resolveMode === 'function'
-      && XFollowingConnector.resolveMode() === 'feed') {
-      console.log(`  ⏭ ${source.slug}: excluded from pipeline fetch (handled by its own incremental schedule)`);
+    // Round 2 ①/R2.1: in feed AND hybrid mode the x-following source is owned
+    // by its own 2h incremental schedule (deploy/thinkpad/
+    // argus-eagleye-x-following.timer → POST /api/x-following/sync), so the
+    // 01:00 pipeline stage must make ZERO twitter-cli calls for it — under
+    // hybrid the same tick also owns the bounded per-user fallback, so a
+    // pipeline scan would double it. The skip comes from the mode switch, not
+    // from deactivating the source — X_FOLLOWING_MODE=per-user restores the
+    // legacy in-pipeline behavior immediately. Resolved via the static mode
+    // helper (not an instance protocol) so registry stubs/proxies in other
+    // tests (source-cancellation, fetch-duration harnesses) stay unaffected.
+    const xMode = typeof XFollowingConnector.resolveMode === 'function'
+      ? XFollowingConnector.resolveMode() : 'feed';
+    if (source.slug === 'x-following' && xMode !== 'per-user') {
+      console.log(`  ⏭ ${source.slug}: excluded from pipeline fetch (${xMode} mode; handled by its own incremental schedule)`);
       const result = { source: source.slug, items: 0, skipped_by: 'incremental-mode' };
       results.push(result);
       completed++;
@@ -424,7 +426,7 @@ async function fetchAllSources(date, opts = {}) {
     // module sandboxes and deliberately reject unrelated service imports.
     // A failed resolution must only skip reconciliation, never fail fetching.
     const { recomputeSourceHealth } = require('../services/source-health');
-    recomputeSourceHealth(db);
+    recomputeSourceHealth(db, { schedulerIntervalHours: opts.schedulerIntervalHours });
   } catch { /* health columns are unavailable in partial schemas */ }
 
   // Summary: distinguish fetch errors from genuine-empty so the pipeline log

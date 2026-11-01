@@ -9,6 +9,8 @@ const { escapeXML } = require('../services/utils');
 const { getDB } = require('../db/connection');
 const { sendJSON, sendError } = require('./_shared');
 const { normalizeDigestDate, todayDigestDate } = require('../services/date-contract');
+const { getConfig, expectedIntervalHours } = require('../services/scheduler');
+const { expectedIntervalForSource } = require('../services/source-health');
 
 function register(routes) {
 
@@ -16,6 +18,9 @@ function register(routes) {
   routes['/api/sources'] = (req, res, _parsed) => {
     const db = getDB();
     if (!db) return sendError(res, 500, 'Database not available');
+
+    const schedulerConfig = getConfig();
+    const schedulerHours = expectedIntervalHours(schedulerConfig);
 
     const sources = db.prepare(`
       SELECT s.*,
@@ -54,6 +59,12 @@ function register(routes) {
     }
     for (const s of sources) s.trend = trendMap[s.slug] || [];
 
+    for (const s of sources) {
+      const cadence = expectedIntervalForSource(s, schedulerHours);
+      s.expected_interval_hours = cadence.hours;
+      s.expected_interval_basis = cadence.basis;
+    }
+
 
     // R0-09: health fields (last_attempt_at, last_success_at, last_new_content_at,
     // last_error_class, health_status) ride along via SELECT s.*. is_active
@@ -63,6 +74,12 @@ function register(routes) {
       semantics: {
         is_active: 'user enablement; does not promise the source is healthy',
         health_status: 'observed health (healthy | stale | failing | unknown), updated by the fetch scheduler',
+        refresh_cron: 'stored source metadata only; no current scheduler executes it',
+      },
+      expected_cadence: {
+        hours: schedulerHours,
+        basis: schedulerHours ? 'scheduler_config' : 'no_active_scheduler',
+        schedule: schedulerHours ? 'daily ' + schedulerConfig.time : null,
       },
       sources,
     });

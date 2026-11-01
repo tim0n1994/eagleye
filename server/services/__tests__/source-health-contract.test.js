@@ -17,7 +17,7 @@ const path = require('node:path');
 const Module = require('node:module');
 const Database = require('better-sqlite3');
 
-const { evaluateHealth } = require('../source-health');
+const { evaluateHealth, expectedIntervalForSource, recomputeSourceHealth } = require('../source-health');
 const { classifyFetchError } = require('../../connectors/base');
 
 function compileServerModule(relativePath, resolveRequire) {
@@ -60,6 +60,57 @@ describe('source health classification and reconciliation', () => {
         lastErrorClass: 'auth',
         now,
       })).toMatchObject({ status: 'stale', reason: expect.stringContaining('unresolved last error auth') });
+    });
+  });
+
+  describe('expected interval cadence', () => {
+    it('prefers an explicit source contract over scheduler configuration', () => {
+      expect(expectedIntervalForSource(
+        { expected_interval_hours: 72, refresh_cron: '0 */2 * * *' },
+        24,
+      )).toEqual({ hours: 72, basis: 'source_expected_interval' });
+    });
+
+    it('uses enabled pipeline scheduling and ignores legacy refresh_cron', () => {
+      expect(expectedIntervalForSource(
+        { refresh_cron: '0 */2 * * *' },
+        24,
+      )).toEqual({ hours: 24, basis: 'scheduler_config' });
+      expect(expectedIntervalForSource({ refresh_cron: '0 */2 * * *' }, null))
+        .toEqual({ hours: 48, basis: 'fallback_no_active_scheduler' });
+    });
+
+    it('recomputes from the explicit cadence rather than the 2-hour cron default', () => {
+      const db = new Database(':memory:');
+      const createSources = [
+        'CREATE TABLE sources (',
+        '  id INTEGER PRIMARY KEY,',
+        '  expected_interval_hours REAL,',
+        "  refresh_cron TEXT DEFAULT '0 */2 * * *',",
+        '  last_attempt_at TEXT,',
+        '  last_success_at TEXT,',
+        '  last_new_content_at TEXT,',
+        '  last_error_class TEXT,',
+        '  health_status TEXT',
+        ')',
+      ].join(' ');
+      const insertSource = [
+        'INSERT INTO sources',
+        '  (id, expected_interval_hours, last_success_at, health_status)',
+        "VALUES (1, 72, '2026-10-19 02:00:00', 'stale')",
+      ].join(' ');
+      db.exec(createSources);
+      db.prepare(insertSource).run();
+
+      const result = recomputeSourceHealth(db, {
+        now: new Date('2026-10-23T02:00:00Z'),
+        schedulerIntervalHours: 24,
+      });
+
+      expect(result).toMatchObject({ total: 1, updated: 1, byStatus: { healthy: 1 } });
+      expect(db.prepare('SELECT health_status FROM sources WHERE id = 1').get())
+        .toEqual({ health_status: 'healthy' });
+      db.close();
     });
   });
 
@@ -217,6 +268,47 @@ describe('source health classification and reconciliation', () => {
       })]);
       expect(db.prepare('SELECT health_status FROM sources WHERE slug = ?').get('hacker-news'))
         .toEqual({ health_status: 'healthy' });
+    });
+
+    it('forwards scheduler cadence to terminal reconciliation', async () => {
+      class ProbeConnector {
+        async fetch() { return []; }
+        saveItems() {
+          return { items: [], inserted: 0, existing: 0, duplicates: 0, skipped: 0, failed: 0 };
+        }
+      }
+      const connectorModule = new Proxy({}, {
+        get(_target, prop) {
+          if (prop === '__esModule') return false;
+          return typeof prop === 'string' ? ProbeConnector : undefined;
+        },
+      });
+      const actualHealth = require('../source-health');
+      let forwardedOptions;
+      const { fetchAllSources } = compileServerModule('connectors/index.js', (id) => {
+        if (id === '../db/connection') return { getDB: () => db };
+        if (id === './base') return require('../../connectors/base');
+        if (id === '../services/source-health') {
+          return {
+            recomputeSourceHealth: (...args) => {
+              forwardedOptions = args[1];
+              return actualHealth.recomputeSourceHealth(...args);
+            },
+          };
+        }
+        if (id.startsWith('./')) return connectorModule;
+        return undefined;
+      });
+
+      // With a 24h scheduler contract the healthy threshold is 48h. The
+      // generic fallback would use a 48h interval and a 72h threshold.
+      db.prepare("UPDATE sources SET last_success_at = datetime('now', '-75 hours')").run();
+
+      await fetchAllSources('2026-10-23', { schedulerIntervalHours: 24 });
+
+      expect(forwardedOptions).toEqual({ schedulerIntervalHours: 24 });
+      expect(db.prepare('SELECT health_status FROM sources WHERE slug = ?').get('hacker-news'))
+        .toEqual({ health_status: 'stale' });
     });
   });
 

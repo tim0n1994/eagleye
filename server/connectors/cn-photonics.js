@@ -22,7 +22,8 @@ const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../
 //   www.eeworld.com.cn /rss/semiconductor.xml — 403（WAF 拦 RSS 路径）
 //   www.laoyaoba.com /rss — 200 但回 SPA HTML，0 个 <item>（RSS 已停）
 //   www.gelonghui.com /feed/semiconductor — 404
-// 清空后 fetch() 自动落回 CN_COMPANIES 占位路径（10 条/轮）。替代源寻源记 ROADMAP。
+// 清空后 fetch() 返回真实空数组（不再生成占位条目）。源已通过 migration 046
+// 软禁用（is_active = 0）；替代源寻源记 ROADMAP。
 const CN_FEEDS = [];
 
 // P0 热修 B①（2026-10-23）per-feed 预算保护。事故：10-23 01:00 轮 OFweek×3 的
@@ -32,20 +33,6 @@ const CN_FEEDS = [];
 // 预算的一半)——单个挂死/拒连 feed 最多吃掉一半剩余预算，好 feed 必然还有份。
 const PER_FEED_CAP_MS = 30000;
 const PER_FEED_POLL_CHUNK_MS = 250;
-
-// Major Chinese photonics/semiconductor public companies for news scraping
-const CN_COMPANIES = [
-  { name: 'Accelink Technologies', ticker: '002281.SZ', sector: 'photonics' },
-  { name: 'Hisense Broadband', ticker: '600060.SH', sector: 'photonics' },
-  { name: 'ZTE Corporation', ticker: '000063.SZ', sector: 'telecom' },
-  { name: 'FiberHome Technologies', ticker: '600498.SH', sector: 'photonics' },
-  { name: 'Yuanjie Semiconductor', ticker: '688234.SH', sector: 'semiconductor' },
-  { name: 'JCET Group', ticker: '600584.SH', sector: 'semiconductor' },
-  { name: 'NAURA Technology', ticker: '002371.SZ', sector: 'semiconductor' },
-  { name: 'AMEC', ticker: '688012.SH', sector: 'semiconductor' },
-  { name: 'Huaqin Technology', ticker: '603296.SH', sector: 'photonics' },
-  { name: 'Raytron Technology', ticker: '688002.SH', sector: 'photonics' },
-];
 
 class CNPhotonicsConnector extends BaseConnector {
   constructor() {
@@ -79,13 +66,6 @@ class CNPhotonicsConnector extends BaseConnector {
         items.push(...parsed);
       } catch (err) {
         console.error(`[${this.slug}] RSS feed failed (${feed.name} ${feed.url}):`, err.message);
-      }
-    }
-
-    // If no items from RSS, fall back to generating company updates
-    if (items.length === 0) {
-      for (const company of CN_COMPANIES) {
-        items.push(this._generateCompanyPlaceholder(company, dateStr));
       }
     }
 
@@ -203,29 +183,6 @@ class CNPhotonicsConnector extends BaseConnector {
     return items;
   }
 
-  _generateCompanyPlaceholder(company, dateStr) {
-    const now = new Date();
-    return {
-      ...this.normalize({
-        title: `${company.name} (${company.ticker}) — ${company.sector} sector update`,
-        url: `https://www.google.com/search?q=${encodeURIComponent(company.name + ' photonics')}`,
-        description: `${company.name} — ${company.sector} company listed on ${company.ticker}. Chinese photonics/semiconductor sector tracking.`,
-        publishedAt: now.toISOString(),
-        language: 'zh',
-        sourcePayload: {
-          company: company.name,
-          ticker: company.ticker,
-          sector: company.sector,
-          source: 'chinese-photonics-tracker',
-          category: 'photonics-semiconductor',
-          is_placeholder: true,
-        },
-        popularity: {},
-        score: 0.1,
-      }),
-      digest_date: dateStr,
-    };
-  }
 }
 
 module.exports = { CNPhotonicsConnector };

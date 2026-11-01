@@ -20,19 +20,18 @@ class AppStoreBaseConnector extends BaseConnector {
   }
 
   async fetch(date) {
-    try {
-      const url = `https://rss.marketingtools.apple.com/api/v2/${this.country}/apps/${this.chartType}/50/apps.json`;
-      const body = await fetchURL(url);
-      const data = JSON.parse(body);
-      const results = data?.feed?.results || [];
-      const now = new Date();
-      // D2: chart data is current-only (no per-item publish timestamps), so
-      // items are judged against fetch time — always inside the freshness
-      // window — and digest_date takes the requested digest date instead of
-      // UTC today.
-      const digestDate = date || compactDigestDate(todayDigestDate());
+    const url = `https://rss.marketingtools.apple.com/api/v2/${this.country}/apps/${this.chartType}/25/apps.json`;
+    const body = await fetchURL(url);
+    const data = JSON.parse(body);
+    const results = data?.feed?.results || [];
+    const now = new Date();
+    // D2: chart data is current-only (no per-item publish timestamps), so
+    // items are judged against fetch time — always inside the freshness
+    // window — and digest_date takes the requested digest date instead of
+    // UTC today.
+    const digestDate = date || compactDigestDate(todayDigestDate());
 
-      return results.map((app, index) => ({
+    return results.map((app, index) => ({
         ...this.normalize({
           title: `${app.name} — ${app.artistName}`,
           url: app.url || `https://apps.apple.com/${this.country}/app/id${app.id}`,
@@ -56,11 +55,7 @@ class AppStoreBaseConnector extends BaseConnector {
           score: Math.max(0, 50 - index) / 50,
         }),
         digest_date: digestDate,
-      }));
-    } catch (err) {
-      console.error(`App Store fetch error (${this.slug}):`, err.message);
-      return [];
-    }
+    }));
   }
 
   _chartLabel() {

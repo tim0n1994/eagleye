@@ -19,12 +19,12 @@
  *  - Jina needs no auth but is rate-limited and loses exact metrics/dates
  *
  * Config (env or runtime):
- *  X_FOLLOWING_MODE="feed"|"per-user"                      (default feed; per-user is explicit legacy)
+ *  X_FOLLOWING_MODE="feed"|"hybrid"|"per-user"            (default feed; per-user is explicit legacy)
  *  X_FOLLOWING_USERS="elonmusk,sama,DHH,paulg"           (comma-separated, no @)
  *  X_FOLLOWING_CONFIG_PATH="/abs/path/to/users.txt"      (optional override)
  *  X_FOLLOWING_CACHE_TTL_MS=1800000                       (default 30 min, Jina path)
  *
- * Feed mode is the only recommended/default mode. It strictly pages the
+ * Feed mode is the default and recommended mode. It strictly pages the
  * incremental following timeline via `twitter feed -t following ...`; it never
  * expands a feed failure into a 442-account per-user scan. Each page has a
  * hard abort deadline, and the whole feed run has a smaller budget than the
@@ -32,6 +32,13 @@
  * global user_data cursor first; a later failed page leaves that checkpoint
  * and saved rows intact for the next run. A failed attempt enters a cooldown
  * so the next scheduler tick cannot immediately repeat the same fault.
+ * Hybrid mode (explicit X_FOLLOWING_MODE=hybrid) is feed-first with a bounded
+ * legacy fallback: one outright feed failure per cooldown window degrades the
+ * SAME run to the per-user scan (X_FOLLOWING_FULL_FALLBACK_COOLDOWN_MS,
+ * default 24h — so a 2h timer can never repeat the full scan tick after tick).
+ * The fallback results do not move the feed cursor; the next healthy feed run
+ * re-pulls from the last feed checkpoint and dedup absorbs the overlap. A
+ * cooldown-suppressed tick (FEED_COOLDOWN) never triggers the fallback scan.
  * X_FOLLOWING_MODE=per-user is the explicit legacy escape hatch and keeps the
  * old path verbatim; it never touches the feed cursor.
  */
@@ -54,12 +61,15 @@ const X_FAILURE_KEY = 'x_following_failure';
 
 /**
  * Resolve the mode switch. Feed is the safe default because the legacy mode
- * serially scans every followed account. Only the exact value "per-user"
- * opts back into that legacy behavior.
+ * serially scans every followed account. "hybrid" opts into the bounded
+ * fallback lane; only the exact value "per-user" opts back into that
+ * legacy behavior.
  */
 function resolveXMode() {
   const raw = String(process.env.X_FOLLOWING_MODE || '').trim().toLowerCase();
-  return raw === 'per-user' ? 'per-user' : 'feed';
+  if (raw === 'per-user') return 'per-user';
+  if (raw === 'hybrid') return 'hybrid';
+  return 'feed';
 }
 
 /**
@@ -372,11 +382,41 @@ class XFollowingConnector extends BaseConnector {
     const cooldownMs = envInt('X_FOLLOWING_FAILURE_COOLDOWN_MS', 30 * 60 * 1000, 0, 24 * 3600 * 1000);
     const state = readFailureState();
     writeFailureState({
+      ...state, // preserve last_full_fallback_at across feed-failure rewrites
       last_failure_at: new Date(now).toISOString(),
       next_attempt_at: new Date(now + cooldownMs).toISOString(),
       reason: String(reason).slice(0, 300),
       count: (state.count || 0) + 1,
     });
+  }
+
+  /**
+   * Hybrid-only guard: has enough time passed since the last full per-user
+   * fallback scan? Same ledger as the feed cooldown, but an independent knob
+   * (X_FOLLOWING_FULL_FALLBACK_COOLDOWN_MS, default 24h) — the red line is
+   * full-scan FREQUENCY, not feed retries.
+   */
+  _fallbackScanAllowed(fallbackCooldownMs) {
+    if (!(fallbackCooldownMs > 0)) return true; // 0 disables the spacing guard
+    const state = readFailureState();
+    const last = Date.parse(state.last_full_fallback_at || '');
+    if (!Number.isFinite(last)) return true;
+    if (Date.now() - last < fallbackCooldownMs) {
+      const hours = Math.ceil((fallbackCooldownMs - (Date.now() - last)) / 3600000);
+      console.warn(`  ⛔ X Following: per-user fallback suppressed for ~${hours}h (last full fallback ${state.last_full_fallback_at})`);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Stamp the fallback attempt before the scan starts: a failed or partial
+   * fallback still consumes the spacing window, so a broken downstream path
+   * cannot be retried tick-after-tick.
+   */
+  _recordFallbackScan() {
+    const state = readFailureState();
+    writeFailureState({ ...state, last_full_fallback_at: new Date().toISOString() });
   }
 
   /**
@@ -848,7 +888,34 @@ class XFollowingConnector extends BaseConnector {
       console.warn('  ⚠ X Following: explicit legacy per-user mode — serially scanning configured accounts; prefer the feed default');
       return this.fetchViaPerUser(users, { signal });
     }
+    if (resolveXMode() === 'hybrid') {
+      return this.fetchHybrid(users, { signal });
+    }
     return this.fetchViaFeed(users, { signal });
+  }
+
+  /**
+   * Hybrid lane: feed-first with a bounded per-user degradation. An outright
+   * feed failure degrades the SAME run to the legacy scan at most once per
+   * X_FOLLOWING_FULL_FALLBACK_COOLDOWN_MS (default 24h), so the 2h timer
+   * cannot repeat the full 442-account scan on consecutive ticks. A
+   * cooldown-suppressed tick (FEED_COOLDOWN) is a no-op, never a scan. The
+   * fallback does not move the feed cursor; a later healthy feed run resumes
+   * from the last checkpoint and dedup absorbs the overlap.
+   */
+  async fetchHybrid(users, { signal } = {}) {
+    signal?.throwIfAborted();
+    try {
+      return await this.fetchViaFeed(users, { signal });
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      if (err && err.code === 'FEED_COOLDOWN') throw err;
+      const fallbackMs = envInt('X_FOLLOWING_FULL_FALLBACK_COOLDOWN_MS', 24 * 3600 * 1000, 0, 7 * 24 * 3600 * 1000);
+      if (!this._fallbackScanAllowed(fallbackMs)) throw err;
+      console.warn(`  ⚠ X Following: hybrid mode — feed failed (${err.message}); degrading to one bounded per-user scan`);
+      this._recordFallbackScan();
+      return this.fetchViaPerUser(users, { signal });
+    }
   }
 
   async fetchViaPerUser(users, { signal } = {}) {
