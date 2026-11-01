@@ -441,8 +441,9 @@ function stageFailure(result, stageKey = null) {
   // visible in the stored result (failed count, successful_item_ids). The same
   // whole-batch rule applies to translation: every item failing is an outage,
   // while a partial success is recorded as a degraded stage downstream.
-  const partialSuccess = (typeof result.enriched === 'number' && result.enriched > 0 && enrichPartialFailureEnabled())
-    || (stageKey === 'translate' && typeof result.translated === 'number' && result.translated > 0);
+  const partialFailureEnabled = enrichPartialFailureEnabled();
+  const partialSuccess = (typeof result.enriched === 'number' && result.enriched > 0 && partialFailureEnabled)
+    || (stageKey === 'translate' && typeof result.translated === 'number' && result.translated > 0 && partialFailureEnabled);
   const wholeBatchFailure = !partialSuccess;
   const failedCount = Number(result.failed) || 0;
   const deferredCount = Number(result.deferred) || 0;
@@ -1041,7 +1042,8 @@ async function executeJob(jobId) {
       return result;
     }
 
-    const failure = stageFailure(result);
+    const resultStageKey = job.job_type === JOB_TYPES.TRANSLATE_BACKFILL ? 'translate' : null;
+    const failure = stageFailure(result, resultStageKey);
     const failed = result?.pipeline ? !result.completed : !!failure;
     const commit = commitJobOutcome(jobId, claim.epoch, () =>
       updateJobStatus(jobId, failed ? 'failed' : 'completed', result,

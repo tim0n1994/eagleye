@@ -15,7 +15,7 @@ const { getEnrichProvider, getProviderInfo } = require('./llm-provider');
 // version by the translate backfill (which used to overwrite prompt_version,
 // breaking cache invalidation). Translation only fills in *_zh fields; the
 // prompt_version should reflect which enrichment prompt generated the row.
-const { taskContext, callWithMetadata, validCard, validateBatch, nonEmpty, _llmBackoff } = require('./llm-shared');
+const { taskContext, callWithMetadata, validCard, validateBatch, nonEmpty, _llmBackoff, llmErrorCode } = require('./llm-shared');
 const { isTerminalLLMError } = require('./llm-error-class');
 
 const PROMPT_VERSION = 'v3.1-knowledge-card-graph-zh';
@@ -26,7 +26,7 @@ const SINGLE_ROW_BATCH_FALLBACK_CODES = new Set([
 ]);
 
 function allowsSingleRowBatchFallback(error) {
-  return SINGLE_ROW_BATCH_FALLBACK_CODES.has(error?.code);
+  return SINGLE_ROW_BATCH_FALLBACK_CODES.has(llmErrorCode(error));
 }
 
 const FEED_CARD_ZH_PROMPT = `/no_think

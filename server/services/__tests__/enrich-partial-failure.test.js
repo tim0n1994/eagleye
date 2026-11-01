@@ -161,6 +161,15 @@ describe('enrich partial-failure semantics (R3 switches)', () => {
       expect(translateStage.detail).toMatchObject({ warning: '1 translation item(s) failed; 5 succeeded' });
       expect(row.parsed.summary.translate.failed).toBe(1);
     });
+
+    it('completes a partial standalone translate backfill under the same whole-batch rule', async () => {
+      process.env.EAGLEYE_R3_DRAINER = '1';
+      mocks['./translate'].translateItems.mockResolvedValue({ translated: 5, failed: 1, total: 6 });
+      const row = await terminal(await jobs.runJob(jobs.JOB_TYPES.TRANSLATE_BACKFILL, {}));
+      expect(row.status).toBe('completed');
+      expect(row.error).toBeNull();
+      expect(row.parsed).toMatchObject({ translated: 5, failed: 1, total: 6 });
+    });
   });
 
   describe('switch OFF (EAGLEYE_R3_PARTIAL_FAIL=0 → byte-identical to today)', () => {
@@ -179,6 +188,23 @@ describe('enrich partial-failure semantics (R3 switches)', () => {
       expect(row.status).toBe('failed');
       expect(row.parsed).toMatchObject({ completed: false, outcome: 'failed', partial: true, failed_stages: ['enrich'] });
       expect(row.parsed.stages.find(stage => stage.key === 'enrich').status).toBe('failed');
+    });
+
+    it('partial translate failure still fails the nightly pipeline translate stage', async () => {
+      process.env.EAGLEYE_R3_PARTIAL_FAIL = '0';
+      mocks['./translate'].translateItems.mockResolvedValue({ translated: 5, failed: 1, total: 6 });
+      const row = await terminal(await jobs.runJob(jobs.JOB_TYPES.FULL_PIPELINE, {}));
+      expect(row.status).toBe('failed');
+      expect(row.parsed).toMatchObject({ completed: false, failed_stages: ['translate'] });
+      expect(row.parsed.stages.find(stage => stage.key === 'translate').status).toBe('failed');
+    });
+
+    it('partial translate failure still fails a standalone translate backfill', async () => {
+      process.env.EAGLEYE_R3_PARTIAL_FAIL = '0';
+      mocks['./translate'].translateItems.mockResolvedValue({ translated: 5, failed: 1, total: 6 });
+      const row = await terminal(await jobs.runJob(jobs.JOB_TYPES.TRANSLATE_BACKFILL, {}));
+      expect(row.status).toBe('failed');
+      expect(row.error).toBe('1 item(s) failed');
     });
   });
 });
