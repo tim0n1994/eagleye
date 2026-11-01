@@ -292,6 +292,16 @@ describe('LLM business output contracts with isolated SQLite', () => {
     expect(provider.callWithMetadata.mock.calls[2][0]).toContain('title: Article b');
   });
 
+  it('normalizes message-only repairable translation failures before bounded fallback', async () => {
+    addItem('a'); addItem('b');
+    provider.callWithMetadata.mockRejectedValueOnce(new Error('LLM_EMPTY_OUTPUT'))
+      .mockResolvedValueOnce(response(card('a'), 'a-single'))
+      .mockResolvedValueOnce(response(card('b'), 'b-single'));
+    expect(await loadService('translate', mocks).translateItems({ batchSize: 2, batchItemSize: 2, batchWorkers: 1 }))
+      .toMatchObject({ translated: 2, failed: 0 });
+    expect(provider.callWithMetadata).toHaveBeenCalledTimes(3);
+  });
+
   it('classifies only whitelist IDs, recovers only missing rows, and avoids the old pool second pass', async () => {
     const classifier = loadService('signals-classify', mocks);
     provider.callWithMetadata.mockResolvedValueOnce(response([{ id: 'b', signal_type: 'new_repo', thesis_match: 0.7 }]))
