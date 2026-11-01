@@ -438,10 +438,12 @@ function stageFailure(result, stageKey = null) {
   if (stageKey === 'fetch' && Array.isArray(result.fetch)) return null;
   // Enrich-shaped batches (an `enriched` count) under the new semantics only
   // fail when the WHOLE batch died (enriched === 0); partial failures stay
-  // visible in the stored result (failed count, successful_item_ids). Other
-  // shapes — translate {translated, failed}, fetch rows, nested KG results —
-  // keep today's judgment exactly.
-  const wholeBatchFailure = !(typeof result.enriched === 'number' && result.enriched > 0 && enrichPartialFailureEnabled());
+  // visible in the stored result (failed count, successful_item_ids). The same
+  // whole-batch rule applies to translation: every item failing is an outage,
+  // while a partial success is recorded as a degraded stage downstream.
+  const partialSuccess = (typeof result.enriched === 'number' && result.enriched > 0 && enrichPartialFailureEnabled())
+    || (stageKey === 'translate' && typeof result.translated === 'number' && result.translated > 0);
+  const wholeBatchFailure = !partialSuccess;
   const failedCount = Number(result.failed) || 0;
   const deferredCount = Number(result.deferred) || 0;
   if (failedCount > 0 && wholeBatchFailure) return `${failedCount} item(s) failed`;
@@ -475,6 +477,13 @@ async function runPipelineStage(jobId, stageKey, detail, work) {
           failed_sources: failedSources.map(row => row.source || 'unknown'),
         };
       }
+    }
+    if (stageKey === 'translate' && Number(result?.translated) > 0 && Number(result?.failed) > 0) {
+      degraded = {
+        warning: `${Number(result.failed)} translation item(s) failed; ${Number(result.translated)} succeeded`,
+        translated: Number(result.translated),
+        failed: Number(result.failed),
+      };
     }
     const status = failure ? 'failed' : degraded ? 'degraded' : result?.skipped ? 'skipped' : 'completed';
     updatePipelineStage(jobId, stageKey, status, failure ? { error: failure } : degraded || {}, result);
