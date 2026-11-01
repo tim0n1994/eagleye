@@ -30,9 +30,9 @@
  *   OFF: byte-identical to today — `failed > 0` fails the job and the
  *        pipeline stage with the legacy `${failed} item(s) failed` text.
  *
- * The narrowing is shape-based (only results carrying `enriched`), so the
- * judgment for translate ({translated, failed}), fetch rows, nested KG
- * results and fallback_reason stays exactly as today — asserted below.
+ * Translation follows the same whole-batch rule: translated > 0 with failed
+ * > 0 degrades the pipeline stage, while translated === 0 still fails it.
+ * Fetch rows, nested KG results and fallback_reason retain their own shapes.
  *
  * Both env switches must be read at CALL time (like isJobIntakePaused,
  * jobs.js:82-85), which is how these tests flip them per-case.
@@ -150,13 +150,16 @@ describe('enrich partial-failure semantics (R3 switches)', () => {
       expect(calls).toEqual(['fetch', 'enrich', 'translate', 'topic_graph', 'kg_worker', 'entity_momentum', 'source_profiles', 'rescore', 'digest', 'hierarchy']);
     });
 
-    it('non-enrich shapes keep today\'s judgment: a partial translate batch still fails its stage', async () => {
+    it('degrades a partial translate batch while keeping every later stage running', async () => {
       process.env.EAGLEYE_R3_DRAINER = '1';
       mocks['./translate'].translateItems.mockResolvedValue({ translated: 5, failed: 1, total: 6 });
       const row = await terminal(await jobs.runJob(jobs.JOB_TYPES.FULL_PIPELINE, {}));
-      expect(row.status).toBe('failed');
-      expect(row.parsed).toMatchObject({ outcome: 'failed', failed_stages: ['translate'] });
-      expect(row.error).toContain('Pipeline stages failed: translate');
+      expect(row.status).toBe('completed');
+      expect(row.parsed).toMatchObject({ completed: true, outcome: 'completed', failed_stages: [], degraded_stages: ['translate'] });
+      const translateStage = row.parsed.stages.find(stage => stage.key === 'translate');
+      expect(translateStage.status).toBe('degraded');
+      expect(translateStage.detail).toMatchObject({ warning: '1 translation item(s) failed; 5 succeeded' });
+      expect(row.parsed.summary.translate.failed).toBe(1);
     });
   });
 
