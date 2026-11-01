@@ -15,12 +15,19 @@ const { getEnrichProvider, getProviderInfo } = require('./llm-provider');
 // version by the translate backfill (which used to overwrite prompt_version,
 // breaking cache invalidation). Translation only fills in *_zh fields; the
 // prompt_version should reflect which enrichment prompt generated the row.
-const { taskContext, callWithMetadata, validCard, validateBatch, nonEmpty, _llmBackoff } = require('./llm-shared');
+const { taskContext, callWithMetadata, validCard, validateBatch, nonEmpty, _llmBackoff, llmErrorCode } = require('./llm-shared');
 const { isTerminalLLMError } = require('./llm-error-class');
 
 const PROMPT_VERSION = 'v3.1-knowledge-card-graph-zh';
 const DEFAULT_BATCH_ITEMS = Math.max(1, Math.min(parseInt(process.env.TRANSLATE_LLM_BATCH_ITEMS || '16', 10), 32));
 const DEFAULT_BATCH_WORKERS = Math.max(1, Math.min(parseInt(process.env.TRANSLATE_LLM_BATCH_WORKERS || '8', 10), 16));
+const SINGLE_ROW_BATCH_FALLBACK_CODES = new Set([
+  'TRUNCATED', 'EMPTY_RESPONSE', 'INVALID_RESPONSE', 'INVALID_JSON', 'VALIDATION_ERROR',
+]);
+
+function allowsSingleRowBatchFallback(error) {
+  return SINGLE_ROW_BATCH_FALLBACK_CODES.has(llmErrorCode(error));
+}
 
 const FEED_CARD_ZH_PROMPT = `/no_think
 你是 Eagleye 的中文技术情报编辑。你的任务不是逐字翻译，而是基于原始信息生成适合信息流卡片展示的中文知识卡片。
@@ -247,13 +254,14 @@ async function generateChineseFeedCard(row, opts = {}) {
   }
 }
 
-async function generateChineseFeedCardsBatch(rows, opts = {}) {
+async function generateChineseFeedCardsBatch(rows, opts = {}, onBatchFailure = null) {
   const context = taskContext(opts, opts.jobId ? require('./jobs') : null);
   context.check();
   const provider = getEnrichProvider();
   if (!provider || !rows?.length) return [];
   const allowedIds = new Set(rows.map(row => row.id));
   const maxAttempts = provider.isPool ? 1 : 3;
+  let lastBatchFailure = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const { data, metadata } = await callWithMetadata(provider, buildBatchPrompt(rows), {
@@ -266,12 +274,20 @@ async function generateChineseFeedCardsBatch(rows, opts = {}) {
         id: entry.id, card: { ...normalizeFeedCard(entry, rowMap.get(entry.id)), llm_metadata: metadata },
       }));
     } catch (err) {
+      lastBatchFailure = err;
       context.check();
-      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) return [];
-      if (isTerminalLLMError(err)) return [];
+      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
+        if (onBatchFailure) onBatchFailure(err);
+        return [];
+      }
+      if (isTerminalLLMError(err)) {
+        if (onBatchFailure) onBatchFailure(err);
+        return [];
+      }
       if (attempt < maxAttempts) await _llmBackoff(attempt, err.message, context.signal);
     }
   }
+  if (onBatchFailure) onBatchFailure(lastBatchFailure);
   return [];
 }
 
@@ -564,7 +580,8 @@ async function translateItems(opts = {}) {
 
   async function processChunk(chunk) {
     context.check();
-    const batchResults = await generateChineseFeedCardsBatch(chunk, context);
+    let batchFailure = null;
+    const batchResults = await generateChineseFeedCardsBatch(chunk, context, error => { batchFailure = error; });
     context.check();
     const byId = new Map(batchResults.map((entry) => [entry.id, entry.card]));
     const results = [];
@@ -594,7 +611,10 @@ async function translateItems(opts = {}) {
     for (const row of chunk) {
       if (context.isCancelled()) break;
       if (!byId.has(row.id)) {
-        if (getEnrichProvider()?.isPool && batchResults.length === 0) { results.push(null); continue; }
+        if (getEnrichProvider()?.isPool && batchResults.length === 0 && !allowsSingleRowBatchFallback(batchFailure)) {
+          results.push(null);
+          continue;
+        }
         try {
           results.push(await translateRow(row, context));
         } catch (err) {
