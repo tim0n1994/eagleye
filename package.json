@@ -10,7 +10,7 @@
     "lint": "eslint . --ignore-pattern 'kg-worker/**' --ignore-pattern '_*.js'",
     "knip": "knip --exclude exports,nsExports,types,enumMembers",
     "test": "vitest run",
-    "test:pipeline": "node --test server/services/__tests__/*.test.cjs && python3 -B -m unittest discover -s server/services/__tests__ -p 'test_*.py' -v",
+    "test:pipeline": "node --test server/services/__tests__/*.test.cjs mcp/__tests__/*.test.cjs && python3 -B -m unittest discover -s server/services/__tests__ -p 'test_*.py' -v",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepare": "husky || true",

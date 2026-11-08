@@ -66,7 +66,7 @@ ${entries.map(([title, url, t]) => `  <entry><title>${title}</title><link rel="a
  * 注入内存库 getDB 与 mock fetchURL；Date 注入测试进程的（假）Date，
  * 使 vi 假时钟对 vm 内的 new Date() 生效。
  */
-function buildHarness(db, respond) {
+function buildHarness(db, respond, environment = {}) {
   const calls = [];
   const fetchURL = async (url) => {
     calls.push(String(url));
@@ -91,7 +91,7 @@ function buildHarness(db, respond) {
       clearInterval,
       AbortController: globalThis.AbortController,
       Date: globalThis.Date, // 假时钟（vi.useFakeTimers 后 globalThis.Date 即假实现）
-      process: { env: {} },  // 无 PRODUCT_HUNT_API_KEY → feed 路径；无 SOLIDOT fallback
+      process: { env: { SEC_USER_AGENT: 'Eagleye Test test@example.invalid', ...environment } },  // 无 PRODUCT_HUNT_API_KEY → feed 路径；无 SOLIDOT fallback
           require(name) {
             if (name === 'https' || name === 'http' || name === 'crypto' || name === 'child_process') return require(name);
             if (name === '../db/connection') return { getDB: () => db };
@@ -288,13 +288,13 @@ describe('D2 connector date-window filtering (01:00 CST schedule)', () => {
     expectWindowContract(items, { in: 'https://example.com/cn-in', old: 'https://example.com/cn-old', fut: 'https://example.com/cn-fut' });
   });
 
-  it('physical-ai-cn-photonics empty-feed round returns genuine empty instead of placeholders', async () => {
-    // 全部 feed 失败/为空时不得伪造公司占位内容；该来源由迁移软禁用，
-    // connector 保留真实空结果以便未来替换 feed 后重新启用。
+  it('physical-ai-cn-photonics distinguishes an empty feed from unavailable feeds without fake news', async () => {
     const h = buildHarness(db, () => '');
     const { CNPhotonicsConnector } = h.load('connectors/cn-photonics.js');
-    const items = await new CNPhotonicsConnector().fetch(DIGEST);
-    expect(items).toEqual([]);
+    const connector = new CNPhotonicsConnector();
+    await expect(connector.fetch(DIGEST)).rejects.toThrow('No active Chinese photonics feeds configured');
+    const items = await connector.fetch(DIGEST, { feeds: [{ name: 'Empty feed', url: 'https://example.com/feed', lang: 'zh' }] });
+    expect(items).toHaveLength(0);
   });
 
   it('startup-archive window-filters the <time> day string and takes digest_date from the request (D2 review gap)', async () => {
@@ -326,12 +326,13 @@ describe('D2 connector date-window filtering (01:00 CST schedule)', () => {
     // 既省时也免去每家 200ms 的 SEC 限速睡眠。
     const h = buildHarness(db, (url) => {
       if (url === 'https://data.sec.gov/submissions/CIK0001045810.json') {
-        return JSON.stringify({ filings: { recent: [
-          { form: '8-K', filingDate: '2026-10-19', accessionNumber: '0001045810-26-000001', primaryDocument: 'nvda8k.htm', items: '2.02' },
-          { form: '8-K', filingDate: '2026-10-16', accessionNumber: '0001045810-26-000002', primaryDocument: 'nvda8k2.htm', items: '5.02' },
-          { form: '8-K', filingDate: '2026-10-21', accessionNumber: '0001045810-26-000003', primaryDocument: 'nvda8k3.htm', items: '8.01' },
-          { form: '10-K', filingDate: '2026-10-19', accessionNumber: '0001045810-26-000004', primaryDocument: 'nvda10k.htm' },
-        ] } });
+        return JSON.stringify({ filings: { recent: {
+          form: ['8-K', '8-K', '8-K', '10-K'],
+          filingDate: ['2026-10-19', '2026-10-16', '2026-10-21', '2026-10-19'],
+          accessionNumber: ['0001045810-26-000001', '0001045810-26-000002', '0001045810-26-000003', '0001045810-26-000004'],
+          primaryDocument: ['nvda8k.htm', 'nvda8k2.htm', 'nvda8k3.htm', 'nvda10k.htm'],
+          items: ['2.02', '5.02', '8.01', ''],
+        } } });
       }
       return new Error('offline');
     });
@@ -342,6 +343,22 @@ describe('D2 connector date-window filtering (01:00 CST schedule)', () => {
       old: 'https://www.sec.gov/Archives/edgar/data/1045810/000104581026000002/nvda8k2.htm',
       fut: 'https://www.sec.gov/Archives/edgar/data/1045810/000104581026000003/nvda8k3.htm',
     });
+  });
+
+  it('sec-8k stops immediately when SEC blocks the host', async () => {
+    const blocked = new Error('Upstream 403');
+    blocked.upstreamStatus = 403;
+    const h = buildHarness(db, () => blocked);
+    const { SEC8KConnector } = h.load('connectors/sec-8k.js');
+    await expect(new SEC8KConnector().fetch(DIGEST)).rejects.toThrow('403');
+    expect(h.calls).toHaveLength(1);
+  });
+
+  it('sec-8k requires an operator-supplied identity before making requests', async () => {
+    const h = buildHarness(db, () => '', { SEC_USER_AGENT: '' });
+    const { SEC8KConnector } = h.load('connectors/sec-8k.js');
+    await expect(new SEC8KConnector().fetch(DIGEST)).rejects.toThrow('SEC_USER_AGENT');
+    expect(h.calls).toHaveLength(0);
   });
 
   it('app-store takes digest_date from the requested digest date instead of UTC today', async () => {

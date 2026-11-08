@@ -4,7 +4,7 @@ import globals from "globals";
 export default [
   js.configs.recommended,
   {
-    ignores: ["js/lib/", "node_modules/"],
+    ignores: ["js/lib/", "node_modules/", ".gstack/"],
   },
   // Browser/client JS (ES modules)
   {
@@ -50,6 +50,22 @@ export default [
   {
     files: ["server/**/*.test.js", "mcp/**/*.test.js"],
     languageOptions: { sourceType: "module" },
+  },
+  // QA test scripts use Playwright's CommonJS API in a browser test runtime.
+  {
+    files: ["scripts/qa/**/*.cjs"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "commonjs",
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+      },
+    },
+    rules: {
+      // The scripts retain explicit /* global */ headers for editors.
+      "no-redeclare": "off",
+    },
   },
   // Client-side tests execute in vitest, whose runtime exposes Node globals.
   {

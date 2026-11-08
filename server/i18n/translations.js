@@ -49,6 +49,10 @@ const SOURCE_TRANSLATIONS = {
     label_zh: '具身智能 · arXiv',
     description_zh: '来自 arXiv 的具身 AI、机器人与人形机器人论文',
   },
+  'education-arxiv': {
+    label_zh: 'AI 教育 · arXiv',
+    description_zh: '来自 arXiv 的人工智能与教育研究论文',
+  },
   'physical-ai-humanoid': {
     label_zh: '具身智能 · 人形机器人',
     description_zh: '人形机器人公司行业新闻',

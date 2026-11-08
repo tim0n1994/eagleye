@@ -12,6 +12,12 @@ const { normalizeDigestDate, todayDigestDate } = require('../services/date-contr
 const { getConfig, expectedIntervalHours } = require('../services/scheduler');
 const { expectedIntervalForSource } = require('../services/source-health');
 
+const PHYSICAL_AI_SLUG_PREFIX = 'physical-ai-';
+
+function isPhysicalAiSlug(slug) {
+  return typeof slug === 'string' && slug.startsWith(PHYSICAL_AI_SLUG_PREFIX);
+}
+
 function register(routes) {
 
   // --- Sources API ---
@@ -97,7 +103,21 @@ function register(routes) {
     if (!source) return sendError(res, 404, 'Source not found');
 
     let items;
-    if (date) {
+    if (isPhysicalAiSlug(slug)) {
+      // Filter before LIMIT so a large historical run of placeholders cannot
+      // hide real stories. Invalid JSON is kept rather than hiding evidence.
+      const archiveSql = `
+        SELECT i.*, s.label as source_label
+        FROM information_items i
+        JOIN sources s ON i.source_id = s.id
+        WHERE s.slug = ? ${date ? 'AND i.digest_date = ?' : ''}
+          AND i.duplicate_of IS NULL
+          AND COALESCE(json_extract(CASE WHEN json_valid(i.source_payload) THEN i.source_payload ELSE '{}' END, '$.is_placeholder'), 0) NOT IN (1, 'true')
+        ORDER BY i.published_at DESC
+        LIMIT 50
+      `;
+      items = date ? db.prepare(archiveSql).all(slug, date) : db.prepare(archiveSql).all(slug);
+    } else if (date) {
       items = db.prepare(`
         SELECT i.*, s.label as source_label 
         FROM information_items i 

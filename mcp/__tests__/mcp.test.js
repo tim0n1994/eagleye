@@ -278,20 +278,25 @@ describe('http transport (e2e)', () => {
   };
   beforeAll(async () => {
     setSwitch(false);
+    let childStderr = '';
     child = spawn(process.execPath, [path.resolve(__dirname, '../server.js'), String(port)], {
       env: { ...process.env, EAGLEYE_MCP_TOKEN: token, EAGLEYE_MCP_AUDIT_PATH: auditPath, EAGLEYE_DB_PATH: dbPath },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.stderr.on('data', () => {});
-    for (let i = 0; i < 50; i += 1) {
+    child.stderr.on('data', chunk => { childStderr = (childStderr + chunk).slice(-2000); });
+    // Under concurrent browser/SQLite checks the child may need more than
+    // five seconds to load. Fail promptly on an actual exit and retain its
+    // diagnostic output instead of misreporting an opaque startup timeout.
+    for (let i = 0; i < 150; i += 1) {
+      if (child.exitCode !== null) throw new Error(`mcp server exited (${child.exitCode}): ${childStderr}`);
       try {
         const res = await fetch(`${base}/health`);
         if (res.ok) return;
       } catch {}
       await new Promise(r => setTimeout(r, 100));
     }
-    throw new Error('mcp server did not start');
-  });
+    throw new Error(`mcp server did not start: ${childStderr}`);
+  }, 20000);
   afterAll(() => {
     child?.kill('SIGTERM');
     if (process.env.EAGLEYE_MCP_EVIDENCE_PATH) writeFileSync(`${process.env.EAGLEYE_MCP_EVIDENCE_PATH}.review-regressions.json`, JSON.stringify(regressionEvidence, null, 2));

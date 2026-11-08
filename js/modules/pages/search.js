@@ -52,7 +52,7 @@ export async function renderSearch(params) {
       }).slice(0, 5);
 
       if (items.length === 0 && matchingTopics.length === 0 && matchingEntities.length === 0) {
-        resultsEl.innerHTML = `<p class="subtle">${t('search.no_results', { q })}</p>`;
+        resultsEl.innerHTML = `<p class="subtle">${escapeHtml(t('search.no_results', { q }))}</p>`;
         return;
       }
 

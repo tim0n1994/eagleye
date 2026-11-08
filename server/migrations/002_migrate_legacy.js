@@ -54,6 +54,13 @@ function run() {
     return;
   }
 
+  // Fresh installations have no legacy table. Skip this optional migration
+  // so the remaining startup steps (recovery and scheduler) still run.
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'items'").get()) {
+    console.log('  📋 No legacy items table to migrate.');
+    return;
+  }
+
   // Check if already migrated
   const legacyCount = db.prepare('SELECT COUNT(*) as count FROM items').get().count;
   if (legacyCount === 0) {

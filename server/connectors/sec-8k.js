@@ -49,39 +49,63 @@ class SEC8KConnector extends BaseConnector {
     super('physical-ai-sec-8k');
   }
 
-  async fetch(date) {
+  async fetch(date, opts = {}) {
     const items = [];
+    const userAgent = String(process.env.SEC_USER_AGENT || '').trim();
+    if (!userAgent) throw new Error('SEC_USER_AGENT must identify the application and a contact address');
     // D2: digest date basis is the requested local digest date (fallback:
     // local today), never the filing's own day.
     const digestDate = date || compactDigestDate(todayDigestDate());
 
+    let successfulCompanies = 0;
+    let lastError;
     for (const [ticker, company] of Object.entries(TARGET_COMPANIES)) {
+      opts.signal?.throwIfAborted();
       try {
-        const filings = await this._fetchCompanyFilings(company, date, digestDate);
+        const filings = await this._fetchCompanyFilings(company, date, digestDate, { userAgent, signal: opts.signal });
         items.push(...filings);
+        successfulCompanies++;
         // SEC rate limiting: be respectful
         await new Promise(r => setTimeout(r, 200));
       } catch (err) {
+        opts.signal?.throwIfAborted();
+        lastError = err;
+        // A blocked or rate-limited SEC endpoint is not company-specific.
+        if (err.upstreamStatus === 403 || err.upstreamStatus === 429) throw err;
         if (!err.message.includes('404')) {
           console.warn(`SEC 8-K fetch error for ${ticker}:`, err.message);
         }
       }
     }
 
+    if (successfulCompanies === 0) throw lastError || new Error('No SEC company submissions could be fetched');
     return items;
   }
 
-  async _fetchCompanyFilings(company, date, digestDate) {
+  async _fetchCompanyFilings(company, date, digestDate, opts = {}) {
     const url = `https://data.sec.gov/submissions/CIK${company.cik}.json`;
-    const body = await fetchURL(url);
+    const body = await fetchURL(url, { headers: { 'User-Agent': opts.userAgent || process.env.SEC_USER_AGENT }, signal: opts.signal });
     const data = JSON.parse(body);
 
-    const filings = data?.filings?.recent || [];
+    // EDGAR's submissions API returns column arrays, not an array of filing
+    // objects. Align each field by index before applying the date contract.
+    const recent = data?.filings?.recent;
+    if (!recent || !Array.isArray(recent.form)) throw new Error('Invalid SEC submissions response: missing recent forms');
+    const filings = recent.form.map((form, i) => ({
+      form,
+      filingDate: recent.filingDate?.[i],
+      accessionNumber: recent.accessionNumber?.[i],
+      primaryDocument: recent.primaryDocument?.[i],
+      items: recent.items?.[i],
+      periodOfReport: recent.periodOfReport?.[i],
+    }));
     const items = [];
 
     for (const filing of filings) {
       if (filing.form !== '8-K') continue;
       const filingDate = filing.filingDate || '';
+      const parsedFilingDate = new Date(`${filingDate}T00:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(filingDate) || Number.isNaN(parsedFilingDate.getTime()) || parsedFilingDate.toISOString().slice(0, 10) !== filingDate) continue;
       // D2 time-window freshness replaces the filing-day == digest-day
       // equality filter (see date-contract.js isWithinFetchWindow): filings
       // dated within [now - SOURCE_LOOKBACK_HOURS (default 36h), now + 1h]

@@ -13,8 +13,7 @@
  *   www.eeworld.com.cn/rss/semiconductor.xml  403（WAF 拦 RSS 路径）
  *   www.laoyaoba.com/rss               200 但 text/html SPA，0 个 <item>（RSS 已停）
  *   www.gelonghui.com/feed/semiconductor      404
- * CTO 裁决（repairable[1]）：config 级移除全部 8 个死 feed；清空后 connector
- * 自动落回 CN_COMPANIES 占位路径（cn-photonics.js:66-71，10 条/轮）。
+ * 这些死 feed 应保持移除。若无可用源，采集必须报告不可用，不能生成假新闻。
  *
  * 契约（测试作者钉死，GREEN 实现照此落地）：
  *  - CN_FEEDS（server/connectors/cn-photonics.js:19-28）不得再包含上述 8 个
@@ -22,10 +21,7 @@
  *    保护互补：B① 防"活源被死 feed 拖死"，B② 把已知死 feed 从配置里拿掉）。
  *  - 移除后其余 feed（若保留/将来新增）必须正常工作：任何非死 URL 在本测试
  *    的脚本化传输里都会拿到 200 + 1 条窗口内 RSS 条目 → 其条目必须被采集。
- *  - 若 CN_FEEDS 被清空（CTO 建议全移）：fetch() 必须走 CN_COMPANIES 占位
- *    兜底，恰好返回 10 条占位（is_placeholder=true），源健康（resolve 不抛）。
- *    两种 GREEN 形态（保留若干活 feed / 全移落占位）都被本测试接受，但
- *    "死 feed 仍在配置里" 必须失败。
+ *  - 若 CN_FEEDS 被清空：fetch() 必须报出配置缺失，不得制造占位资讯。
  *
  * RED（main ec93cec 现行）：8 个死 feed 仍逐个被请求 → 断言"死 URL 请求数=0"
  * 失败，失败消息列出仍被请求的死 URL。
@@ -169,7 +165,7 @@ const isPlaceholder = (item) => {
 
 /* ══════════ ② 死 feed 移除后其余 feed 正常（fixture） ══════════ */
 describe('P0 B② 死 feed 从 config 移除 — 其余 feed 正常（fixture）', () => {
-  it('② CN_FEEDS 不得再请求 8 个确认死亡 feed；移除后：其余 feed 条目被采集，或（全移时）CN_COMPANIES 占位 10 条兜底 —— fetch resolve 不抛', async () => {
+  it('已移除的死源不得请求；无可用源时报错，而非制造公司新闻', async () => {
     const calls = [];
     installTransport(calls);
     const connector = loadConnector();
@@ -179,11 +175,8 @@ describe('P0 B② 死 feed 从 config 移除 — 其余 feed 正常（fixture）
     const sleep = (ms) => { sleeps.push(ms); return Promise.resolve(); };
     const r = await settle(connector.fetch(dateContract.compactDigestDate(dateContract.todayDigestDate()), { sleep, stats: {} }), '②');
 
-    // 1) fetch 必须 settle 且 resolve（每 feed try/catch 已存在；CN_FEEDS 为空
-    //    时返回真实空数组，不再生成 CN_COMPANIES 占位条目）
-    expect(r.ok, `${RED}: ② connector.fetch 必须在守卫内结束 —— config 移除不应引入任何挂死/真退避路径。err=${r.err && r.err.message}`).toBe(true);
+    expect(r.timedOut).not.toBe(true);
     const items = Array.isArray(r.body) ? r.body : [];
-    expect(Array.isArray(r.body), `${RED}: ② fetch 必须返回数组（活 feed 条目或真实空轮）；实际 ${typeof r.body}`).toBe(true);
 
     // 2) 核心 RED 断言：8 个确认死亡的 feed URL 一个都不得被请求
     const deadHits = calls.filter(c => DEAD_FEED_STEPS.has(c.key));
@@ -192,14 +185,16 @@ describe('P0 B② 死 feed 从 config 移除 — 其余 feed 正常（fixture）
     // 3) 移除后的其余 feed 正常（两种 GREEN 形态都接受）
     const liveCalls = calls.filter(c => !DEAD_FEED_STEPS.has(c.key));
     if (liveCalls.length > 0) {
+      expect(r.ok).toBe(true);
       // 形态 A：保留了活 feed —— 每个被请求的活 feed 的条目必须被采集
       const liveKeys = new Set(liveCalls.map(c => c.key));
       const liveItems = items.filter(i => liveKeys.has(String(feedUrlOf(i)).replace(/^https:\/\//, '')));
       expect(liveItems.length >= 1, `${RED}: ② 保留的活 feed（${[...liveKeys].join(', ')}）在 fixture 传输下应产出条目；实际 items=${JSON.stringify(items.map(i => i.title).slice(0, 12))}`).toBe(true);
       expect(items.every(i => !isPlaceholder(i)), `${RED}: ② 有活 feed 条目时不得混入占位（cn-photonics.js:66-71 items.length>0 不触发占位）`).toBe(true);
     } else {
-      // 形态 B：CN_FEEDS 全移（CTO 建议）—— 必须落 CN_COMPANIES 占位兜底，恰好 10 条
-      expect(items.length, `${RED}: ② CN_FEEDS 全移后应返回真实空数组（0 条，占位已移除）；实际 ${items.length}`).toBe(0);
+      expect(r.ok).toBe(false);
+      expect(r.err.message).toContain('No active Chinese photonics feeds configured');
+      expect(items).toHaveLength(0);
     }
   });
 });
