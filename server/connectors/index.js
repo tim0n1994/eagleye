@@ -34,7 +34,11 @@ const { XFollowingConnector } = require('./x-following');
 const { RedditConnector } = require('./reddit');
 const { XiaoHongShuConnector } = require('./xiaohongshu');
 
+const { SpecialistRSSConnector } = require('./specialist-rss');
+const specialistSources = require('../services/specialist-sources');
+
 const connectorRegistry = {
+  ...Object.fromEntries(Object.keys(specialistSources).map(slug => [slug, new SpecialistRSSConnector(slug)])),
   'hacker-news': new HNConnector(),
   'github-trending': new GitHubConnector(),
   'product-hunt': new ProductHuntConnector(),

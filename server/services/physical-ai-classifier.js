@@ -86,7 +86,10 @@ function applicationStage(row) {
   return null;
 }
 
+const engineeringSources = new Set(Object.keys(require('./specialist-sources')).filter(slug => slug.startsWith('physical-ai-')));
+
 function classifyPhysicalAi(row) {
+  if (engineeringSources.has(row.source_slug)) return { category: 'engineering' };
   const resource = openResource(row);
   if (resource) return { category: 'open', resource_url: resource.url, resource_license: resource.license };
   const stage = applicationStage(row);

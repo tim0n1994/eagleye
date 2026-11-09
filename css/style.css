@@ -5761,3 +5761,11 @@ body.auth-page #mainFooter { display: none !important; }
   .settings-card-header, .settings-card-body { padding: 12px; }
   .settings-card input:not([type="checkbox"]), .settings-card select, .settings-card textarea { min-width: 0; max-width: 100%; }
 }
+
+/* Source architecture: lightweight grouped cards, no chart runtime. */
+.source-architecture-overview { padding: 20px; margin: 20px 0 28px; border: 1px solid var(--border-color, #ddd); border-left: 3px solid #e57038; border-radius: 10px; line-height: 1.8; }
+.source-group { margin: 28px 0; }
+.source-group h3 { font-size: 19px; margin-bottom: 8px; }
+.source-group h3 small { font-size: 12px; font-weight: 400; margin-left: 12px; opacity: .65; }
+.source-network-summary { padding: 16px; background: rgba(128,128,128,.06); border-radius: 8px; line-height: 1.8; }
+.source-last-success { font-size: 11px; opacity: .7; margin: 10px 0; }

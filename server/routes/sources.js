@@ -12,6 +12,8 @@ const { normalizeDigestDate, todayDigestDate } = require('../services/date-contr
 const { getConfig, expectedIntervalHours } = require('../services/scheduler');
 const { expectedIntervalForSource } = require('../services/source-health');
 
+const { groupFor, referenceSlugs, xNetworkSummary } = require('../services/source-architecture');
+
 const PHYSICAL_AI_SLUG_PREFIX = 'physical-ai-';
 
 function isPhysicalAiSlug(slug) {
@@ -36,7 +38,7 @@ function register(routes) {
         sp.originality_rate, sp.last_30d_alpha_hits
       FROM sources s
       LEFT JOIN source_profiles sp ON sp.source_slug = s.slug
-      WHERE s.is_active = 1
+      WHERE ${_parsed?.query?.include_disabled === '1' ? '1 = 1' : 's.is_active = 1'}
       ORDER BY CASE s.slug
         WHEN 'x-following' THEN 0
         WHEN 'hacker-news' THEN 1
@@ -66,6 +68,8 @@ function register(routes) {
     for (const s of sources) s.trend = trendMap[s.slug] || [];
 
     for (const s of sources) {
+      s.group = groupFor(s.slug);
+      s.reference_source = referenceSlugs.includes(s.slug);
       const cadence = expectedIntervalForSource(s, schedulerHours);
       s.expected_interval_hours = cadence.hours;
       s.expected_interval_basis = cadence.basis;
@@ -75,8 +79,10 @@ function register(routes) {
     // R0-09: health fields (last_attempt_at, last_success_at, last_new_content_at,
     // last_error_class, health_status) ride along via SELECT s.*. is_active
     // reflects user enablement only and does not promise the source is healthy.
+    res.setHeader('Cache-Control', 'private, no-store');
     sendJSON(res, 200, {
       status: 'ok',
+      x_network: req.user?.role === 'admin' ? xNetworkSummary() : null,
       semantics: {
         is_active: 'user enablement; does not promise the source is healthy',
         health_status: 'observed health (healthy | stale | failing | unknown), updated by the fetch scheduler',

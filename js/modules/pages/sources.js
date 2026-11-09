@@ -65,8 +65,16 @@ export async function renderSources(_params) {
   showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING SOURCES...' : t('common.loading'));
 
   try {
-    const data = await fetchJSON(`${API_BASE}/sources`);
-    setSourcesCache(data.sources || []);
+    const data = await fetchJSON(`${API_BASE}/sources?include_disabled=1`);
+    setSourcesCache((data.sources || []).filter(s => s.is_active));
+    const zh = getLanguage() === 'zh';
+    const groups = [
+      { key: 'public', title: zh ? '公共来源' : 'Public sources', description: zh ? '与 OrangeBot 对照的公共信号，以及技术社区补充。WSJ 尚未接入；App Store 当前仅覆盖美国免费与付费榜各 25 项。' : 'Public signals and developer communities. WSJ is not connected; App Store covers US free and paid top 25 only.' },
+      { key: 'x', title: zh ? 'X 关注网络' : 'X network', description: zh ? '实例级 Following 时间线；静态名单用于配置与降级抓取，不代表全部关注账号已被覆盖。' : 'Instance-wide Following timeline. The static list supports configuration and fallback, not proof of complete account coverage.' },
+      { key: 'specialist', title: zh ? '专题来源 · 具身与 AI 教育' : 'Specialist sources · Robotics and AI education', description: zh ? '论文、官方项目版本与开发者实践分别保留来源。社区帖子和版本更新不等于已验证的研究结论或应用落地。' : 'Papers, official releases and developer practice retain their provenance. Community posts and releases are not verified research or deployments.' },
+    ];
+    const x = data.x_network;
+    const xSummary = x ? `<p class="source-network-summary">${escapeHtml(zh ? `采集模式：${x.mode} · 配置名单 ${x.configured} · 屏蔽 ${x.blocked}` : `Mode: ${x.mode} · Configured ${x.configured} · Blocked ${x.blocked}`)}${x.snapshot ? `<br>${escapeHtml(zh ? `历史导出 ${x.snapshot.count} · 重合 ${x.snapshot.common} · 仅配置 ${x.snapshot.only_configured} · 仅导出 ${x.snapshot.only_exported}（非实时关注数，不自动增删名单）` : `Historical export ${x.snapshot.count} · Common ${x.snapshot.common} · Configuration only ${x.snapshot.only_configured} · Export only ${x.snapshot.only_exported}; not a live count.`)}` : `<br>${zh ? '历史导出不可用，差异未知。' : 'Historical export unavailable.'}`}</p>` : '';
 
     const html = `
       <section class="page-section">
@@ -77,12 +85,19 @@ export async function renderSources(_params) {
             <a href="/opml.xml" download="eagleye-sources.opml" class="action-link" style="font-size:11px;margin-left:8px">⬇ OPML (import to RSS reader)</a>
           </p>
         </div>
-        <div class="sources-grid">
-          ${(data.sources || []).map(src => {
+        <div class="source-architecture-overview">${zh ? '信息采集 → 原文与去重 → 专题筛选 → 发现 / 行业简报' : 'Collection → Evidence and deduplication → Topic filtering → Discovery / Briefings'}<br><small>${zh ? '页面只读取已入库数据；来源启用不代表采集健康。' : 'Pages read stored data; enabled does not mean healthy.'}</small></div>
+        ${groups.map(group => {
+          const members = (data.sources || []).filter(src => src.group === group.key);
+          return `<section class="source-group" aria-labelledby="source-group-${group.key}">
+          <h3 id="source-group-${group.key}">${group.title} <small>${members.filter(s => s.is_active).length} / ${members.length} ${zh ? '启用' : 'enabled'}</small></h3>
+          <p class="page-description">${group.description}</p>
+          ${group.key === 'x' ? xSummary : ''}
+          <div class="sources-grid">
+          ${members.map(src => {
             const icon = sourceIcon(src.slug);
             const statsParts = [];
-            // Freshness badge: green if items today, yellow if items this week, red if stale.
-            const freshness = src.today_items > 0 ? '🟢' : (src.total_items > 0 ? '🟡' : '🔴');
+            // Content volume is separate from connector health.
+            const freshness = '';
             if (src.today_items > 0) {
               statsParts.push(`<span class="source-stat">${freshness} ${src.today_items} ${getLanguage() === 'zh' ? '今日' : 'today'}</span>`);
             } else {
@@ -99,7 +114,7 @@ export async function renderSources(_params) {
               ? `<span class="source-stat" title="${getLanguage() === 'zh' ? '最近一轮抓取耗时（含失败轮）' : 'Latest fetch round duration (failures included)'}">⏱ ${formatFetchDuration(durationMs)}</span>`
               : '';
             // D4: enabled but no successful fetch in over 48h → red stale badge.
-            const stale = isStaleSource(src);
+            const stale = Boolean(src.last_attempt_at) && isStaleSource(src);
             const staleBadge = stale
               ? `<span class="source-stat stale-badge" title="${getLanguage() === 'zh' ? '启用中但超过 48 小时无成功抓取' : 'Enabled but no successful fetch in over 48h'}">🔴 ${getLanguage() === 'zh' ? '停摆' : 'stale'}</span>`
               : '';
@@ -122,11 +137,14 @@ export async function renderSources(_params) {
               </div>
               <p class="source-description">${escapeHtml(pickZh(src.description, src.description_zh) || '')}</p>
               <div class="source-stats">
+                <span class="source-stat">${!src.is_active ? (zh ? '已停用' : 'Disabled') : !src.last_attempt_at ? (zh ? '待首次抓取' : 'Awaiting first fetch') : src.health_status === 'failing' ? (zh ? '最近失败' : 'Failing') : (zh ? '已启用' : 'Enabled')}</span>
+                ${src.reference_source ? `<span class="source-stat">OrangeBot</span>` : ''}
                 ${statsParts.join('')}
                 ${durationBadge}
                 ${qualityBadge}
                 ${staleBadge}
               </div>
+              <p class="source-last-success">${zh ? '最近成功' : 'Last success'}: ${src.last_success_at ? escapeHtml(new Date(parseTimestampMs(src.last_success_at)).toLocaleString(zh ? 'zh-CN' : 'en-US')) : (zh ? '暂无记录' : 'Not recorded')}</p>
               ${(src.trend && src.trend.length > 0) ? (() => {
                 const maxC = Math.max(1, ...src.trend.map(t => t.count));
                 return `<div class="source-trend-bars" title="7-day item trend">` +
@@ -140,7 +158,8 @@ export async function renderSources(_params) {
               </div>` : ''}
             </a>
           `;}).join('')}
-        </div>
+          </div></section>`;
+        }).join('')}
       </section>
     `;
 

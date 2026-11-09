@@ -4,6 +4,7 @@ import { getLanguage } from '../i18n.js';
 import { API_BASE, fetchJSON, pickZh, showLoader } from './shared.js';
 
 const CATEGORIES = [
+  { key: 'engineering', zh: '工程与社区', en: 'Engineering', detailZh: '官方版本更新与开发者实践', detailEn: 'Official releases and developer practice' },
   { key: 'research', zh: '研究论文', en: 'Research', detailZh: '论文、方法与评测', detailEn: 'Papers, methods and evaluations' },
   { key: 'humanoid', zh: '机器人动态', en: 'Robotics', detailZh: '人形机器人、产品与公司', detailEn: 'Humanoids, products and companies' },
   { key: 'open', zh: '开源与工具', en: 'Open source & tools', detailZh: '开源模型、代码、数据集与仿真工具', detailEn: 'Open models, code, datasets and simulators' },

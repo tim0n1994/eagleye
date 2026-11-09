@@ -1,7 +1,9 @@
 /** Source-backed and evidence-classified Physical AI briefing. */
 const { classifyPhysicalAi, relevantCandidate } = require('./physical-ai-classifier');
 
+const engineeringSources = Object.keys(require('./specialist-sources')).filter(slug => slug.startsWith('physical-ai-'));
 const CATEGORY_DEFS = [
+  { key: 'engineering', source_slug: null, status_slugs: engineeringSources },
   { key: 'research', source_slug: 'physical-ai-arxiv', status_slugs: ['physical-ai-arxiv'] },
   { key: 'humanoid', source_slug: 'physical-ai-humanoid', status_slugs: ['physical-ai-humanoid'] },
   { key: 'open', source_slug: null, status_slugs: ['physical-ai-open-github', 'physical-ai-open-huggingface', 'github-trending'] },
@@ -16,6 +18,7 @@ const LEGACY_CATEGORY_SOURCES = {
 };
 const LEGACY_CATEGORY_KEYS = Object.keys(LEGACY_CATEGORY_SOURCES);
 const DIRECT_SOURCES = [
+  ...engineeringSources,
   'physical-ai-arxiv', 'physical-ai-humanoid', 'physical-ai-open-github',
   'physical-ai-open-huggingface', 'github-trending',
 ];
