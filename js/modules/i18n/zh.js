@@ -23,6 +23,7 @@ export const zh = {
   'nav.tags': '🏷️ 标签',
   'nav.kg3d': '🧠 知识图谱3D',
   'nav.physical_ai': '具身 AI',
+  'nav.ai_education': 'AI 教育',
   'nav.intelligence': '情报分析',
   'nav.industry': '行业指标',
   'nav.settings': '设置',
@@ -145,7 +146,7 @@ export const zh = {
 
   'physical.title': '具身 AI 简报',
   'physical.subtitle': '机器人、具身智能与前沿算力',
-  'physical.empty': '暂无内容。将在下次同步后填充。',
+  'physical.empty': '该源暂无可用内容。',
   'papers.title': '论文',
   'papers.subtitle': '聚合 Hugging Face Papers、arXiv AI 与具身 AI 预印本，进入统一 tag 和知识图谱。',
   'papers.empty': '暂无论文。运行完整流水线后这里会自动更新。',

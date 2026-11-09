@@ -24,6 +24,7 @@ export const en = {
   'nav.tags': '🏷️ Tags',
   'nav.kg3d': '🧠 KG 3D',
   'nav.physical_ai': 'Physical AI',
+  'nav.ai_education': 'AI Education',
   'nav.intelligence': 'Intelligence',
   'nav.industry': 'Industry Metrics',
   'nav.settings': 'Settings',
@@ -156,7 +157,7 @@ export const en = {
   // ── Physical AI ──
   'physical.title': 'PHYSICAL AI BRIEF',
   'physical.subtitle': 'Robotics, embodied AI, and frontier compute',
-  'physical.empty': 'No items yet. Sources will be populated on next sync.',
+  'physical.empty': 'No items available from this source yet.',
   'papers.title': 'Papers',
   'papers.subtitle': 'Open preprints from Hugging Face Papers, arXiv AI, and embodied AI research streams.',
   'papers.empty': 'No papers yet. Run the full pipeline to populate this view.',

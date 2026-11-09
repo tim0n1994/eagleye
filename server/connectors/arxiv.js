@@ -16,6 +16,12 @@ const SOURCE_CONFIG = {
     query: 'cat:cs.AI OR cat:cs.LG OR cat:cs.CL OR cat:cs.CV OR cat:cs.RO OR cat:stat.ML',
     maxResults: 60,
   },
+  'education-arxiv': {
+    // Require an education-related title as well as an AI signal. Searching
+    // for "student" or "teaching" alone mostly returns model distillation.
+    query: '(ti:education OR ti:educational OR ti:classroom OR ti:"student learning" OR ti:"intelligent tutoring") AND (all:"artificial intelligence" OR all:"large language model" OR all:"generative AI" OR all:"language models" OR all:"intelligent tutoring")',
+    maxResults: 50,
+  },
 };
 
 function stripTags(value) {
@@ -94,8 +100,10 @@ class ArxivConnector extends BaseConnector {
     return `https://export.arxiv.org/api/query?${params.toString()}`;
   }
 
-  async fetch(date) {
-    const xml = await fetchURL(this.buildUrl());
+  async fetch(date, opts = {}) {
+    // Propagate failed requests so the source-health ledger can distinguish
+    // an unavailable feed from a genuine empty result.
+    const xml = await fetchURL(this.buildUrl(), { signal: opts.signal });
     return this.parseAtom(xml, date);
   }
 

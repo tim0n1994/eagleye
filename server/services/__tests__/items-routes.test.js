@@ -29,7 +29,8 @@ beforeAll(() => {
       normalized_payload TEXT NOT NULL DEFAULT '{}',
       popularity TEXT DEFAULT '{}',
       score REAL DEFAULT 0,
-      published_at TEXT
+      published_at TEXT,
+      duplicate_of TEXT
     )`,
     'CREATE TABLE ai_summaries (item_id TEXT PRIMARY KEY, one_liner_zh TEXT)',
     'CREATE TABLE topics (id TEXT PRIMARY KEY, slug TEXT UNIQUE NOT NULL, name TEXT NOT NULL)',
@@ -47,6 +48,13 @@ beforeAll(() => {
   db.prepare("INSERT INTO item_topics (item_id, topic_id, relevance) VALUES ('item-1', 't-1', 0.9)").run();
   db.prepare("INSERT INTO tags (id, slug, name) VALUES ('g-1', 'llm', 'LLM')").run();
   db.prepare("INSERT INTO item_tags (item_id, tag_id, confidence) VALUES ('item-1', 'g-1', 0.8)").run();
+  db.prepare(`INSERT INTO information_items
+    (id, source_id, canonical_url, title, digest_date, score, published_at, duplicate_of)
+    VALUES ('item-2', 'src-1', 'https://example.com/b', 'Newer item', '2026-10-24', 0, '2026-10-24T00:00:00Z', NULL),
+           ('item-3', 'src-1', 'https://example.com/c', 'Duplicate item', '2026-10-25', 5, '2026-10-25T00:00:00Z', 'item-1')`).run();
+  db.prepare(`INSERT INTO information_items
+    (id, source_id, canonical_url, title, digest_date, score, published_at, source_payload)
+    VALUES ('placeholder', 'src-1', 'https://example.com/search', 'Watchlist', '2026-10-26', -1, '2026-10-26T00:00:00Z', '{"is_placeholder":true}')`).run();
 
   routes = {};
   registerItemsRoutes(routes);
@@ -59,7 +67,7 @@ afterAll(() => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-function call(handler, { params } = {}) {
+function call(handler, { params, query = {} } = {}) {
   const req = { method: 'GET', url: '/api/items', headers: {} };
   let statusCode = 0;
   let rawResponse = '';
@@ -67,11 +75,18 @@ function call(handler, { params } = {}) {
     writeHead(code) { statusCode = code; },
     end(body) { rawResponse = body; },
   };
-  handler(req, res, { query: {} }, params);
+  handler(req, res, { query }, params);
   return { status: statusCode, body: JSON.parse(rawResponse) };
 }
 
 describe('items detail route', () => {
+  it('offers chronological, deduplicated briefings while retaining legacy ranking', () => {
+    const legacy = call(routes['/api/items']);
+    expect(legacy.body.items.map(i => i.id)).toEqual(['item-3', 'item-1', 'item-2', 'placeholder']);
+    const briefing = call(routes['/api/items'], { query: { sort: 'recent', dedupe: '1', exclude_placeholders: '1', limit: '2' } });
+    expect(briefing.body.items.map(i => i.id)).toEqual(['item-2', 'item-1']);
+    expect(briefing.body.total).toBe(2);
+  });
   it('GET /api/items/:id returns 200 with item payload and no deploy field', () => {
     const { status, body } = call(routes['/api/items/:id'], { params: { id: 'item-1' } });
     expect(status).toBe(200);

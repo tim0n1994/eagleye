@@ -275,7 +275,62 @@ describe('LLM business output contracts with isolated SQLite', () => {
     addItem('a'); addItem('b');
     provider.callWithMetadata.mockRejectedValue(new Error('pool exhausted'));
     expect(await loadService('translate', mocks).translateItems({ batchSize: 2, batchItemSize: 2 }))
-      .toMatchObject({ translated: 0, failed: 2 });
+      .toMatchObject({ translated: 0, failed: 2, deferred: 2, deferred_item_ids: ['a', 'b'] });
+    expect(provider.callWithMetadata).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['RATE_LIMIT', Object.assign(new Error('LLM request failed (RATE_LIMIT)'), { code: 'RATE_LIMIT' })],
+    ['QUEUE_TIMEOUT', Object.assign(new Error('LLM request failed (QUEUE_TIMEOUT)'), { code: 'QUEUE_TIMEOUT' })],
+    ['TIMEOUT', Object.assign(new Error('LLM request failed (TIMEOUT)'), { code: 'TIMEOUT' })],
+  ])('defers rather than fanning out an exhausted %s pool translation batch', async (code, error) => {
+    addItem('a'); addItem('b');
+    provider.callWithMetadata.mockRejectedValue(error);
+    expect(await loadService('translate', mocks).translateItems({ batchSize: 2, batchItemSize: 2, batchWorkers: 1 }))
+      .toMatchObject({
+        translated: 0,
+        failed: 2,
+        deferred: 2,
+        deferred_error_codes: { [code]: 2 },
+      });
+    expect(provider.callWithMetadata).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an exhausted AUTH pool translation batch visible as failed without fan-out', async () => {
+    addItem('a'); addItem('b');
+    provider.callWithMetadata.mockRejectedValue(Object.assign(new Error('LLM request failed (AUTH_ERROR)'), { code: 'AUTH_ERROR' }));
+    expect(await loadService('translate', mocks).translateItems({ batchSize: 2, batchItemSize: 2, batchWorkers: 1 }))
+      .toMatchObject({ translated: 0, failed: 2, deferred: 0 });
+    expect(provider.callWithMetadata).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps unresolved translations visible and eligible for the next run after partial success', async () => {
+    addItem('a', 20); addItem('b', 10);
+    provider.callWithMetadata.mockResolvedValueOnce(response([card('a')], 'a'))
+      .mockRejectedValueOnce(Object.assign(new Error('rate limited'), { code: 'RATE_LIMIT' }))
+      .mockResolvedValueOnce(response([card('b')], 'b'));
+    const translate = loadService('translate', mocks);
+    expect(await translate.translateItems({ batchSize: 2, batchItemSize: 1, batchWorkers: 1 }))
+      .toMatchObject({ translated: 1, failed: 1, deferred: 1, deferred_item_ids: ['b'] });
+    expect(await translate.translateItems({ batchSize: 2, batchItemSize: 1, batchWorkers: 1 }))
+      .toMatchObject({ translated: 1, failed: 0, total: 1 });
+    expect(provider.callWithMetadata).toHaveBeenCalledTimes(3);
+  });
+
+  it('retains bounded retries for non-pool providers after transient batch failures', async () => {
+    provider.isPool = false;
+    provider.callWithMetadata.mockRejectedValueOnce(Object.assign(new Error('rate limited'), { code: 'RATE_LIMIT' }))
+      .mockResolvedValueOnce(response([card('a')], 'a'));
+    const cards = await loadService('translate', mocks).generateChineseFeedCardsBatch([addItem('a')]);
+    expect(cards).toHaveLength(1);
+    expect(provider.callWithMetadata).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not fan out when a safety rejection also mentions JSON', async () => {
+    addItem('a'); addItem('b');
+    provider.callWithMetadata.mockRejectedValue(new Error('1301 安全 JSON'));
+    expect(await loadService('translate', mocks).translateItems({ batchSize: 2, batchItemSize: 2, batchWorkers: 1 }))
+      .toMatchObject({ translated: 0, failed: 2, deferred: 0 });
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(1);
   });
 
@@ -300,6 +355,18 @@ describe('LLM business output contracts with isolated SQLite', () => {
     expect(await loadService('translate', mocks).translateItems({ batchSize: 2, batchItemSize: 2, batchWorkers: 1 }))
       .toMatchObject({ translated: 2, failed: 0 });
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(3);
+  });
+
+  it('reports a final translation fallback failure without multiplying the recovery budget', async () => {
+    addItem('a'); addItem('b');
+    const invalid = Object.assign(new Error('LLM_INVALID_OUTPUT'), { code: 'VALIDATION_ERROR' });
+    provider.callWithMetadata.mockRejectedValue(invalid);
+    expect(await loadService('translate', mocks).translateItems({ batchSize: 2, batchItemSize: 2, batchWorkers: 1 }))
+      .toMatchObject({ translated: 0, failed: 2, deferred: 0 });
+    expect(provider.callWithMetadata).toHaveBeenCalledTimes(3);
+    expect(provider.callWithMetadata.mock.calls[1][0]).toContain('title: Article a');
+    expect(provider.callWithMetadata.mock.calls[2][0]).toContain('title: Article b');
+    expect(db.prepare('SELECT COUNT(*) c FROM ai_summaries').get().c).toBe(0);
   });
 
   it('classifies only whitelist IDs, recovers only missing rows, and avoids the old pool second pass', async () => {
@@ -392,6 +459,22 @@ describe('LLM business output contracts with isolated SQLite', () => {
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(2);
     expect(db.prepare('SELECT item_id FROM ai_summaries ORDER BY item_id').all()).toEqual([{ item_id: 'a' }]);
     expect(db.prepare('SELECT title_zh FROM information_items WHERE id = ?').get('b').title_zh).toBe(null);
+  });
+
+  it('stops single-row translation compensation immediately after cancellation', async () => {
+    addItem('a', 30); addItem('b', 20);
+    const job = cancellableJob(); const started = deferred(); const late = deferred();
+    provider.callWithMetadata.mockRejectedValueOnce(Object.assign(new Error('LLM_INVALID_OUTPUT'), { code: 'VALIDATION_ERROR' }))
+      .mockImplementationOnce((_prompt, options) => { started.resolve(options.signal); return late.promise; });
+    const running = loadService('translate', mocks).translateItems({
+      jobId: 'cancel-translate-fallback', batchSize: 2, batchItemSize: 2, batchWorkers: 1,
+    });
+    expect(await started.promise).toBe(job.signal);
+    job.cancel();
+    late.resolve(response(card('a'), 'late-a'));
+    expect(await running).toMatchObject({ cancelled: true, translated: 0, failed: 0, deferred: 0 });
+    expect(provider.callWithMetadata).toHaveBeenCalledTimes(2);
+    expect(db.prepare('SELECT item_id FROM ai_summaries').all()).toEqual([]);
   });
 
   it('never replaces a digest after job cancellation, including a legacy provider that returns late', async () => {

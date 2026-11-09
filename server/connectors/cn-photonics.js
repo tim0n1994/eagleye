@@ -22,8 +22,7 @@ const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../
 //   www.eeworld.com.cn /rss/semiconductor.xml — 403（WAF 拦 RSS 路径）
 //   www.laoyaoba.com /rss — 200 但回 SPA HTML，0 个 <item>（RSS 已停）
 //   www.gelonghui.com /feed/semiconductor — 404
-// 清空后 fetch() 返回真实空数组（不再生成占位条目）。源已通过 migration 046
-// 软禁用（is_active = 0）；替代源寻源记 ROADMAP。
+// 当前没有可验证的替代源。不要将公司占位卡写成新闻；待恢复真实源后再采集。
 const CN_FEEDS = [];
 
 // P0 热修 B①（2026-10-23）per-feed 预算保护。事故：10-23 01:00 轮 OFweek×3 的
@@ -50,6 +49,8 @@ class CNPhotonicsConnector extends BaseConnector {
     // store 同义（deadline 为 epoch 毫秒绝对值）。生产路径 fetchSource 传
     // {limit, stats, signal}，源级 deadline 经 utils currentFetchDeadline() 读取。
     const feeds = Array.isArray(opts.feeds) ? opts.feeds : CN_FEEDS;
+    if (feeds.length === 0) throw new Error('No active Chinese photonics feeds configured');
+    let successfulFeeds = 0;
     const sourceDeadline = Number.isFinite(opts.deadline)
       ? Number(opts.deadline)
       : currentFetchDeadline();
@@ -64,10 +65,13 @@ class CNPhotonicsConnector extends BaseConnector {
         const xml = await this._fetchFeedWithCap(feed, opts, sourceDeadline);
         const parsed = this._parseRSS(xml, dateStr, feed);
         items.push(...parsed);
+        successfulFeeds++;
       } catch (err) {
         console.error(`[${this.slug}] RSS feed failed (${feed.name} ${feed.url}):`, err.message);
       }
     }
+
+    if (successfulFeeds === 0) throw new Error('All Chinese photonics feeds failed');
 
     return items;
   }

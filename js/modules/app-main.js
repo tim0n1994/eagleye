@@ -9,7 +9,7 @@ import {
   renderSources, renderSourceDetail,
   renderSignals, renderSignalDetail,
   renderPapers,
-  renderPhysicalAI, renderIntelligence, renderIndustryMetrics,
+  renderPhysicalAI, renderEducation, renderIntelligence, renderIndustryMetrics,
   renderSettings, renderTopics, renderTopicDetailPage,
   renderTags, renderTagDetail, renderSaved, renderStories, renderEntityTrajectory, renderWatchlist, renderLens, renderForYou, markItemSeen,
   renderYearArchive, renderYearDetail, renderCompare, renderSearch, renderHelp, renderCompareEntities, renderDiscover,
@@ -21,13 +21,14 @@ import { renderMarkdown } from './markdown.js';
   const NAV_LINKS = [
   { path: '/for-you',      i18n: 'nav.foryou',      icon: '🎯' },
   { path: '/',             i18n: 'nav.news',        icon: '📰' },
+  { path: '/physical-ai',  i18n: 'nav.physical_ai', icon: '🤖' },
+  { path: '/ai-education', i18n: 'nav.ai_education', icon: '🎓' },
   { path: '/papers',       i18n: 'nav.papers',      icon: '📄' },
   { path: '/signals',      i18n: 'nav.signals',     icon: '📡' },
   { path: '/digest',       i18n: 'nav.digest',      icon: '📋' },
   { path: '/sources',      i18n: 'nav.sources',     icon: '🔗' },
   { path: '/discover',     i18n: 'nav.discover',    icon: '🔍' },
   { path: '/kg3d',        i18n: 'nav.kg3d',        icon: '🧠' },
-  { path: '/physical-ai',  i18n: 'nav.physical_ai', icon: '🤖' },
   { path: '/intelligence', i18n: 'nav.intelligence',icon: '📊' },
   { path: '/industry-metrics', i18n: 'nav.industry',icon: '📈' },
 ];
@@ -44,6 +45,17 @@ function renderNav() {
       <span class="nav-label">${t(link.i18n)}</span>
     </a>
   `).join('');
+
+  // The navigation scrolls horizontally on narrow screens. Keep the active
+  // section visible when arriving by a deep link or browser history.
+  requestAnimationFrame(() => {
+    const active = nav.querySelector('.nav-link.active');
+    if (!active) return;
+    const bounds = nav.getBoundingClientRect();
+    const item = active.getBoundingClientRect();
+    if (item.right > bounds.right) nav.scrollLeft += item.right - bounds.right + 8;
+    else if (item.left < bounds.left) nav.scrollLeft -= bounds.left - item.left + 8;
+  });
 
   // Async: fetch saved-items count and show a badge on the Saved footer link.
   fetch('/api/saved').then(r => r.json()).then(data => {
@@ -207,6 +219,7 @@ export async function initApp() {
   router.register(/^\/signals\/(.+)$/, renderSignalDetail);
   router.register('/papers', renderPapers);
   router.register('/physical-ai', renderPhysicalAI);
+  router.register('/ai-education', renderEducation);
   router.register('/intelligence', renderIntelligence);
   router.register('/industry-metrics', renderIndustryMetrics);
   router.register('/settings', renderSettings);
@@ -313,6 +326,7 @@ export async function initApp() {
     '/signals': 'nav.signals',
     '/papers': 'nav.papers',
     '/physical-ai': 'nav.physical_ai',
+    '/ai-education': 'nav.ai_education',
     '/intelligence': 'nav.intelligence',
     '/industry-metrics': 'nav.industry',
     '/tags': 'nav.tags',

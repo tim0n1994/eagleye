@@ -213,7 +213,10 @@ async function runRound1(provider, chunkTags, chunkIndex, task) {
   const tagList = chunkTags.map(t => t.name).join('\n');
   const r1Prompt = ROUND1_PROMPT.replace('{{tag_list}}', tagList);
 
-  const maxAttempts = provider.isPool ? 1 : 5;
+  // A pool request can spend endpoint attempts and still hit a transient
+  // queue timeout. Retry the bounded chunk so one slow fallback does not
+  // abort the final pipeline stage.
+  const maxAttempts = provider.isPool ? 3 : 5;
   const validate = parsed => {
     const groups = parseSubTopics(parsed);
     return Array.isArray(groups) && groups.length > 0 && groups.every(group =>
@@ -389,7 +392,9 @@ async function buildTagHierarchy(opts = {}) {
   const r2Prompt = ROUND2_PROMPT.replace('{{sub_topics_json}}', JSON.stringify(mergedSubTopics, null, 2));
 
   let hierarchy;
-  const maxAttempts = provider.isPool ? 1 : 5;
+  // Round 2 has the same pool lane exposure as Round 1: a request can spend
+  // all endpoint attempts in one lane and then hit the fallback queue timeout.
+  const maxAttempts = provider.isPool ? 3 : 5;
   const validate = parsed => Boolean(parsed && Array.isArray(parsed.domains) && parsed.domains.length > 0
     && Array.isArray(parsed.topics) && parsed.topics.length > 0
     && parsed.domains.every(domain => typeof domain?.name_zh === 'string' && domain.name_zh.trim() && Array.isArray(domain.topics))

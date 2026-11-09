@@ -1,6 +1,6 @@
 /**
  * Optional local monitor evidence. The operator chooses one file via environment;
- * MCP callers cannot choose a path. Only fixed issue codes and scalar metrics leave
+ * MCP callers cannot choose a path. Only fixed issue and warning codes and scalar metrics leave
  * this boundary: no source paths, exception messages, configuration or raw state.
  */
 const fs = require('node:fs');
@@ -22,6 +22,10 @@ const UNITS = {
   'argus-eagleye-kg-drain.timer': 'kg_timer',
 };
 const SOURCES = { reddit: 'reddit', 'x-following': 'x' };
+const WARNING_PREFIX_CODES = [
+  ['pipeline_degraded:fetch:', 'pipeline_degraded_fetch'],
+  ['pipeline_degraded:translate:', 'pipeline_degraded_translate'],
+];
 
 function issueCode(value) {
   if (SIMPLE_ISSUES.has(value)) return value;
@@ -33,6 +37,13 @@ function issueCode(value) {
       && Object.hasOwn(SOURCES, detail)) return SOURCES[detail] + '_' + kind;
   if (['monitor_check_failed', 'monitor_state_write_failed'].includes(kind)) return kind;
   return 'unrecognized_monitor_issue';
+}
+
+function warningCode(value) {
+  for (const [prefix, code] of WARNING_PREFIX_CODES) {
+    if (value.startsWith(prefix)) return code;
+  }
+  return 'unrecognized_monitor_warning';
 }
 
 function timestamp(value) {
@@ -66,9 +77,14 @@ function readRuntimeMonitor({ file = process.env.EAGLEYE_MCP_MONITOR_PATH, now =
       || !state.metrics || typeof state.metrics !== 'object' || Array.isArray(state.metrics)) {
     return { status: 'unavailable', reason: 'invalid_state' };
   }
+  if (state.warnings !== undefined && (!Array.isArray(state.warnings) || state.warnings.length > 100
+      || !state.warnings.every(value => typeof value === 'string'))) {
+    return { status: 'unavailable', reason: 'invalid_state' };
+  }
   const ageSeconds = Math.floor((now - Date.parse(checkedAt)) / 1000);
   if (ageSeconds < -300) return { status: 'unavailable', reason: 'future_timestamp' };
   const issues = [...new Set(state.issues.map(issueCode))].sort();
+  const warnings = [...new Set((state.warnings ?? []).map(warningCode))].sort();
   const metrics = {};
   for (const key of COUNTERS) {
     const value = state.metrics[key];
@@ -86,12 +102,14 @@ function readRuntimeMonitor({ file = process.env.EAGLEYE_MCP_MONITOR_PATH, now =
     issues.push('monitor_metrics_incomplete');
   }
   const stale = ageSeconds > MAX_AGE_SECONDS;
+  const degraded = issues.length > 0 || warnings.length > 0;
   return {
-    status: stale ? 'stale' : issues.length ? 'degraded' : 'ok',
+    status: stale ? 'stale' : degraded ? 'degraded' : 'ok',
     checked_at: checkedAt,
     age_seconds: Math.max(0, ageSeconds),
     max_age_seconds: MAX_AGE_SECONDS,
     issues,
+    warnings,
     metrics,
   };
 }

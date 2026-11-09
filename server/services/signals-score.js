@@ -235,7 +235,7 @@ async function scoreSignals(items, opts = {}) {
     if (source === 'github-trending') return { signal_type: 'new_repo', thesis_match: 0.65, reason_zh: '来源：GitHub Trending' };
     if (source === 'hugging-face') return { signal_type: 'new_paper', thesis_match: 0.6, reason_zh: '来源：Hugging Face' };
     if (source === 'product-hunt') return { signal_type: 'origin_signal', thesis_match: 0.55, reason_zh: '来源：Product Hunt' };
-    if (source === 'arxiv-ai' || source === 'physical-ai-arxiv') return { signal_type: 'new_paper', thesis_match: 0.6, reason_zh: '来源：arXiv' };
+    if (source === 'arxiv-ai' || source === 'physical-ai-arxiv' || source === 'education-arxiv') return { signal_type: 'new_paper', thesis_match: 0.6, reason_zh: '来源：arXiv' };
     if (source === 'physical-ai-cn-photonics') return { signal_type: 'supply_chain', thesis_match: 0.45, reason_zh: '来源：光电子产业链' };
     if (source === 'physical-ai-humanoid') return { signal_type: 'supply_chain', thesis_match: 0.5, reason_zh: '来源：人形机器人产业链' };
     if (source === 'app-store-rank') return { signal_type: 'velocity_spike', thesis_match: 0.4, reason_zh: '来源：App Store 排名变动' };

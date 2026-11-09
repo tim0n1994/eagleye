@@ -21,6 +21,7 @@ export * from './pages/sources.js';
 export * from './pages/topics.js';
 export * from './pages/signals.js';
 export * from './pages/papers.js';
+export * from './pages/education.js';
 export * from './pages/intelligence.js';
 export * from './pages/settings.js';
 export * from './pages/tags.js';

@@ -24,9 +24,24 @@ const DEFAULT_BATCH_WORKERS = Math.max(1, Math.min(parseInt(process.env.TRANSLAT
 const SINGLE_ROW_BATCH_FALLBACK_CODES = new Set([
   'TRUNCATED', 'EMPTY_RESPONSE', 'INVALID_RESPONSE', 'INVALID_JSON', 'VALIDATION_ERROR',
 ]);
+const TRANSIENT_BATCH_DEFERRED_CODES = new Set([
+  'RATE_LIMIT', 'HTTP_ERROR', 'NETWORK_ERROR', 'TIMEOUT', 'QUEUE_TIMEOUT', 'QUEUE_FULL',
+  'POOL_DISABLED', 'REQUEST_FAILED',
+]);
 
 function allowsSingleRowBatchFallback(error) {
   return SINGLE_ROW_BATCH_FALLBACK_CODES.has(llmErrorCode(error));
+}
+
+function classifyBatchFailure(error) {
+  const code = llmErrorCode(error);
+  if (/1301|invalid_request_error.*安全|敏感内容/i.test(error?.message || '')
+    || isTerminalLLMError(error)
+    || ['AUTH_ERROR', 'CONFIG_ERROR', 'NO_ENDPOINT'].includes(code)) {
+    return { error, code, fallback: false, deferred: false };
+  }
+  if (allowsSingleRowBatchFallback(error)) return { error, code, fallback: true, deferred: false };
+  return { error, code, fallback: false, deferred: TRANSIENT_BATCH_DEFERRED_CODES.has(code) };
 }
 
 const FEED_CARD_ZH_PROMPT = `/no_think
@@ -276,12 +291,8 @@ async function generateChineseFeedCardsBatch(rows, opts = {}, onBatchFailure = n
     } catch (err) {
       lastBatchFailure = err;
       context.check();
-      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message)) {
-        if (onBatchFailure) onBatchFailure(err);
-        return [];
-      }
-      if (isTerminalLLMError(err)) {
-        if (onBatchFailure) onBatchFailure(err);
+      if (/1301|invalid_request_error.*安全|敏感内容/i.test(err.message) || isTerminalLLMError(err)) {
+        if (onBatchFailure) onBatchFailure(lastBatchFailure);
         return [];
       }
       if (attempt < maxAttempts) await _llmBackoff(attempt, err.message, context.signal);
@@ -563,12 +574,16 @@ async function translateItems(opts = {}) {
     processed: 0,
     translated: 0,
     failed: 0,
+    deferred: 0,
     total: items.length,
     remaining: total,
   });
 
   let translated = 0;
   let failed = 0;
+  let deferred = 0;
+  const deferredItemIds = [];
+  const deferredErrorCodes = {};
 
   const chunks = [];
   for (let i = 0; i < items.length; i += batchItemSize) {
@@ -581,7 +596,9 @@ async function translateItems(opts = {}) {
   async function processChunk(chunk) {
     context.check();
     let batchFailure = null;
-    const batchResults = await generateChineseFeedCardsBatch(chunk, context, error => { batchFailure = error; });
+    const batchResults = await generateChineseFeedCardsBatch(chunk, context, error => {
+      batchFailure = classifyBatchFailure(error);
+    });
     context.check();
     const byId = new Map(batchResults.map((entry) => [entry.id, entry.card]));
     const results = [];
@@ -611,8 +628,8 @@ async function translateItems(opts = {}) {
     for (const row of chunk) {
       if (context.isCancelled()) break;
       if (!byId.has(row.id)) {
-        if (getEnrichProvider()?.isPool && batchResults.length === 0 && !allowsSingleRowBatchFallback(batchFailure)) {
-          results.push(null);
+        if (getEnrichProvider()?.isPool && batchResults.length === 0 && !batchFailure?.fallback) {
+          results.push({ itemId: row.id, deferred: batchFailure?.deferred === true, error_code: batchFailure?.code || 'UNKNOWN' });
           continue;
         }
         try {
@@ -633,6 +650,14 @@ async function translateItems(opts = {}) {
 
     for (const result of results) {
       if (result && (result.title_zh || result.one_liner_zh || result.short_summary_zh)) translated++;
+      else if (result?.deferred) {
+        deferred++;
+        // Deferred items remain unresolved: retain the existing failed count
+        // so pipeline status cannot hide a partially incomplete translation.
+        failed++;
+        deferredItemIds.push(result.itemId);
+        deferredErrorCodes[result.error_code] = (deferredErrorCodes[result.error_code] || 0) + 1;
+      }
       else failed++;
     }
 
@@ -646,6 +671,7 @@ async function translateItems(opts = {}) {
       processed: Math.min(processed, items.length),
       translated,
       failed,
+      deferred,
       total: items.length,
       remaining: Math.max(total - processed, 0),
       batch_items: batchItemSize,
@@ -675,6 +701,7 @@ async function translateItems(opts = {}) {
     return {
       translated,
       failed,
+      deferred,
       total: items.length,
       remaining: Math.max(total - processed, 0),
       cancelled: true,
@@ -688,9 +715,12 @@ async function translateItems(opts = {}) {
   return {
     translated,
     failed,
+    deferred,
     total: items.length,
     remaining: total - items.length,
     prompt_version: PROMPT_VERSION,
+    deferred_item_ids: deferredItemIds,
+    deferred_error_codes: deferredErrorCodes,
     provider: info.provider,
     model: enrichModel,
     source_slug: sourceSlug || null,

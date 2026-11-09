@@ -30,7 +30,7 @@ describe('complete migrations on fresh and legacy SQLite databases', () => {
   function expectAllApplied() {
     // 45 = 42 existing migrations + 045 cadence + 046 CN Photonics + 047 lane operators.
     // 【主脚本仲裁接管：机械更新迁移文件计数】
-    expect(files).toHaveLength(45);
+    expect(files).toHaveLength(47); // includes 048 education and 049 SEC source
     expect(db.prepare('SELECT name FROM _migrations ORDER BY name').all().map(row => row.name)).toEqual(files);
     expect(db.pragma('foreign_key_check')).toEqual([]);
     expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
@@ -53,6 +53,17 @@ describe('complete migrations on fresh and legacy SQLite databases', () => {
     migrations.runMigrations();
     expect(db.prepare('SELECT * FROM _migrations ORDER BY name').all()).toEqual(markers);
     expect(db.prepare('SELECT * FROM user_data').all()).toEqual([{ key: 'watchlist', user_id: 'new-owner', value: 'preserve after restart' }]);
+  });
+
+  it('allows the legacy boot step on a fresh installation without an items table', () => {
+    migrations.runMigrations();
+    const filename = path.join(directory, '002_migrate_legacy.js');
+    const subject = new Module(filename, module);
+    subject.filename = filename;
+    subject.require = id => id === '../db/connection' ? { getDB: () => db } : require(id);
+    subject._compile(fs.readFileSync(filename, 'utf8'), filename);
+    expect(() => subject.exports.run()).not.toThrow();
+    expectAllApplied();
   });
 
   it('moves legacy personal data to the sole account and preserves global configuration and saved/seen items', () => {

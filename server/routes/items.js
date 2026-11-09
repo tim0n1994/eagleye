@@ -45,13 +45,25 @@ function register(routes) {
       whereSql += ` AND i.digest_date = ?`;
       params.push(date);
     }
+    // Keep the legacy feed's ranking by default. Topic briefings can opt in
+    // to chronological, de-duplicated results without changing other callers.
+    if (parsed.query.dedupe === '1') {
+      whereSql += ` AND i.duplicate_of IS NULL`;
+    }
+    if (parsed.query.exclude_placeholders === '1') {
+      // Some old collectors stored company watchlist placeholders as items.
+      // Filter before LIMIT/count, so they cannot crowd out real evidence.
+      whereSql += ` AND COALESCE(json_extract(CASE WHEN json_valid(i.source_payload) THEN i.source_payload ELSE '{}' END, '$.is_placeholder'), 0) NOT IN (1, 'true')`;
+    }
     sql += whereSql;
 
     // True total count for the matching set (independent of limit/offset).
     // Previously returned page length, so the UI couldn't show "showing 50 of 843".
     const countRow = db.prepare(`SELECT COUNT(*) AS c FROM information_items i JOIN sources s ON i.source_id = s.id WHERE 1=1${whereSql}`).get(...params);
 
-    sql += ` ORDER BY i.score DESC, i.published_at DESC LIMIT ? OFFSET ?`;
+    sql += parsed.query.sort === 'recent'
+      ? ` ORDER BY i.published_at DESC, i.id DESC LIMIT ? OFFSET ?`
+      : ` ORDER BY i.score DESC, i.published_at DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
     const items = db.prepare(sql).all(...params);

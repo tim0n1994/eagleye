@@ -588,6 +588,12 @@ async function handleRequest(req, res) {
       return;
     }
 
+    // Dotfiles are not application routes. Do not return a successful SPA
+    // document for private-file probes such as /.env or /.git/config.
+    if (pathname.split('/').some(segment => segment.startsWith('.'))) {
+      return sendError(res, 404, 'Not Found');
+    }
+
     // --- Serve HTML pages for SPA routing ---
     if (pathname === '/' || !path.extname(pathname)) {
       serveStatic(res, '/index.html', req);

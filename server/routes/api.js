@@ -16,6 +16,7 @@ const registerAuthRoutes = require('./auth');
 const registerSignalsRoutes = require('./signals');
 const registerDigestRoutes = require('./digest');
 const registerDiscoveryRoutes = require('./discovery');
+const registerEducationRoutes = require('./education');
 const registerGraphRoutes = require('./graph');
 const registerItemsRoutes = require('./items');
 const registerJobsRoutes = require('./jobs');
@@ -36,6 +37,7 @@ function registerRoutes(routes) {
   registerSignalsRoutes(routes);
   registerDigestRoutes(routes);
   registerDiscoveryRoutes(routes);
+  registerEducationRoutes(routes);
   registerGraphRoutes(routes);
   registerItemsRoutes(routes);
   registerJobsRoutes(routes);
