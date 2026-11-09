@@ -4,12 +4,19 @@ import { getLanguage } from '../i18n.js';
 import { API_BASE, fetchJSON, pickZh, showLoader } from './shared.js';
 
 const CATEGORIES = [
-  { key: 'research', slug: 'physical-ai-arxiv', zh: '研究论文', en: 'Research', detailZh: '论文、方法与评测', detailEn: 'Papers, methods and evaluations' },
-  { key: 'humanoid', slug: 'physical-ai-humanoid', zh: '机器人动态', en: 'Robotics', detailZh: '人形机器人、产品与公司', detailEn: 'Humanoids, products and companies' },
-  { key: 'photonics', slug: 'physical-ai-cn-photonics', zh: '光电产业', en: 'Photonics', detailZh: '光电与半导体产业', detailEn: 'Photonics and semiconductors' },
-  { key: 'filings', slug: 'physical-ai-sec-8k', zh: '企业公告', en: 'Company filings', detailZh: 'SEC 8-K 企业申报', detailEn: 'Company filings with the SEC' },
+  { key: 'research', zh: '研究论文', en: 'Research', detailZh: '论文、方法与评测', detailEn: 'Papers, methods and evaluations' },
+  { key: 'humanoid', zh: '机器人动态', en: 'Robotics', detailZh: '人形机器人、产品与公司', detailEn: 'Humanoids, products and companies' },
+  { key: 'open', zh: '开源与工具', en: 'Open source & tools', detailZh: '开源模型、代码、数据集与仿真工具', detailEn: 'Open models, code, datasets and simulators' },
+  { key: 'applications', zh: '应用落地', en: 'Real-world applications', detailZh: '真实场景验证、试点与部署', detailEn: 'Real-world validation, pilots and deployments' },
 ];
 const PAGE_SIZE = 24;
+const SOURCE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const APPLICATION_STAGES = new Map([
+  ['prototype', { zh: '阶段：原型', en: 'Stage: Prototype' }],
+  ['pilot', { zh: '阶段：试点', en: 'Stage: Pilot' }],
+  ['deployed', { zh: '阶段：部署', en: 'Stage: Deployed' }],
+  ['unknown', { zh: '阶段未说明', en: 'Stage: Not specified' }],
+]);
 let requestNumber = 0;
 
 function validDate(value) {
@@ -19,10 +26,20 @@ function validDate(value) {
 }
 
 function safeLink(value) {
+  if (typeof value !== 'string' || !value) return '';
   try {
     const url = new URL(value);
     return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
   } catch { return ''; }
+}
+
+function safeSourceHref(value) {
+  return typeof value === 'string' && SOURCE_SLUG_RE.test(value) ? `/sources/${value}` : '';
+}
+
+function applicationStageLabel(value, zh) {
+  const stage = APPLICATION_STAGES.get(value);
+  return stage ? (zh ? stage.zh : stage.en) : '';
 }
 
 function dateLabel(value, zh) {
@@ -37,7 +54,8 @@ export async function renderPhysicalAI() {
   const zh = getLanguage() === 'zh';
   const request = ++requestNumber;
   const params = new URLSearchParams(window.location.search);
-  const category = CATEGORIES.some(c => c.key === params.get('category')) ? params.get('category') : 'all';
+  const requestedCategory = params.get('category');
+  const category = CATEGORIES.some(c => c.key === requestedCategory) ? requestedCategory : 'all';
   const days = [30, 90, 180].includes(Number(params.get('days'))) ? Number(params.get('days')) : 30;
   const date = validDate(params.get('date'));
   const rawOffset = Number(params.get('offset'));
@@ -63,21 +81,29 @@ export async function renderPhysicalAI() {
     const count = key => Number(categoryData.get(key)?.count) || 0;
     const allCount = CATEGORIES.reduce((sum, c) => sum + count(c.key), 0);
     const total = Number(data.stats?.total) || 0;
-    const findCategory = item => CATEGORIES.find(c => c.key === item.category || c.slug === item.source_slug);
+    const findCategory = item => CATEGORIES.find(c => c.key === item.category);
     const card = item => {
       const section = findCategory(item);
       const title = pickZh(item.title, item.ai_title_zh || item.title_zh) || (zh ? '无标题' : 'Untitled');
       const aiSummary = pickZh(item.one_liner || item.short_summary, item.one_liner_zh || item.short_summary_zh) || '';
       const summary = aiSummary || item.original_summary || '';
       const url = safeLink(item.canonical_url);
+      const resourceUrl = safeLink(item.resource_url);
+      const stageLabel = applicationStageLabel(item.application_stage, zh);
+      const licenseLabel = resourceUrl && item.resource_license ? `${zh ? '许可证' : 'License'}: ${item.resource_license}` : '';
       const titleHtml = url ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)} <span aria-hidden="true">↗</span></a>` : escapeHtml(title);
       const source = item.source_label || item.source_slug || (zh ? '来源未知' : 'Unknown source');
-      const sourceHtml = section ? `<a href="/sources/${escapeAttr(section.slug)}">${escapeHtml(source)}</a>` : escapeHtml(source);
+      const sourceHref = safeSourceHref(item.source_slug);
+      const sourceHtml = sourceHref ? `<a href="${escapeAttr(sourceHref)}">${escapeHtml(source)}</a>` : escapeHtml(source);
       const published = dateLabel(item.published_at, zh);
+      const evidenceHtml = stageLabel || resourceUrl
+        ? `<div class="pa-evidence">${stageLabel ? `<span class="pa-stage">${escapeHtml(stageLabel)}</span>` : ''}${licenseLabel ? `<span class="pa-stage">${escapeHtml(licenseLabel)}</span>` : ''}${resourceUrl ? `<a href="${escapeAttr(resourceUrl)}" target="_blank" rel="noopener noreferrer">${zh ? '资源' : 'Resource'} <span aria-hidden="true">↗</span></a>` : ''}</div>`
+        : '';
       return `<article class="education-item pa-item">
         <div class="education-item-meta"><span class="education-item-category">${escapeHtml(section ? (zh ? section.zh : section.en) : (zh ? '具身 AI' : 'Physical AI'))}</span><span>${sourceHtml}</span><time${item.published_at ? ` datetime="${escapeAttr(item.published_at)}"` : ''}>${escapeHtml(published)}</time></div>
         <h3>${titleHtml}</h3>
         ${summary ? `<p><span class="education-summary-label">${aiSummary ? (zh ? 'AI 摘要' : 'AI summary') : (zh ? '原文摘要' : 'Source summary')}</span> ${escapeHtml(summary)}</p>` : ''}
+        ${evidenceHtml}
       </article>`;
     };
     const selected = categoryData.get(category);
@@ -90,7 +116,7 @@ export async function renderPhysicalAI() {
       <header class="education-hero">
         <div><div class="education-eyebrow">EAGLEYE / PHYSICAL AI</div>
           <h2>${zh ? '具身智能情报' : 'Physical AI intelligence'}</h2>
-          <p>${zh ? '追踪 AI 走向物理世界的进展：从机器人研究、人形产品到产业与企业动态。' : 'Follow AI in the physical world, from robotics research and humanoid products to industry and company developments.'}</p>
+          <p>${zh ? '追踪 AI 走向物理世界的进展：从机器人研究、人形产品到开源工具与应用落地。' : 'Follow AI in the physical world, from robotics research and humanoid products to open tools and real-world applications.'}</p>
         </div>
         <div class="education-hero-note"><span>${zh ? '观察范围' : 'COVERAGE'}</span><strong>${date ? escapeHtml(date) : (zh ? `最近 ${days} 天` : `Last ${days} days`)}</strong><small>${date ? (zh ? '按采集日期查看快照' : 'Collection-date snapshot') : (zh ? '来自 Eagleye 已收录的信息源' : 'From sources collected by Eagleye')}</small></div>
       </header>

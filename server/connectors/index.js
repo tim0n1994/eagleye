@@ -26,6 +26,8 @@ const { ProductHuntConnector } = require('./producthunt');
 const { StartupArchiveConnector } = require('./startup-archive');
 const { AppStoreRankConnector, AppStoreTrendConnector } = require('./appstore');
 const { SEC8KConnector } = require('./sec-8k');
+const { PhysicalAIOpenGitHubConnector } = require('./physical-ai-open');
+const { PhysicalAIOpenHuggingFaceConnector } = require('./physical-ai-open-huggingface');
 const { HumanoidConnector } = require('./humanoid');
 const { CNPhotonicsConnector } = require('./cn-photonics');
 const { XFollowingConnector } = require('./x-following');
@@ -46,6 +48,8 @@ const connectorRegistry = {
   'physical-ai-arxiv': new ArxivConnector('physical-ai-arxiv'),
   'education-arxiv': new ArxivConnector('education-arxiv'),
   'physical-ai-sec-8k': new SEC8KConnector(),
+  'physical-ai-open-github': new PhysicalAIOpenGitHubConnector(),
+  'physical-ai-open-huggingface': new PhysicalAIOpenHuggingFaceConnector(),
   'physical-ai-humanoid': new HumanoidConnector(),
   'physical-ai-cn-photonics': new CNPhotonicsConnector(),
   'v2ex': new V2EXConnector(),

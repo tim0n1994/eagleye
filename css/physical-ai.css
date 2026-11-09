@@ -27,3 +27,23 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.pa-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pa-evidence a {
+  color: var(--accent);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.pa-evidence a span { font-size: 10px; }
+.pa-stage {
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--fg-dim);
+  font-size: 11px;
+}

@@ -135,7 +135,7 @@ describe('GET /api/physical-ai', () => {
     expect(body.offset).toBe(0);
     expect(body.limit).toBe(50);
     expect(body.items.map((item) => item.id)).toEqual([
-      'arx-1', 'hum-badjson', 'hum-1', 'hum-2', 'pho-1', 'pho-2', 'sec-1',
+      'arx-1', 'hum-badjson', 'hum-1', 'hum-2',
     ]);
     const arx = body.items[0];
     expect(arx.category).toBe('research');
@@ -154,7 +154,7 @@ describe('GET /api/physical-ai', () => {
     expect(arx.short_summary_zh).toBe('中文简短摘要');
     expect(arx.original_summary).toBe('Original summary for arx-1');
     for (const item of body.items) {
-      expect(['research', 'humanoid', 'photonics', 'filings']).toContain(item.category);
+      expect(['research', 'humanoid', 'open', 'applications']).toContain(item.category);
     }
   });
 
@@ -162,9 +162,9 @@ describe('GET /api/physical-ai', () => {
     const full = call({ days: 30 }).body;
     expect(cat(full, 'research')).toEqual({ key: 'research', source_slug: 'physical-ai-arxiv', count: 1, is_active: true });
     expect(cat(full, 'humanoid')).toEqual({ key: 'humanoid', source_slug: 'physical-ai-humanoid', count: 3, is_active: true });
-    expect(cat(full, 'photonics')).toEqual({ key: 'photonics', source_slug: 'physical-ai-cn-photonics', count: 2, is_active: false });
-    expect(cat(full, 'filings')).toEqual({ key: 'filings', source_slug: 'physical-ai-sec-8k', count: 1, is_active: true });
-    expect(full.stats.total).toBe(7);
+    expect(cat(full, 'open')).toEqual({ key: 'open', source_slug: null, count: 0, is_active: null });
+    expect(cat(full, 'applications')).toEqual({ key: 'applications', source_slug: null, count: 0, is_active: true });
+    expect(full.stats.total).toBe(4);
 
     const filtered = call({ days: 30, category: 'humanoid', limit: 1, offset: 1 }).body;
     expect(filtered.items.map((item) => item.id)).toEqual(['hum-1']);
@@ -173,24 +173,24 @@ describe('GET /api/physical-ai', () => {
   });
 
   it('windows items on published_at and clamps days into 1..180', () => {
-    expect(call({ days: 90 }).body.stats.total).toBe(8);
+    expect(call({ days: 90 }).body.stats.total).toBe(5);
     expect(call({ days: 90 }).body.items.map((item) => item.id)).toContain('arx-2');
     expect(call({ days: 200 }).body.items.map((item) => item.id)).toContain('arx-170');
     expect(call({ days: 200 }).body.items.map((item) => item.id)).not.toContain('arx-old');
-    // 180d window additionally covers the three 99-101d-old snapshot rows.
-    expect(call({ days: 200 }).body.stats.total).toBe(12);
-    expect(call({ days: 'abc' }).body.stats.total).toBe(7);
+    // The 180-day window also includes the earlier robotics snapshot.
+    expect(call({ days: 200 }).body.stats.total).toBe(7);
+    expect(call({ days: 'abc' }).body.stats.total).toBe(4);
   });
 
   it('snapshot by date wins over days and matches legacy compact digest_date', () => {
     const { body } = call({ date: '2026-08-01' });
-    expect(body.items.map((item) => item.id)).toEqual(['pho-snap', 'snap-canonical', 'snap-compact']);
+    expect(body.items.map((item) => item.id)).toEqual(['snap-compact']);
     expect(body.items.find((item) => item.id === 'snap-compact').digest_date).toBe('20260801');
     expect(cat(body, 'research').count).toBe(0);
     expect(cat(body, 'humanoid').count).toBe(1);
-    expect(cat(body, 'photonics')).toEqual({ key: 'photonics', source_slug: 'physical-ai-cn-photonics', count: 1, is_active: false });
-    expect(cat(body, 'filings').count).toBe(1);
-    expect(body.stats.total).toBe(3);
+    expect(cat(body, 'open').count).toBe(0);
+    expect(cat(body, 'applications').count).toBe(0);
+    expect(body.stats.total).toBe(1);
     expect(call({ date: '2026-08-01', days: 30 }).body.items.map((item) => item.id))
       .toEqual(body.items.map((item) => item.id));
   });
@@ -199,9 +199,9 @@ describe('GET /api/physical-ai', () => {
     const { body } = call({ date: today, days: 30 });
     const ids = body.items.map((item) => item.id);
     expect(ids[ids.length - 1]).toBe('arx-null');
-    expect(ids).toContain('pho-1');
+    expect(ids).not.toContain('pho-1');
     expect(cat(body, 'research').count).toBe(2);
-    expect(body.stats.total).toBe(8);
+    expect(body.stats.total).toBe(5);
   });
 
   it('drops duplicate_of and placeholder rows, keeps corrupt JSON payloads', () => {
@@ -216,8 +216,8 @@ describe('GET /api/physical-ai', () => {
     const { body } = call({ days: 30 });
     const ids = body.items.map((item) => item.id);
     expect(ids).toEqual([...new Set(ids)]);
-    expect(ids).toHaveLength(7);
-    expect(body.stats.total).toBe(7);
+    expect(ids).toHaveLength(4);
+    expect(body.stats.total).toBe(4);
     const hum2 = body.items.find((item) => item.id === 'hum-2');
     expect(hum2.one_liner).toBe('Newer summary line');
     const tie = call({ days: 200 }).body.items.find((item) => item.id === 'arx-170');
@@ -240,7 +240,7 @@ describe('GET /api/physical-ai', () => {
     expect(call({ days: 30, limit: 2, offset: 5 }).body.items.map((item) => item.id)).toEqual(all.slice(5, 7));
     const beyond = call({ days: 30, limit: 2, offset: 99 }).body;
     expect(beyond.items).toEqual([]);
-    expect(beyond.stats.total).toBe(7);
+    expect(beyond.stats.total).toBe(4);
     expect(call({ days: 30, limit: '7', offset: 3 }).body.limit).toBe(7);
     expect(call({ days: 30, limit: 3, offset: 3 }).body.offset).toBe(3);
     const paged = [0, 3, 6].flatMap((offset) =>
@@ -255,7 +255,7 @@ describe('GET /api/physical-ai', () => {
     expect(call({ date: '2026-02-30' }).status).toBe(400);
     expect(call({ date: 'not-a-date' }).status).toBe(400);
     expect(call({ date: '' }).status).toBe(200);
-    expect(call({ date: '' }).body.stats.total).toBe(7);
+    expect(call({ date: '' }).body.stats.total).toBe(4);
     expect(call({}, 'POST').status).toBe(405);
     expect(call({}, 'HEAD').status).toBe(200);
   });
@@ -268,15 +268,13 @@ describe('GET /api/physical-ai', () => {
   });
 
   // Runs last: it mutates fixtures. A slug with no sources record must report
-  // status unknown (null), never a false "disabled". Service-level calls on
-  // purpose — the route's 60s scope cache predates this mutation.
+  // status unknown (null), never a false "disabled".
   it('reports missing source records as unknown status, not disabled', () => {
     db.prepare('DELETE FROM information_items WHERE source_id = ?').run('s-sec');
     db.prepare('DELETE FROM sources WHERE slug = ?').run('physical-ai-sec-8k');
     const snapshot = getPhysicalAiSnapshot(db, { days: 30 });
-    expect(snapshot.categories.find((entry) => entry.key === 'filings'))
-      .toEqual({ key: 'filings', source_slug: 'physical-ai-sec-8k', count: 0, is_active: null });
-    expect(snapshot.categories.find((entry) => entry.key === 'photonics').is_active).toBe(false);
+    expect(snapshot.categories.find((entry) => entry.key === 'open'))
+      .toEqual({ key: 'open', source_slug: null, count: 0, is_active: null });
     expect(getPhysicalAiItems(db, { days: 30, category: 'filings', limit: 120 })).toEqual([]);
   });
 });

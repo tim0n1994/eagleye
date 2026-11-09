@@ -6,11 +6,11 @@ const response = data => ({ ok: true, json: async () => data });
 const categories = [
   { key: 'research', source_slug: 'physical-ai-arxiv', count: 32, is_active: 1 },
   { key: 'humanoid', source_slug: 'physical-ai-humanoid', count: 7, is_active: 1 },
-  { key: 'photonics', source_slug: 'physical-ai-cn-photonics', count: 0, is_active: 0 },
-  { key: 'filings', source_slug: 'physical-ai-sec-8k', count: 0, is_active: 0 },
+  { key: 'open', source_slug: null, count: 0, is_active: 0 },
+  { key: 'applications', source_slug: null, count: 0, is_active: 0 },
 ];
 const baseItem = {
-  id: 'pa-1', title: 'Dexterous manipulation', ai_title_zh: '灵巧操作研究',
+  id: 'pa-1', category: 'research', title: 'Dexterous manipulation', ai_title_zh: '灵巧操作研究',
   canonical_url: 'https://arxiv.org/abs/1234.5678', published_at: '2026-11-01T00:00:00Z',
   source_label: 'Physical AI — arXiv', source_slug: 'physical-ai-arxiv',
   one_liner: 'A new approach.', one_liner_zh: '一种新的方法。',
@@ -72,7 +72,7 @@ describe('physical AI topic briefing', () => {
   });
 
   it('explains an empty disabled source without inventing content', async () => {
-    window.history.replaceState(null, '', '/physical-ai?category=filings');
+    window.history.replaceState(null, '', '/physical-ai?category=open');
     fetch.mockResolvedValueOnce(response({ ...feed, items: [], stats: { total: 0 } }));
     await renderPhysicalAI();
     expect(document.querySelector('.education-empty').textContent).toContain('信息源当前已停用');
@@ -80,7 +80,7 @@ describe('physical AI topic briefing', () => {
   });
 
   it('shows archived items from a disabled source with their original summary', async () => {
-    window.history.replaceState(null, '', '/physical-ai?category=photonics');
+    window.history.replaceState(null, '', '/physical-ai?category=open');
     const archived = { ...baseItem, source_slug: 'physical-ai-cn-photonics', one_liner: '', one_liner_zh: '', original_summary: '产业动态原文摘要' };
     fetch.mockResolvedValueOnce(response({ ...feed, items: [archived], stats: { total: 1 } }));
     await renderPhysicalAI();

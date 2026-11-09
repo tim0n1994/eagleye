@@ -28,9 +28,7 @@ describe('complete migrations on fresh and legacy SQLite databases', () => {
   afterEach(() => { db.close(); vi.restoreAllMocks(); });
 
   function expectAllApplied() {
-    // 45 = 42 existing migrations + 045 cadence + 046 CN Photonics + 047 lane operators.
-    // 【主脚本仲裁接管：机械更新迁移文件计数】
-    expect(files).toHaveLength(47); // includes 048 education and 049 SEC source
+    expect(files).toHaveLength(49); // includes the two Physical AI resource sources
     expect(db.prepare('SELECT name FROM _migrations ORDER BY name').all().map(row => row.name)).toEqual(files);
     expect(db.pragma('foreign_key_check')).toEqual([]);
     expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
