@@ -102,17 +102,13 @@ class SEC8KConnector extends BaseConnector {
     const items = [];
 
     for (const filing of filings) {
-      if (filing.form !== '8-K') continue;
+      // Foreign private issuers (e.g. TSM/ASML) report on 6-K, not 8-K.
+      if (!['8-K', '8-K/A', '6-K', '6-K/A'].includes(filing.form)) continue;
       const filingDate = filing.filingDate || '';
       const parsedFilingDate = new Date(`${filingDate}T00:00:00Z`);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(filingDate) || Number.isNaN(parsedFilingDate.getTime()) || parsedFilingDate.toISOString().slice(0, 10) !== filingDate) continue;
-      // D2 time-window freshness replaces the filing-day == digest-day
-      // equality filter (see date-contract.js isWithinFetchWindow): filings
-      // dated within [now - SOURCE_LOOKBACK_HOURS (default 36h), now + 1h]
-      // are new; digest_date always takes the requested digest date. The old
-      // strict equality skipped every filing during the 01:00 Asia/Shanghai
-      // run (UTC is still on the previous day).
-      if (date && !isWithinFetchWindow(filingDate)) continue;
+      // Seven-day overlap covers weekends; accession URLs deduplicate repeats.
+      if (date && !isWithinFetchWindow(filingDate, { lookbackHours: 7 * 24 })) continue;
 
       const accessionNo = filing.accessionNumber || '';
       const primaryDoc = filing.primaryDocument || '';
@@ -125,9 +121,9 @@ class SEC8KConnector extends BaseConnector {
 
       items.push({
         ...this.normalize({
-          title: `8-K: ${company.name} (${filing.items || 'Form 8-K'})`,
-          url: docUrl || `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${company.cik}&type=8-K`,
-          description: `${company.name} filed Form 8-K — ${filing.items || 'Current Report'}. Period: ${filing.periodOfReport || 'N/A'}`,
+          title: `${filing.form}: ${company.name} (${filing.items || 'Current Report'})`,
+          url: docUrl || `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${company.cik}&type=${encodeURIComponent(filing.form)}`,
+          description: `${company.name} filed Form ${filing.form} — ${filing.items || 'Current Report'}. Period: ${filing.periodOfReport || 'N/A'}`,
           publishedAt: new Date(filingDate).toISOString(),
           sourcePayload: {
             ticker: Object.keys(TARGET_COMPANIES).find(k => TARGET_COMPANIES[k].cik === company.cik) || '',
