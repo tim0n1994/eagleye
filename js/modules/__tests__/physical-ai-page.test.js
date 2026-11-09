@@ -3,126 +3,126 @@ import { renderPhysicalAI } from '../pages/papers.js';
 import { setLanguage } from '../i18n.js';
 
 const response = data => ({ ok: true, json: async () => data });
-const sectionUrl = slug => `/api/items?source=${slug}&limit=10&sort=recent&dedupe=1&exclude_placeholders=1`;
-const SLUGS = ['physical-ai-arxiv', 'physical-ai-humanoid', 'physical-ai-cn-photonics', 'physical-ai-sec-8k'];
-
+const categories = [
+  { key: 'research', source_slug: 'physical-ai-arxiv', count: 32, is_active: 1 },
+  { key: 'humanoid', source_slug: 'physical-ai-humanoid', count: 7, is_active: 1 },
+  { key: 'photonics', source_slug: 'physical-ai-cn-photonics', count: 0, is_active: 0 },
+  { key: 'filings', source_slug: 'physical-ai-sec-8k', count: 0, is_active: 0 },
+];
 const baseItem = {
-  id: 'pa-1',
-  title: 'Latent RL Priors for Data-Efficient Dexterous Manipulation',
-  ai_title_zh: '面向灵巧操作的强化先验',
-  canonical_url: 'https://arxiv.org/abs/1234.5678',
-  published_at: new Date().toISOString(),
-  source_label: 'Physical AI — arXiv',
-  source_slug: 'physical-ai-arxiv',
-  ai_summary: { one_liner: 'Reinforcement priors cut demo needs.', one_liner_zh: '强化先验降低演示数据需求。' },
+  id: 'pa-1', title: 'Dexterous manipulation', ai_title_zh: '灵巧操作研究',
+  canonical_url: 'https://arxiv.org/abs/1234.5678', published_at: '2026-11-01T00:00:00Z',
+  source_label: 'Physical AI — arXiv', source_slug: 'physical-ai-arxiv',
+  one_liner: 'A new approach.', one_liner_zh: '一种新的方法。',
 };
-
-let failSlugs;
+const feed = { status: 'ok', items: [baseItem], categories, stats: { total: 39 } };
 
 beforeEach(() => {
-  setLanguage('en');
+  setLanguage('zh');
   window.history.replaceState(null, '', '/physical-ai');
   document.body.innerHTML = '<main id="pageContent"></main>';
-  failSlugs = new Set();
-  vi.stubGlobal('fetch', vi.fn(async url => {
-    const hit = SLUGS.find(slug => url === sectionUrl(slug));
-    if (!hit) throw new Error(`Unexpected request: ${url}`);
-    if (failSlugs.has(hit)) throw new Error('boom');
-    const items = hit === 'physical-ai-arxiv' ? [{ ...baseItem }] : [];
-    return response({ status: 'ok', items });
-  }));
+  vi.stubGlobal('fetch', vi.fn(async () => response(feed)));
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; });
 
-describe('renderPhysicalAI', () => {
-  it('requests recent, deduplicated, placeholder-free items for every section', async () => {
-    await renderPhysicalAI({});
-    await vi.waitFor(() => {
-      for (const slug of SLUGS) {
-        expect(fetch.mock.calls.some(([url]) => url === sectionUrl(slug))).toBe(true);
-      }
-    });
-    expect(fetch.mock.calls.every(([url]) => url.includes('exclude_placeholders=1'))).toBe(true);
-    expect(fetch.mock.calls.every(([url]) => url.includes('sort=recent&dedupe=1'))).toBe(true);
+describe('physical AI topic briefing', () => {
+  it('shows real category counts, source status and localized, source-linked items', async () => {
+    await renderPhysicalAI();
+    const query = new URL(fetch.mock.calls[0][0], 'https://example.com').searchParams;
+    expect(Object.fromEntries(query)).toMatchObject({ category: 'all', days: '30', limit: '24', offset: '0' });
+    expect(document.querySelector('.education-hero h2').textContent).toBe('具身智能情报');
+    const cards = [...document.querySelectorAll('.education-overview-card')];
+    expect(cards).toHaveLength(4);
+    expect(cards[0].textContent).toContain('32');
+    expect(cards[2].textContent).toContain('信息源已停用');
+    expect(document.querySelector('.education-results-count').textContent).toContain('39 条');
+    expect(document.querySelector('.pa-item h3 a').textContent).toContain('灵巧操作研究');
+    expect(document.querySelector('.pa-item h3 a').href).toBe(baseItem.canonical_url);
+    expect(document.querySelector('.education-item-meta a').getAttribute('href')).toBe('/sources/physical-ai-arxiv');
+    expect(document.querySelector('.pa-item time').getAttribute('datetime')).toBe(baseItem.published_at);
+    expect(document.querySelector('.pa-item p').textContent).toContain('AI 摘要 一种新的方法。');
+    expect(document.querySelector('.education-pagination a').getAttribute('href')).toContain('offset=24');
   });
 
-  it('links every section title to its source archive', async () => {
-    await renderPhysicalAI({});
-    await vi.waitFor(() => expect(document.querySelectorAll('.pa-section-title-link').length).toBe(SLUGS.length));
-    const hrefs = [...document.querySelectorAll('.pa-section-title-link')].map(a => a.getAttribute('href'));
-    expect(hrefs).toEqual(SLUGS.map(slug => '/sources/' + slug));
+  it('preserves the selected category and period when moving through filters', async () => {
+    window.history.replaceState(null, '', '/physical-ai?category=humanoid&days=90&offset=24');
+    await renderPhysicalAI();
+    const query = new URL(fetch.mock.calls[0][0], 'https://example.com').searchParams;
+    expect(Object.fromEntries(query)).toMatchObject({ category: 'humanoid', days: '90', offset: '24' });
+    const research = new URL([...document.querySelectorAll('.education-filters a')].find(a => a.textContent.includes('研究论文')).href);
+    expect(research.searchParams.get('days')).toBe('90');
+    expect(research.searchParams.get('category')).toBe('research');
+    expect(research.searchParams.has('offset')).toBe(false);
+    expect(document.querySelector('.education-periods .is-active').textContent).toContain('90');
   });
 
-  it('renders title, link, timestamp and summary', async () => {
-    await renderPhysicalAI({});
-    await vi.waitFor(() => expect(document.querySelector('.pa-item-title')).not.toBeNull());
-    const link = document.querySelector('.pa-item-title');
-    expect(link.textContent).toContain('Latent RL Priors');
-    expect(link.href).toBe('https://arxiv.org/abs/1234.5678');
-    expect(document.querySelector('.pa-item-time').getAttribute('datetime')).toBe(baseItem.published_at);
-    expect(document.querySelector('.pa-item-summary').textContent).toContain('Reinforcement priors');
-    expect(document.querySelector('.pa-summary-label').textContent).toBe('AI summary');
-    expect(document.querySelector('.pa-freshness').textContent).toContain('Latest');
-  });
-
-  it('passes the selected collection date to each source', async () => {
-    window.history.replaceState(null, '', '/physical-ai?date=2026-11-01');
-    vi.stubGlobal('fetch', vi.fn(async () => response({ items: [] })));
-    await renderPhysicalAI({});
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
-    expect(fetch.mock.calls.every(([url]) => url.endsWith('&date=2026-11-01'))).toBe(true);
+  it('retains collection-date snapshots and clears the date when changing time range', async () => {
+    window.history.replaceState(null, '', '/physical-ai?category=research&days=90&date=2026-11-01');
+    await renderPhysicalAI();
+    const query = new URL(fetch.mock.calls[0][0], 'https://example.com').searchParams;
+    expect(query.get('date')).toBe('2026-11-01');
     expect(document.querySelector('#physicalDate').value).toBe('2026-11-01');
+    expect(document.querySelector('.education-hero-note strong').textContent).toBe('2026-11-01');
+    const period = new URL(document.querySelector('.education-periods a').href);
+    expect(period.searchParams.has('date')).toBe(false);
+    expect(period.searchParams.get('category')).toBe('research');
+    const categoryLink = new URL(document.querySelectorAll('.education-filters a')[2].href);
+    expect(categoryLink.searchParams.get('date')).toBe('2026-11-01');
   });
 
-  it('renders four sections with honest empty states', async () => {
-    await renderPhysicalAI({});
-    await vi.waitFor(() => expect(document.querySelectorAll('.pa-empty').length).toBe(3));
-    expect(document.querySelectorAll('.pa-section').length).toBe(4);
-    const emptyTexts = [...document.querySelectorAll('.pa-empty')].map(el => el.textContent);
-    expect(emptyTexts.filter(text => text.includes('No items available')).length).toBe(1);
-    expect(emptyTexts.filter(text => text.includes('No SEC filings available')).length).toBe(1);
-    expect(emptyTexts.filter(text => text.includes('No content available from this source yet.')).length).toBe(1);
-    expect(document.querySelector('[data-slug="physical-ai-sec-8k"] .pa-empty').textContent)
-      .toContain('No SEC filings available.');
+  it('explains an empty disabled source without inventing content', async () => {
+    window.history.replaceState(null, '', '/physical-ai?category=filings');
+    fetch.mockResolvedValueOnce(response({ ...feed, items: [], stats: { total: 0 } }));
+    await renderPhysicalAI();
+    expect(document.querySelector('.education-empty').textContent).toContain('信息源当前已停用');
+    expect(document.querySelectorAll('.pa-item')).toHaveLength(0);
   });
 
-  it('uses zh source labels, zh item title and zh empty note under the zh locale', async () => {
-    setLanguage('zh');
-    await renderPhysicalAI({});
-    await vi.waitFor(() => expect(document.querySelector('.pa-item-title')).not.toBeNull());
-    expect(document.querySelector('.pa-section-title').textContent).toBe('具身智能 · arXiv');
-    expect(document.querySelector('.pa-item-title').textContent).toBe('面向灵巧操作的强化先验');
-    expect(document.querySelector('.pa-item-summary').textContent).toContain('强化先验降低演示数据需求。');
-    expect(document.querySelector('.pa-summary-label').textContent).toBe('AI 摘要');
-    expect(document.querySelector('.pa-freshness').textContent).toContain('最新');
-    expect(document.querySelector('[data-slug="physical-ai-cn-photonics"] .pa-empty').textContent).toBe('该源暂无可用资讯。');
-    expect(document.querySelector('[data-slug="physical-ai-sec-8k"] .pa-empty').textContent).toBe('暂无 SEC 申报记录，请在信息源中查看状态。');
+  it('shows archived items from a disabled source with their original summary', async () => {
+    window.history.replaceState(null, '', '/physical-ai?category=photonics');
+    const archived = { ...baseItem, source_slug: 'physical-ai-cn-photonics', one_liner: '', one_liner_zh: '', original_summary: '产业动态原文摘要' };
+    fetch.mockResolvedValueOnce(response({ ...feed, items: [archived], stats: { total: 1 } }));
+    await renderPhysicalAI();
+    expect(document.querySelector('.pa-item')).not.toBeNull();
+    expect(document.querySelector('.pa-item p').textContent).toContain('原文摘要 产业动态原文摘要');
+    expect(document.querySelectorAll('.education-overview-card')[2].textContent).toContain('信息源已停用');
   });
 
-  it('escapes html in titles and summaries', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => response({
-      items: [{ ...baseItem, title: '<script>alert("x")</script>', ai_summary: { one_liner: '<img src=x onerror=alert(1)>' } }],
-    })));
-    await renderPhysicalAI({});
-    await vi.waitFor(() => expect(document.querySelector('.pa-item-title')).not.toBeNull());
-    expect(document.querySelector('.pa-grid script')).toBeNull();
-    expect(document.querySelector('.pa-grid img')).toBeNull();
-    expect(document.querySelector('.pa-item-title').textContent).toContain('<script>');
+  it('ignores an invalid collection date instead of requesting a malformed snapshot', async () => {
+    window.history.replaceState(null, '', '/physical-ai?date=2026-02-30');
+    await renderPhysicalAI();
+    const query = new URL(fetch.mock.calls[0][0], 'https://example.com').searchParams;
+    expect(query.has('date')).toBe(false);
+    expect(document.querySelector('#physicalDate').value).toBe('');
   });
 
-  it('shows an error state with a working retry', async () => {
-    failSlugs.add('physical-ai-arxiv');
-    await renderPhysicalAI({});
-    await vi.waitFor(() => expect(document.querySelector('.pa-retry')).not.toBeNull());
-    expect(document.querySelector('.pa-error').textContent).toContain('boom');
+  it('escapes text and refuses unsafe original links', async () => {
+    setLanguage('en');
+    fetch.mockResolvedValueOnce(response({ ...feed, items: [{ ...baseItem, title: '<script>alert(1)</script>', canonical_url: 'javascript:alert(1)', one_liner: '<img src=x onerror=alert(1)>' }] }));
+    await renderPhysicalAI();
+    expect(document.querySelector('.pa-item h3').textContent).toContain('<script>');
+    expect(document.querySelector('.pa-item h3 a')).toBeNull();
+    expect(document.querySelector('.pa-item script')).toBeNull();
+    expect(document.querySelector('.pa-item img')).toBeNull();
+  });
 
-    failSlugs.delete('physical-ai-arxiv');
-    document.querySelector('.pa-retry').click();
-    await vi.waitFor(() => expect(document.querySelector('.pa-item-title')).not.toBeNull());
-    expect(document.querySelector('.pa-error')).toBeNull();
-    expect(fetch.mock.calls.filter(([url]) => url === sectionUrl('physical-ai-arxiv')).length).toBeGreaterThanOrEqual(2);
+  it('offers a working retry if the feed fails', async () => {
+    fetch.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(response(feed));
+    await renderPhysicalAI();
+    expect(document.querySelector('[role="alert"]').textContent).toContain('暂时无法加载');
+    document.querySelector('#physicalRetry').click();
+    await vi.waitFor(() => expect(document.querySelector('.pa-item')).not.toBeNull());
+  });
+
+  it('does not overwrite a newer filter result with an older response', async () => {
+    let resolveFirst;
+    fetch.mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }));
+    const first = renderPhysicalAI();
+    window.history.replaceState(null, '', '/physical-ai?category=humanoid');
+    await renderPhysicalAI();
+    resolveFirst(response({ ...feed, items: [{ ...baseItem, title: 'Stale title', ai_title_zh: '过期标题' }] }));
+    await first;
+    expect(document.querySelector('.pa-item h3').textContent).toContain('灵巧操作研究');
   });
 });

@@ -1,178 +1,29 @@
-/* Eagleye — Physical AI page (/physical-ai, renderPhysicalAI in
-   js/modules/pages/papers.js).
-
-   Scoped to .pa-* classes so it cannot clash with the legacy .physical-*
-   rules still present in style.css. All colors and fonts come from the
-   global theme variables, so dark and light themes work without overrides.
-   Wire with: <link rel="stylesheet" href="/css/physical-ai.css"> */
-
-.pa-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+/* Additions to the shared topic-briefing layout for collection snapshots. */
+.pa-date-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
   margin-top: 16px;
+  color: var(--fg-dim);
+  font-size: 12px;
 }
-
-.pa-date-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--fg-dim); font-size: 12px; }
 .pa-date-filter label { color: var(--fg); font-weight: 600; }
-.pa-date-filter input, .pa-date-filter button { padding: 7px 10px; border: 1px solid var(--rule-light); border-radius: var(--radius); background: var(--bg-card); color: var(--fg); font: inherit; }
+.pa-date-filter input[type="date"], .pa-date-filter button {
+  padding: 7px 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--fg);
+  font: inherit;
+}
 .pa-date-filter button { cursor: pointer; }
 .pa-date-filter button:hover, .pa-date-filter a { color: var(--accent); }
 .pa-date-filter span { color: var(--fg-mute); }
-.pa-summary-label { color: var(--fg-mute); font-size: 11px; }
-
-.pa-section {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 16px;
-  background: var(--bg-card);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-sm);
-}
-
-.pa-section-header {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding-bottom: 10px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--rule);
-}
-
-.pa-icon { font-size: 18px; }
-
-.pa-section-title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--fg);
-}
-
-/* Real freshness: the newest published_at among returned items, set at
-   load time. Stays hidden until data backs it. */
-.pa-freshness {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--fg-mute);
-  white-space: nowrap;
-}
-
-.pa-items {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.pa-item {
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--rule);
-}
-.pa-item:last-child { padding-bottom: 0; border-bottom: none; }
-
-.pa-item-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.pa-item-title {
-  color: var(--fg);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.45;
-  text-decoration: none;
-}
-.pa-item-title:hover { color: var(--accent); }
-.pa-item-title:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-.pa-item-time {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--fg-mute);
-  white-space: nowrap;
-}
-
-/* Summaries (AI one-liner / abstract) clamp to two lines so the cards per
-   section stay scannable. */
-.pa-item-summary {
-  margin: 6px 0 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--fg-dim);
+.pa-feed .education-item-meta a:hover { color: var(--accent); }
+.pa-feed .education-item p {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-
-.pa-loading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--fg-mute);
-}
-
-.pa-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--rule-light);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: pa-spin 0.8s linear infinite;
-}
-@keyframes pa-spin { to { transform: rotate(360deg); } }
-
-.pa-empty {
-  margin: 0;
-  font-size: 13px;
-  color: var(--fg-mute);
-}
-
-.pa-error {
-  margin: 0;
-  font-size: 13px;
-  color: #f87171;
-  overflow-wrap: anywhere;
-}
-
-.pa-retry {
-  margin-top: 8px;
-  padding: 4px 12px;
-  font-size: 12px;
-  background: var(--accent-dim);
-  color: var(--accent);
-  border: 1px solid var(--rule-light);
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-.pa-retry:hover { background: var(--accent-glow); }
-.pa-retry:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pa-spinner { animation: none; border-top-color: var(--rule-light); }
-}
-
-/* 2 columns on desktop (four sections), collapsing on narrow screens. */
-@media (max-width: 1280px) {
-  .pa-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 820px) {
-  .pa-grid { grid-template-columns: 1fr; }
-  .pa-section { padding: 14px; }
-}
-
-[data-theme="light"] .pa-error { color: #dc2626; }

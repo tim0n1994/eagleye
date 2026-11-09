@@ -21,6 +21,7 @@ const registerGraphRoutes = require('./graph');
 const registerItemsRoutes = require('./items');
 const registerJobsRoutes = require('./jobs');
 const registerMcpConfigRoutes = require('./mcp-config');
+const registerPhysicalAiRoutes = require('./physical-ai');
 const registerResearchSunsetRoutes = require('./research-sunset');
 const registerSettingsRoutes = require('./settings');
 const registerSourcesRoutes = require('./sources');
@@ -42,6 +43,7 @@ function registerRoutes(routes) {
   registerItemsRoutes(routes);
   registerJobsRoutes(routes);
   registerMcpConfigRoutes(routes);
+  registerPhysicalAiRoutes(routes);
   registerResearchSunsetRoutes(routes);
   registerSettingsRoutes(routes);
   registerSourcesRoutes(routes);
