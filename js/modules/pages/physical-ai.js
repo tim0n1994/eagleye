@@ -5,7 +5,7 @@ import { API_BASE, fetchJSON, pickZh, showLoader } from './shared.js';
 
 const CATEGORIES = [
   { key: 'research', slug: 'physical-ai-arxiv', zh: '研究论文', en: 'Research', detailZh: '论文、方法与评测', detailEn: 'Papers, methods and evaluations' },
-  { key: 'humanoid', slug: 'physical-ai-humanoid', zh: '人形机器人', en: 'Humanoids', detailZh: '机器人产品与公司动态', detailEn: 'Robots, products and companies' },
+  { key: 'humanoid', slug: 'physical-ai-humanoid', zh: '机器人动态', en: 'Robotics', detailZh: '人形机器人、产品与公司', detailEn: 'Humanoids, products and companies' },
   { key: 'photonics', slug: 'physical-ai-cn-photonics', zh: '光电产业', en: 'Photonics', detailZh: '光电与半导体产业', detailEn: 'Photonics and semiconductors' },
   { key: 'filings', slug: 'physical-ai-sec-8k', zh: '企业公告', en: 'Company filings', detailZh: 'SEC 8-K 企业申报', detailEn: 'Company filings with the SEC' },
 ];
