@@ -12,7 +12,7 @@ function getNeuroscienceFeed(db, days) {
   const cutoff = new Date(Date.now() - days * 86400000).toISOString();
   const slugs = Object.keys(SOURCES);
   const sources = db.prepare(`SELECT slug, id, label, description, homepage_url,
-    is_active, health_status, last_attempt_at, last_success_at, last_error_class
+    is_active, health_status, last_attempt_at, last_success_at, last_error_class, consecutive_empty
     FROM sources WHERE slug IN (${slugs.map(() => '?').join(',')}) ORDER BY label`).all(...slugs);
   const read = db.prepare(`SELECT id, title, title_zh, canonical_url AS url,
     original_summary, published_at, digest_date

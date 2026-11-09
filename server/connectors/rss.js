@@ -398,7 +398,7 @@ class RSSConnector extends BaseConnector {
       const title = textOf(pick(entry, ['title', 'atom:title'])) || '[No Title]';
       const link = linkOf(entry);
       const guidRaw = textOf(pick(entry, ['guid', 'id', 'atom:id']));
-      const pubDate = textOf(pick(entry, ['pubDate', 'published', 'updated', 'atom:published', 'atom:updated']));
+      const pubDate = textOf(pick(entry, ['pubDate', 'published', 'updated', 'atom:published', 'atom:updated', 'dc:date', 'dcterms:issued']));
       const description = textOf(pick(entry, ['description', 'content:encoded', 'content', 'summary', 'atom:summary', 'atom:content']));
 
       // D2 time-window freshness: keep items published within
@@ -457,7 +457,7 @@ class RSSConnector extends BaseConnector {
       }
 
       const guidRaw = getField('guid') || getField('id');
-      const pubDate = getField('pubDate') || getField('published') || getField('updated');
+      const pubDate = getField('pubDate') || getField('published') || getField('updated') || getField('dc:date') || getField('dcterms:issued');
       const description = getField('description') || getField('content') || getField('summary') || '';
       const title = getField('title') || '[No Title]';
 

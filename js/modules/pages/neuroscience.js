@@ -52,7 +52,7 @@ export async function renderNeuroscience() {
     const allCount = CATEGORIES.reduce((sum, c) => sum + (counts.get(c.key) || 0), 0);
     const total = Number(data.stats?.total) || 0;
     const sources = Array.isArray(data.sources) ? data.sources : [];
-    const sourceState = s => !s.is_active ? (zh ? '停用' : 'Disabled') : !s.last_attempt_at ? (zh ? '待首次抓取' : 'Awaiting first fetch') : s.health_status === 'healthy' ? (zh ? '采集正常' : 'Healthy') : s.health_status === 'failing' ? (zh ? '最近失败' : 'Failing') : s.health_status === 'stale' ? (zh ? '待更新' : 'Stale') : (zh ? '健康状态未知' : 'Health unknown');
+    const sourceState = s => !s.is_active ? (zh ? '停用' : 'Disabled') : !s.last_attempt_at ? (zh ? '待首次抓取' : 'Awaiting first fetch') : s.consecutive_empty > 0 && !s.last_error_class ? (zh ? '最近无新内容' : 'No recent new content') : s.health_status === 'healthy' ? (zh ? '采集正常' : 'Healthy') : s.health_status === 'failing' ? (zh ? '最近失败' : 'Failing') : s.health_status === 'stale' ? (zh ? '待更新' : 'Stale') : (zh ? '健康状态未知' : 'Health unknown');
     const categoryName = key => {
       const found = CATEGORIES.find(c => c.key === key);
       return found ? (zh ? found.zh : found.en) : (zh ? '脑科学' : 'neuroscience');
