@@ -2,7 +2,7 @@
  * Eagleye — Page Components (barrel)
  *
  * Render functions live in ./pages/*.js, one module per page domain. This file
- * only re-exports them, so the import surface app-main.js and kg3d.js rely on
+ * only re-exports them, so the import surface app-main.js rely on
  * is unchanged.
  *
  * Shared helpers (loaders, item cards, source nav, title selection) live in

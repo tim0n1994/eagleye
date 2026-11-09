@@ -110,7 +110,7 @@ function register(routes) {
       { key: 'alpha_score', label: 'Multi-dim alpha scoring', eagleye: '✓ 6-dim + 3 audiences', hackertab: '—', feedly: '—', techmeme: '—', dailydev: '—' },
       { key: 'personalization', label: 'Personal filter + watchlist', eagleye: '✓ For-You + lens', hackertab: '—', feedly: '✓ ML', techmeme: '—', dailydev: '✓ basic' },
       { key: 'stories', label: 'Cross-source story clustering', eagleye: '✓', hackertab: '—', feedly: 'partial', techmeme: '✓ editorial', dailydev: '—' },
-      { key: 'knowledge_graph', label: 'Live knowledge graph', eagleye: '✓ KG v2 + 3D', hackertab: '—', feedly: '—', techmeme: '—', dailydev: '—' },
+      { key: 'knowledge_graph', label: 'Live knowledge graph', eagleye: '✓ Evidence-linked topics', hackertab: '—', feedly: '—', techmeme: '—', dailydev: '—' },
       { key: 'deploy', label: '1-click deploy analysis', eagleye: '✓ GitHub repos', hackertab: '—', feedly: '—', techmeme: '—', dailydev: '—' },
       { key: 'language', label: 'Chinese-first', eagleye: '✓', hackertab: '—', feedly: '—', techmeme: '—', dailydev: '—' },
       { key: 'self_hosted', label: 'Self-hosted / local', eagleye: '✓', hackertab: '✓ ext', feedly: '—', techmeme: '—', dailydev: '—' },

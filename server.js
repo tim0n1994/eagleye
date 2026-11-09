@@ -571,7 +571,7 @@ async function handleRequest(req, res) {
         const base = `http://localhost:${PORT}`;
         let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
         // Static pages
-        const staticPages = ['/', '/for-you', '/papers', '/signals', '/digest', '/sources', '/kg3d', '/physical-ai', '/intelligence', '/industry-metrics', '/year', '/compare', '/search', '/help', '/saved', '/watchlist', '/stories', '/topics', '/tags'];
+        const staticPages = ['/', '/for-you', '/papers', '/signals', '/digest', '/sources', '/discover', '/physical-ai', '/trends', '/system-status', '/year', '/compare', '/search', '/help', '/saved', '/watchlist', '/stories', '/topics', '/tags'];
         for (const p of staticPages) xml += `  <url><loc>${base}${p}</loc></url>\n`;
         // Sources
         const sources = db.prepare('SELECT slug FROM sources WHERE is_active = 1').all();
@@ -693,6 +693,7 @@ async function shutdown() {
   shuttingDown = true;
   require('./server/services/scheduler').stop();
   require('./server/services/kg-worker').stopKGWorkers();
+  require('./server/services/radar').stopRadar();
   let finished = false;
   const finish = () => {
     if (finished) return;

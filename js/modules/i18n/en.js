@@ -13,6 +13,8 @@ export const en = {
   'brand.tagline': 'AI-Driven Technology Intelligence',
   'lang.toggle': '中文 / EN',
   'lang.switchTo': 'Switch to English',
+  'nav.trends': 'Trends',
+  'nav.system_status': 'System status',
   'nav.news': 'News',
   'nav.papers': 'Papers',
   'nav.digest': 'Daily Digest',
@@ -22,7 +24,6 @@ export const en = {
   'nav.tools': 'Tools',
   'nav.skills': 'Skills',
   'nav.tags': '🏷️ Tags',
-  'nav.kg3d': '🧠 KG 3D',
   'nav.physical_ai': 'Physical AI',
   'nav.ai_education': 'AI Education',
   'nav.intelligence': 'Intelligence',
@@ -358,20 +359,8 @@ export const en = {
   'watchlist.sub': 'Watch',
   'watchlist.unsub': 'Watching',
   'watchlist.remove': 'Remove',
-  'nav.watchlist': 'Watchlist',
+  'nav.watchlist': 'Following',
 
-  // ── KG 3D (i18n leak fix) ──
-  'kg3d.title': 'Knowledge Graph 3D',
-  'kg3d.search_ph': 'Search tags/topics...',
-  'kg3d.empty': 'No data yet. Run tag enrichment and hierarchical clustering first.',
-  'kg3d.items_count': '{n} items',
-  'kg3d.parents_count': '{n} parents',
-  'kg3d.item_list': 'Items',
-  'kg3d.children': 'Children',
-  'kg3d.children_count': '{n} children',
-  'kg3d.domain': 'Domain',
-  'kg3d.topic': 'Topic',
-  'kg3d.subtopic': 'Subtopic',
 
   // ── Personal Alpha Lens (PRD-5) ──
   'lens.title': 'PERSONAL ALPHA LENS',

@@ -162,82 +162,9 @@ export async function renderStories(_params) {
   }
 }
 
-// ─── Watchlist (PRD-4: subscription hub) ────────────────
-
-export async function renderWatchlist(_params) {
-  const container = $('#pageContent');
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING WATCHLIST...' : t('common.loading'));
-
-  try {
-    const [wlData, feedData] = await Promise.all([
-      fetchJSON(`${API_BASE}/watchlist`).catch(() => ({ subs: [] })),
-      fetchJSON(`${API_BASE}/watchlist/feed?sinceDays=7&limit=80`).catch(() => ({ items: [] })),
-    ]);
-    const subs = wlData.subs || [];
-    const items = feedData.items || [];
-
-    const subChip = (s) => {
-      const icon = s.kind === 'entity' ? '📌' : '📡';
-      const href = s.kind === 'entity' ? `/trajectory/${encodeURIComponent(s.value)}` : `/signals?type=${encodeURIComponent(s.value)}`;
-      return `<span class="wl-chip">${icon} <a href="${href}">${escapeHtml(s.label || s.value)}</a>` +
-        `<button class="wl-remove" data-kind="${escapeAttr(s.kind)}" data-value="${escapeAttr(s.value)}" title="${escapeAttr(t('watchlist.remove'))}">×</button>` +
-        `</span>`;
-    };
-
-    const itemRow = (it) =>
-      `<li class="story-member">` +
-      `<span class="story-member-src">${escapeHtml(it.source_label || '')}</span>` +
-      `<a href="${escapeAttr(it.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml((it.title || '').slice(0, 100))}</a>` +
-      `</li>`;
-
-    // Build body conditionally to avoid deeply-nested template literals (which
-    // are fragile to parse and read poorly).
-    let bodyHtml;
-    if (subs.length === 0) {
-      bodyHtml = `<div class="metrics-block"><p class="subtle">${t('watchlist.empty')}</p></div>`;
-    } else {
-      const feedHtml = items.length === 0
-        ? `<p class="subtle">${t('watchlist.no_feed')}</p>`
-        : `<ul class="story-members">${items.map(itemRow).join('')}</ul>`;
-      bodyHtml =
-        `<div class="metrics-block">` +
-        `<h3 class="metrics-block-title">${t('watchlist.subscriptions')} (${subs.length})</h3>` +
-        `<div class="wl-chips">${subs.map(subChip).join('')}</div>` +
-        `</div>` +
-        `<div class="metrics-block">` +
-        `<h3 class="metrics-block-title">${t('watchlist.feed')} (${items.length})</h3>` +
-        feedHtml +
-        `</div>`;
-    }
-
-    container.innerHTML =
-      `<section class="page-section">` +
-      `<div class="page-header">` +
-      `<h2 class="page-title">${t('watchlist.title')}</h2>` +
-      `<p class="page-description">${t('watchlist.subtitle')}</p>` +
-      (subs.length > 0 ? `<a href="/watchlist/feed.xml" class="action-link" target="_blank" rel="noopener" style="font-size:12px">📡 RSS feed for your watchlist</a>` : '') +
-      `</div>` +
-      bodyHtml +
-      `</section>`;
-
-    // Wire remove buttons.
-    container.querySelectorAll('.wl-remove').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const kind = btn.dataset.kind;
-        const value = btn.dataset.value;
-        try {
-          await fetch(`${API_BASE}/watchlist`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kind, value, add: false }),
-          });
-          renderWatchlist(_params); // refresh
-        } catch (err) {
-          console.warn('Watchlist remove failed:', err.message);
-        }
-      });
-    });
-  } catch (err) {
-    showError(container, err.message);
-  }
+// Subscription page uses the same dated evidence view as discovery.
+export async function renderWatchlist(params) {
+  const location = window.location.href;
+  const module = await import('./radar.js');
+  if (window.location.href === location) return module.renderRadarFollowing(params);
 }

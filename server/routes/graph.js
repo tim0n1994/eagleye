@@ -1,12 +1,12 @@
 /**
  * Eagleye — Graph routes
  *
- * Knowledge-graph reads: legacy graph, KG v2, full graph, 3D view and KG metrics.
+ * Knowledge-graph reads: legacy graph, KG v2, full graph and KG metrics.
  * Split out of api.js; handlers are unchanged.
  */
 
 const { getDB } = require('../db/connection');
-const { getFullGraph, getKG3DData } = require('../services/topic-graph');
+const { getFullGraph } = require('../services/topic-graph');
 const { sendJSON, sendError } = require('./_shared');
 
 function register(routes) {
@@ -178,13 +178,8 @@ function register(routes) {
     sendJSON(res, 200, { status: 'ok', ...graph });
   };
 
-  // --- 3D Knowledge Graph (tag aggregation) ---
-  routes['/api/kg3d'] = (req, res, _parsed) => {
-    const db = getDB();
-    if (!db) return sendError(res, 500, 'Database not available');
-    const data = getKG3DData(db);
-    sendJSON(res, 200, { status: 'ok', nodes: data.nodes, edges: data.edges, tagItems: data.tagItems });
-  };
+  // Retired presentation endpoint; preserve the knowledge data itself.
+  routes['/api/kg3d'] = (_req,res) => sendJSON(res,410,{ error:'3D view retired',replacement:'/topics' });
 }
 
 module.exports = register;

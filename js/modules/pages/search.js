@@ -7,7 +7,7 @@
 
 import { $, escapeAttr, escapeHtml } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
-import { API_BASE, fetchJSON, markItemSeen, pickZh, showError, showLoader } from './shared.js';
+import { API_BASE, fetchJSON, markItemSeen, pickZh } from './shared.js';
 
 
 // ─── Global Search ──────────────────────────────────────
@@ -93,97 +93,9 @@ export async function renderSearch(params) {
   if (query) doSearch();
 }
 
-// ─── Entity Discovery (/discover) ───────────────────────
-
-export async function renderDiscover(_params) {
-  const container = $('#pageContent');
-  const zh = getLanguage() === 'zh';
-  const urlParams = new URLSearchParams(window.location.search);
-  const selectedType = urlParams.get('type') || '';
-  const sort = urlParams.get('sort') || 'acceleration';
-
-  showLoader(container, zh ? '加载…' : 'LOADING...');
-
-  try {
-    const data = await fetchJSON(`${API_BASE}/entities/momentum?window=30d&sort=${encodeURIComponent(sort)}&limit=100`);
-    const entities = data.entities || [];
-
-    // Collect unique entity types for the filter.
-    const types = [...new Set(entities.map(e => e.type).filter(Boolean))].sort();
-    const filtered = selectedType ? entities.filter(e => e.type === selectedType) : entities;
-
-    const typeTabs = types.map(ty => {
-      const params = new URLSearchParams();
-      if (ty) params.set('type', ty);
-      if (sort !== 'acceleration') params.set('sort', sort);
-      const qs = params.toString();
-      return `<a href="/discover${qs ? '?' + qs : ''}" class="range-tab ${selectedType === ty ? 'active' : ''}">${escapeHtml(ty)}</a>`;
-    }).join('');
-    const allParams = new URLSearchParams();
-    if (sort !== 'acceleration') allParams.set('sort', sort);
-    const allQs = allParams.toString();
-
-    const sortTabs = ['acceleration', 'growth', 'burst', 'zscore'].map(s => {
-      const params = new URLSearchParams();
-      if (selectedType) params.set('type', selectedType);
-      if (s !== 'acceleration') params.set('sort', s);
-      const qs = params.toString();
-      return `<a href="/discover${qs ? '?' + qs : ''}" class="range-tab ${sort === s ? 'active' : ''}">${s}</a>`;
-    }).join(' ');
-
-    const entityCard = (e) => {
-      const a = e.acceleration || 0;
-      const g = e.growth_rate || 0;
-      const b = e.burst_score || 0;
-      const z = e.zscore || 0;
-      const m = e.mention_count || 0;
-      return `<div style="background:var(--bg-card);border:1px solid var(--rule);border-radius:var(--radius);padding:14px 16px;display:flex;flex-direction:column;gap:6px">` +
-        `<div style="display:flex;align-items:center;gap:8px">` +
-        `<a href="/trajectory/${escapeAttr(e.slug)}" style="color:var(--fg);text-decoration:none;font-weight:600;font-size:14px">${escapeHtml(e.name)}</a>` +
-        `<span style="font-size:10px;color:var(--fg-mute);text-transform:uppercase;letter-spacing:0.1em">${escapeHtml(e.type || '')}</span>` +
-        `</div>` +
-        `<div style="display:flex;gap:12px;font-size:11px;font-family:var(--font-mono);color:var(--fg-mute)">` +
-        `<span title="mentions">💬 ${m}</span>` +
-        (a > 0 ? `<span class="entity-accel">⚡${a.toFixed(1)}</span>` : '') +
-        (b > 0 ? `<span class="entity-burst">💥${b.toFixed(1)}</span>` : '') +
-        (g > 0 ? `<span class="entity-growth">📈${(g * 100).toFixed(0)}%</span>` : '') +
-        `<span title="z-score">↑${z.toFixed(1)}</span>` +
-        `</div></div>`;
-    };
-
-    container.innerHTML =
-      `<section class="page-section">` +
-      `<div class="page-header">` +
-      `<h2 class="page-title">${zh ? '🔍 实体发现' : '🔍 Entity Discovery'}</h2>` +
-      `<p class="page-description">${zh ? '按类型和动量指标浏览所有追踪实体' : 'Browse all tracked entities by type and momentum metric'}</p>` +
-      `</div>` +
-      `<div class="range-tabs" style="margin:8px 0"><span class="subtle" style="margin-right:8px;font-size:11px">${zh ? '类型' : 'Type'}:</span>` +
-      `<a href="/discover${allQs ? '?' + allQs : ''}" class="range-tab ${!selectedType ? 'active' : ''}">${zh ? '全部' : 'All'}</a>${typeTabs}</div>` +
-      `<div class="range-tabs" style="margin:4px 0 12px"><span class="subtle" style="margin-right:8px;font-size:11px">${zh ? '排序' : 'Sort'}:</span>${sortTabs}</div>` +
-      `${(() => {
-        // Entity type distribution bars.
-        const typeDist = {};
-        for (const e of entities) { if (e.type) typeDist[e.type] = (typeDist[e.type] || 0) + 1; }
-        const typeEntries = Object.entries(typeDist).sort((a, b) => b[1] - a[1]);
-        if (typeEntries.length < 2) return '';
-        const maxType = Math.max(1, ...typeEntries.map(([, c]) => c));
-        return '<div class="metrics-block" style="margin-bottom:16px"><h3 class="metrics-block-title">' + (zh ? '类型分布' : 'Type Distribution') + '</h3><ul class="metrics-bars">' +
-          typeEntries.map(([ty, count]) => {
-            const pct = Math.round((count / maxType) * 100);
-            const params = new URLSearchParams();
-            if (ty) params.set('type', ty);
-            if (sort !== 'acceleration') params.set('sort', sort);
-            const qs = params.toString();
-            return '<div class="metrics-bar-row"><span class="metrics-bar-label"><a href="/discover' + (qs ? '?' + qs : '') + '" style="color:inherit;text-decoration:none">' + escapeHtml(ty) + '</a></span>' +
-              '<div class="metrics-bar"><div class="metrics-bar-fill" style="width:' + pct + '%"></div></div>' +
-              '<span class="metrics-bar-pct">' + count + '</span></div>';
-          }).join('') + '</ul></div>';
-      })()}` +
-      `<p class="subtle" style="margin-bottom:12px">${filtered.length} ${zh ? '个实体' : 'entities'}${selectedType ? ' (' + escapeHtml(selectedType) + ')' : ''}</p>` +
-      `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">` +
-      filtered.slice(0, 60).map(entityCard).join('') +
-      `</div></section>`;
-  } catch (err) {
-    showError(container, err.message);
-  }
+// Compatibility export; the radar module is loaded only when visited.
+export async function renderDiscover(params) {
+  const location = window.location.href;
+  const module = await import('./radar.js');
+  if (window.location.href === location) return module.renderRadarDiscover(params);
 }

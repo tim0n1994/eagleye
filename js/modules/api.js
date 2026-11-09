@@ -64,11 +64,6 @@ export const API = {
     return await fetchJSON(`${API_BASE}/graph`);
   },
 
-  fetchGraph3D: async () => {
-    const data = await fetchJSON(`${API_BASE}/kg3d`);
-    return { nodes: data.nodes || [], edges: data.edges || [], tagItems: data.tagItems || {} };
-  },
-
   // ─── Auth ──────────────────────────────────────────────────────────────
   me: async () => {
     const res = await fetchJSON(`${API_BASE}/auth/me`);

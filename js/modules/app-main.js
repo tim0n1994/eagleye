@@ -15,7 +15,6 @@ import {
   renderYearArchive, renderYearDetail, renderCompare, renderSearch, renderHelp, renderCompareEntities, renderDiscover,
   renderLogin, renderRegister,
 } from './pages.js';
-import { renderKG3D } from './kg3d.js';
 import { renderMarkdown } from './markdown.js';
 
   const NAV_LINKS = [
@@ -28,15 +27,15 @@ import { renderMarkdown } from './markdown.js';
   { path: '/digest',       i18n: 'nav.digest',      icon: '📋' },
   { path: '/sources',      i18n: 'nav.sources',     icon: '🔗' },
   { path: '/discover',     i18n: 'nav.discover',    icon: '🔍' },
-  { path: '/kg3d',        i18n: 'nav.kg3d',        icon: '🧠' },
-  { path: '/intelligence', i18n: 'nav.intelligence',icon: '📊' },
-  { path: '/industry-metrics', i18n: 'nav.industry',icon: '📈' },
+  { path: '/topics',       i18n: 'nav.topics',      icon: '▦' },
+  { path: '/trends',       i18n: 'nav.trends',      icon: '↗' },
+  { path: '/watchlist',    i18n: 'nav.watchlist',   icon: '☆' },
 ];
 
 function renderNav() {
   const nav = $('#mainNav');
   if (!nav) return;
-  const currentPath = window.location.pathname;
+  const currentPath = ({ '/kg3d': '/topics', '/intelligence': '/trends', '/industry-metrics': '/system-status' })[window.location.pathname] || window.location.pathname;
   const isActive = (link) => currentPath === link.path || (link.path !== '/' && currentPath.startsWith(link.path));
 
   nav.innerHTML = NAV_LINKS.map(link => `
@@ -95,6 +94,7 @@ function renderFooter() {
       </div>
       <div class="footer-group">
         <h4>${t('footer.company')}</h4>
+        <a href="/system-status">${t('nav.system_status')}</a>
         <a href="/help">${t('footer.about')}</a>
         <a href="/help">${t('footer.faq')}</a>
         <a href="/help">${t('footer.privacy')}</a>
@@ -220,7 +220,9 @@ export async function initApp() {
   router.register('/papers', renderPapers);
   router.register('/physical-ai', renderPhysicalAI);
   router.register('/ai-education', renderEducation);
+  router.register('/trends', renderIntelligence);
   router.register('/intelligence', renderIntelligence);
+  router.register('/system-status', renderIndustryMetrics);
   router.register('/industry-metrics', renderIndustryMetrics);
   router.register('/settings', renderSettings);
   router.register('/saved', renderSaved);
@@ -235,7 +237,7 @@ export async function initApp() {
   router.register('/help', renderHelp);
   router.register('/compare-entities', renderCompareEntities);
   router.register('/discover', renderDiscover);
-  router.register('/kg3d', renderKG3D);
+  router.register('/kg3d', renderTopics);
   router.register('/tags', renderTags);
   router.register(/^\/tags\/(.+)$/, renderTagDetail);
   // Auth routes
@@ -327,8 +329,10 @@ export async function initApp() {
     '/papers': 'nav.papers',
     '/physical-ai': 'nav.physical_ai',
     '/ai-education': 'nav.ai_education',
-    '/intelligence': 'nav.intelligence',
-    '/industry-metrics': 'nav.industry',
+    '/trends': 'nav.trends',
+    '/system-status': 'nav.system_status',
+    '/intelligence': 'nav.trends',
+    '/industry-metrics': 'nav.system_status',
     '/tags': 'nav.tags',
     '/trajectory': 'nav.tags',
     '/settings': 'nav.settings',
@@ -342,7 +346,7 @@ export async function initApp() {
     '/search': 'nav.search',
     '/help': 'footer.about',
     '/discover': 'nav.discover',
-    '/kg3d': 'nav.kg3d',
+    '/kg3d': 'nav.topics',
     '/login': 'auth.signin',
     '/register': 'auth.register',
   };
@@ -433,7 +437,7 @@ export async function initApp() {
   const navMap = {
     f: '/for-you', n: '/', p: '/papers', s: '/signals', d: '/digest',
     o: '/sources', y: '/year', c: '/compare',
-    w: '/watchlist', l: '/lens', i: '/intelligence', h: '/help', e: '/compare-entities',
+    w: '/watchlist', l: '/lens', i: '/trends', h: '/help', e: '/compare-entities',
   };
   document.addEventListener('keydown', (e) => {
     // Ctrl/Cmd+K: open command palette (works even in inputs).
@@ -524,13 +528,12 @@ export async function initApp() {
       { label: 'Year Archive', icon: '📅', url: '/year', kw: 'year archive history' },
       { label: 'Compare', icon: '⚖️', url: '/compare', kw: 'compare competitors' },
       { label: 'Entity Compare', icon: '📊', url: '/compare-entities', kw: 'entity compare trajectory' },
-      { label: 'Intelligence', icon: '🧠', url: '/intelligence', kw: 'intelligence entities momentum' },
-      { label: 'Industry Metrics', icon: '📈', url: '/industry-metrics', kw: 'industry metrics dashboard' },
-      { label: 'KG 3D', icon: '🌐', url: '/kg3d', kw: 'kg3d knowledge graph 3d' },
+      { label: 'Trends / 趋势', icon: '↗', url: '/trends', kw: 'intelligence entities momentum 趋势' },
+      { label: 'System status / 系统状态', icon: '◉', url: '/system-status', kw: 'system metrics status 系统状态' },
+      { label: 'Topics / 专题', icon: '▦', url: '/topics', kw: 'topics knowledge 专题' },
       { label: 'Help', icon: '❓', url: '/help', kw: 'help faq shortcuts' },
       { label: 'Settings', icon: '⚙️', url: '/settings', kw: 'settings scheduler llm' },
       { label: 'Stories', icon: '📚', url: '/stories', kw: 'stories clusters dedup' },
-      { label: 'Topics', icon: '🏷️', url: '/topics', kw: 'topics graph' },
       { label: 'Tags', icon: '#️⃣', url: '/tags', kw: 'tags hierarchy' },
     ];
 

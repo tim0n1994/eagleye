@@ -123,7 +123,7 @@ export async function renderTagDetail(params) {
         <div class="page-header">
           <h2 class="page-title">🏷️ ${escapeHtml(tagName)}</h2>
           <a href="/tags" class="nav-link">← ${escapeHtml(t('nav.tags') || 'Tags')}</a>
-          <a href="/kg3d" class="nav-link" style="margin-left:12px;">🧠 3D ${getLanguage() === 'zh' ? '知识图谱' : 'KG'}</a>
+          <a href="/topics" class="nav-link" style="margin-left:12px;">${getLanguage() === 'zh' ? '专题' : 'Topics'}</a>
         </div>
         <div class="topic-full-detail">
           <div class="topic-info">
