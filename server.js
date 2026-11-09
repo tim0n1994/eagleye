@@ -24,10 +24,12 @@ const { getDB } = require('./server/db/connection');
 const { runMigrations } = require('./server/db/migrate');
 const { sendJSON, sendError, registerRoutes } = require('./server/routes/api');
 const { DEFAULT_APP_PORT, parsePort } = require('./server/config');
+const { frontendAssetVersion, versionAssetReferences, publicAssetPath } = require('./server/services/frontend-assets');
 
 // --- Configuration ---
 const PORT = parsePort(process.argv[2] || process.env.PORT, DEFAULT_APP_PORT);
 const ROOT = __dirname;
+const FRONTEND_ASSET_VERSION = frontendAssetVersion(ROOT);
 
 // --- MIME Types ---
 const MIME = {
@@ -85,13 +87,10 @@ function compressAsset(buf, encoding, cb) {
 }
 
 /**
- * Cache policy by path. Module files are imported by bare specifier
- * (`import './pages.js'`) with no version query, so they have no cache-busting
- * mechanism and must be revalidated — `no-cache` means "store it, but check
- * before reuse", which still saves the body via a 304. Vendored libraries and
- * icons carry their version in the filename and change rarely, so they get a
- * bounded max-age instead of `immutable`: with no build step to rename them, a
- * year-long pin would make a bad deploy stick.
+ * Cache policy by path. HTML points at a content-versioned asset tree, so
+ * relative module imports keep the version across the whole graph. Retain
+ * no-cache for unversioned and older clients; vendored libraries and icons
+ * change rarely and get a bounded max-age instead of a year-long pin.
  */
 function cacheControlFor(safePath) {
   if (safePath.startsWith('/js/lib/') || safePath.startsWith('/icons/')) {
@@ -101,7 +100,7 @@ function cacheControlFor(safePath) {
 }
 
 function serveStatic(res, reqPath, req) {
-  const safePath = path.normalize(reqPath).replace(/^(\.\.(\/|\\|$))+/g, '');
+  const safePath = publicAssetPath(path.normalize(reqPath).replace(/^(\.\.(\/|\\|$))+/g, ''));
   const filePath = path.join(ROOT, safePath);
 
   if (!filePath.startsWith(ROOT)) {
@@ -120,7 +119,10 @@ function serveStatic(res, reqPath, req) {
     }
 
     const ext = path.extname(filePath).toLowerCase();
-    const etag = `"${st.size.toString(16)}-${st.mtimeMs.toString(16)}"`;
+    // The HTML bytes also depend on the frontend version, even when the
+    // underlying index.html file itself did not change between releases.
+    const versionSuffix = safePath === '/index.html' ? `-${FRONTEND_ASSET_VERSION}` : '';
+    const etag = `"${st.size.toString(16)}-${st.mtimeMs.toString(16)}${versionSuffix}"`;
     const base = {
       'Content-Type': mimeType(ext),
       'Cache-Control': cacheControlFor(safePath),
@@ -146,6 +148,10 @@ function serveStatic(res, reqPath, req) {
 
     fs.readFile(filePath, (err, data) => {
       if (err) return sendError(res, err.code === 'ENOENT' ? 404 : 500, err.code === 'ENOENT' ? 'Not Found' : 'Server Error');
+
+      if (safePath === '/index.html') {
+        data = Buffer.from(versionAssetReferences(data.toString('utf8'), FRONTEND_ASSET_VERSION));
+      }
 
       const store = (body) => {
         if (_assetCache.size >= MAX_CACHED_ASSETS) _assetCache.clear();
