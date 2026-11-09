@@ -3,7 +3,7 @@ const path = require('path');
 const { readXFollowingConfig, readBlocklist, dedupeHandles } = require('./x-following-config');
 const referenceSlugs = ['hacker-news', 'github-trending', 'product-hunt', 'hugging-face', 'techmeme', 'solidot', 'app-store-rank'];
 function groupFor(slug) {
-  return slug === 'x-following' ? 'x' : /^(physical-ai-|education-)/.test(slug) ? 'specialist' : 'public';
+  return slug === 'x-following' ? 'x' : /^(physical-ai-|education-|neuroscience-)/.test(slug) ? 'specialist' : 'public';
 }
 function xNetworkSummary() {
   const config = readXFollowingConfig();

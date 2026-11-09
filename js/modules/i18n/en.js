@@ -25,6 +25,7 @@ export const en = {
   'nav.skills': 'Skills',
   'nav.tags': '🏷️ Tags',
   'nav.physical_ai': 'Physical AI',
+  'nav.neuroscience': 'Neuroscience',
   'nav.ai_education': 'AI Education',
   'nav.intelligence': 'Intelligence',
   'nav.industry': 'Industry Metrics',

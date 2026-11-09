@@ -47,5 +47,59 @@ module.exports = {
     "feed": "https://discuss.openedx.org/latest.rss",
     "kind": "community",
     "context": "Education community · Open edX"
+  },
+  "neuroscience-nature": {
+    "label": "Nature Neuroscience",
+    "description": "Nature Neuroscience 研究、评论、更正与期刊动态",
+    "homepage": "https://www.nature.com/neuro/",
+    "feed": "https://www.nature.com/neuro.rss",
+    "kind": "journal",
+    "context": "Neuroscience · Nature Neuroscience",
+    "category": "research"
+  },
+  "neuroscience-elife": {
+    "label": "eLife · Neuroscience",
+    "description": "eLife 神经科学研究与评审内容；具体评审状态以原文为准",
+    "homepage": "https://elifesciences.org/subjects/neuroscience",
+    "feed": "https://elifesciences.org/rss/subject/neuroscience.xml",
+    "kind": "journal",
+    "context": "Neuroscience · eLife",
+    "category": "research"
+  },
+  "neuroscience-mne": {
+    "label": "MNE-Python",
+    "description": "EEG、MEG 等神经信号分析工具的官方版本更新",
+    "homepage": "https://github.com/mne-tools/mne-python",
+    "feed": "https://github.com/mne-tools/mne-python/releases.atom",
+    "kind": "release",
+    "context": "Neuroscience · MNE-Python",
+    "category": "tools"
+  },
+  "neuroscience-pynwb": {
+    "label": "PyNWB",
+    "description": "Neurodata Without Borders 数据标准与 Python 工具的官方版本更新",
+    "homepage": "https://github.com/NeurodataWithoutBorders/pynwb",
+    "feed": "https://github.com/NeurodataWithoutBorders/pynwb/releases.atom",
+    "kind": "release",
+    "context": "Neuroscience · PyNWB",
+    "category": "tools"
+  },
+  "neuroscience-brainflow": {
+    "label": "BrainFlow",
+    "description": "脑机接口与生理信号采集处理工具的官方版本更新",
+    "homepage": "https://github.com/brainflow-dev/brainflow",
+    "feed": "https://github.com/brainflow-dev/brainflow/releases.atom",
+    "kind": "release",
+    "context": "Neuroscience · BrainFlow",
+    "category": "bci"
+  },
+  "neuroscience-neurostars": {
+    "label": "Neurostars",
+    "description": "神经科学数据分析、方法与工具社区最新讨论",
+    "homepage": "https://neurostars.org",
+    "feed": "https://neurostars.org/latest.rss",
+    "kind": "community",
+    "context": "Neuroscience community · Neurostars",
+    "category": "community"
   }
 };

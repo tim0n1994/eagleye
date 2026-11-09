@@ -8,6 +8,7 @@ const { BaseConnector } = require('./base');
 const { fetchURL } = require('../services/utils');
 
 const SOURCE_CONFIG = {
+  'neuroscience-arxiv': { query: 'cat:q-bio.NC', maxResults: 40 },
   'physical-ai-arxiv': {
     query: 'all:"physical AI" OR all:"embodied AI" OR all:humanoid OR all:VLA OR cat:cs.RO',
     maxResults: 50,

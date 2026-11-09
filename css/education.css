@@ -56,3 +56,10 @@
   .education-overview-card { padding: 14px 12px; }
   .education-item h3 { font-size: 15px; }
 }
+
+/* Neuroscience reuses the topic briefing layout. */
+.neuroscience-source-filter { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+.neuroscience-source-filter select { max-width: 100%; min-height: 36px; padding: 6px 10px; color: inherit; background: var(--bg-card, #fff); border: 1px solid var(--border-color, #ddd); border-radius: 6px; }
+.neuroscience-sources { margin-top: 32px; border-top: 1px solid var(--border-color, #ddd); padding-top: 20px; }
+.neuroscience-sources summary { cursor: pointer; font-weight: 600; margin-bottom: 16px; }
+.neuroscience-sources > p { font-size: 13px; margin-top: 16px; }

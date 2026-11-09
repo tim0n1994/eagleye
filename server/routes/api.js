@@ -40,6 +40,7 @@ function registerRoutes(routes) {
   registerDigestRoutes(routes);
   registerDiscoveryRoutes(routes);
   registerEducationRoutes(routes);
+  require('./neuroscience')(routes);
   registerRadarRoutes(routes);
   registerGraphRoutes(routes);
   registerItemsRoutes(routes);

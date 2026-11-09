@@ -22,6 +22,7 @@ import { renderMarkdown } from './markdown.js';
   { path: '/',             i18n: 'nav.news',        icon: '📰' },
   { path: '/physical-ai',  i18n: 'nav.physical_ai', icon: '🤖' },
   { path: '/ai-education', i18n: 'nav.ai_education', icon: '🎓' },
+  { path: '/neuroscience', i18n: 'nav.neuroscience', icon: '🧠' },
   { path: '/papers',       i18n: 'nav.papers',      icon: '📄' },
   { path: '/signals',      i18n: 'nav.signals',     icon: '📡' },
   { path: '/digest',       i18n: 'nav.digest',      icon: '📋' },
@@ -220,6 +221,10 @@ export async function initApp() {
   router.register('/papers', renderPapers);
   router.register('/physical-ai', renderPhysicalAI);
   router.register('/ai-education', renderEducation);
+  router.register('/neuroscience', async () => {
+    const { renderNeuroscience } = await import('./pages/neuroscience.js');
+    return renderNeuroscience();
+  });
   router.register('/trends', renderIntelligence);
   router.register('/intelligence', renderIntelligence);
   router.register('/system-status', renderIndustryMetrics);
@@ -329,6 +334,7 @@ export async function initApp() {
     '/papers': 'nav.papers',
     '/physical-ai': 'nav.physical_ai',
     '/ai-education': 'nav.ai_education',
+    '/neuroscience': 'nav.neuroscience',
     '/trends': 'nav.trends',
     '/system-status': 'nav.system_status',
     '/intelligence': 'nav.trends',

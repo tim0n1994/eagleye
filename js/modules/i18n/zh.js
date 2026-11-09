@@ -24,6 +24,7 @@ export const zh = {
   'nav.skills': '技能',
   'nav.tags': '🏷️ 标签',
   'nav.physical_ai': '具身 AI',
+  'nav.neuroscience': '脑科学',
   'nav.ai_education': 'AI 教育',
   'nav.intelligence': '情报分析',
   'nav.industry': '行业指标',

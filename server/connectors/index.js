@@ -51,6 +51,7 @@ const connectorRegistry = {
   'app-store-trend': new AppStoreTrendConnector(),
   'physical-ai-arxiv': new ArxivConnector('physical-ai-arxiv'),
   'education-arxiv': new ArxivConnector('education-arxiv'),
+  'neuroscience-arxiv': new ArxivConnector('neuroscience-arxiv'),
   'physical-ai-sec-8k': new SEC8KConnector(),
   'physical-ai-open-github': new PhysicalAIOpenGitHubConnector(),
   'physical-ai-open-huggingface': new PhysicalAIOpenHuggingFaceConnector(),
