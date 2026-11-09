@@ -52,3 +52,4 @@ jobs:
             --title "Eagleye ${RELEASE_TAG}" \
             --generate-notes \
             --verify-tag
+
