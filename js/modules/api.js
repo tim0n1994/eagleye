@@ -77,15 +77,15 @@ export const API = {
       body: JSON.stringify({ email, password }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (!res.ok) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { pendingVerification:data.pending_verification === true, email:data.email, retryAfter:Number(data.retry_after || res.headers.get('Retry-After')) || 0 });
     return data;
   },
 
-  verify: async (email, code) => {
+  verify: async (email, code, password) => {
     const res = await fetch(`${API_BASE}/auth/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, code }),
+      body: JSON.stringify({ email, code, password }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);

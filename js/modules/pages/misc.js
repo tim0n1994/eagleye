@@ -120,7 +120,8 @@ export async function renderRegister(_params) {
           <p class="auth-info">${zh ? '请检查邮箱并输入收到的 6 位验证码。未收到时可重发。' : 'Check your inbox and enter the 6-digit verification code. You can resend it if needed.'}</p>
           <form id="verifyForm" class="auth-form">
             <input type="text" id="verifyCode" class="auth-input" placeholder="${zh ? '6 位验证码' : '6-digit code'}" maxlength="6" pattern="[0-9]{6}" required />
-            <button type="submit" class="auth-btn">${zh ? '验证' : 'Verify'}</button>
+            <input type="password" id="verifyPassword" class="auth-input" placeholder="${zh ? '设置账户密码（至少6位）' : 'Choose account password (min 6 chars)'}" minlength="6" maxlength="72" autocomplete="new-password" required />
+            <button type="submit" class="auth-btn">${zh ? '验证并注册' : 'Verify & create account'}</button>
           </form>
         </div>
         <p class="auth-switch">${zh ? '已有账户？' : 'Already have an account?'} <a href="/login" class="auth-link">${zh ? '登录' : 'Sign In'}</a></p>
@@ -136,15 +137,32 @@ export async function renderRegister(_params) {
   const emailInput = $('#regEmail');
   const deliveryStatus = $('#regDeliveryStatus');
   let pending = false;
+  let cooldownUntil = 0;
+  let cooldownTimer;
+  const cooldown = seconds => {
+    if (!(seconds > 0)) return;
+    cooldownUntil = Date.now() + seconds * 1000;
+    clearInterval(cooldownTimer);
+    const update = () => {
+      if (!registerForm.isConnected) { clearInterval(cooldownTimer); return; }
+      const remaining = Math.max(0,Math.ceil((cooldownUntil-Date.now())/1000));
+      resendButton.disabled = pending || remaining > 0;
+      resendButton.textContent = remaining ? (zh ? `${remaining} 秒后可重发` : `Resend in ${remaining}s`) : (zh ? '重发验证码' : 'Resend verification code');
+      if (!remaining) clearInterval(cooldownTimer);
+    };
+    cooldownTimer = setInterval(update,1000);
+    update();
+  };
   const setPending = value => {
     pending = value;
-    resendButton.disabled = value;
+    resendButton.disabled = value || Date.now() < cooldownUntil;
     registerButton.disabled = value;
   };
   const showVerification = email => {
     if (!registerForm.isConnected) return;
     registerForm.style.display = 'none';
     container.querySelector('#verifySection').style.display = 'block';
+    container.querySelector('#verifyPassword').value = $('#regPassword').value || '';
     container.querySelector('#verifyCode').focus();
     window.__regEmail = email;
   };
@@ -154,23 +172,26 @@ export async function renderRegister(_params) {
     if (pending) return;
     errEl.textContent = '';
     deliveryStatus.textContent = '';
-    const email = emailInput.value.trim();
+    const email = emailInput.value.trim().toLowerCase();
     const password = $('#regPassword').value;
     setPending(true);
     try {
       const res = await API.register(email, password);
       if (res.error) throw new Error(res.error);
-      showVerification(email);
+      showVerification(res.email || email);
+      cooldown(res.retry_after || 60);
     } catch (err) {
+      if (err.pendingVerification) showVerification(err.email || email);
+      if (err.retryAfter) cooldown(err.retryAfter);
       errEl.textContent = err.message;
     } finally { setPending(false); }
   });
 
   resendButton.addEventListener('click', async () => {
-    if (pending) return;
+    if (pending || Date.now() < cooldownUntil) return;
     errEl.textContent = '';
     deliveryStatus.textContent = '';
-    const email = emailInput.value.trim() || window.__regEmail || '';
+    const email = (emailInput.value.trim() || window.__regEmail || '').toLowerCase();
     if (!email || (emailInput.value.trim() && !emailInput.checkValidity())) {
       errEl.textContent = zh ? '请输入有效邮箱。' : 'Enter a valid email address.';
       emailInput.focus();
@@ -184,6 +205,7 @@ export async function renderRegister(_params) {
         body: JSON.stringify({ email }),
       });
       const data = await response.json().catch(() => ({}));
+      cooldown(Number(data.retry_after || response.headers.get('Retry-After')) || (response.ok ? 60 : 0));
       if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
       showVerification(email);
       deliveryStatus.textContent = zh ? '若该邮箱有待验证的注册，验证码已重新发送。请检查收件箱。' : 'If registration is pending for this email, a verification code has been resent. Check your inbox.';
@@ -195,12 +217,15 @@ export async function renderRegister(_params) {
   $('#verifyForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     errEl.textContent = '';
+    const button = e.currentTarget.querySelector('[type="submit"]');
+    if (button.disabled) return;
+    button.disabled = true;
     const code = $('#verifyCode').value.trim();
     try {
-      await API.verify(window.__regEmail, code);
+      await API.verify(window.__regEmail, code, $('#verifyPassword').value);
       window.location.href = '/';
     } catch (err) {
       errEl.textContent = err.message;
-    }
+    } finally { button.disabled = false; }
   });
 }

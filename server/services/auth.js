@@ -12,7 +12,6 @@ const { getDB } = require('../db/connection');
 
 const BCRYPT_ROUNDS = 10;
 const SESSION_MAX_AGE_DAYS = 7;
-const VERIFICATION_CODE_EXPIRY_MINUTES = 10;
 
 function parseSqliteUTC(s) {
   if (typeof s !== 'string' || !s.trim()) return new Date(NaN);
@@ -65,8 +64,8 @@ function createSession(res, userId) {
 
   // HttpOnly: JS can't read it (XSS protection)
   // SameSite=Strict: cookie not sent on cross-site requests (CSRF protection)
-  // Secure is omitted for local http dev; production behind tunnel adds it
-  const cookie = `session=${token}; HttpOnly; Path=/; Max-Age=${SESSION_MAX_AGE_DAYS * 86400}; SameSite=Strict`;
+  // Production explicitly enables Secure; local HTTP development may omit it.
+  const cookie = `session=${token}; HttpOnly; Path=/; Max-Age=${SESSION_MAX_AGE_DAYS * 86400}; SameSite=Strict${process.env.AUTH_COOKIE_SECURE === '1' ? '; Secure' : ''}`;
   res.setHeader('Set-Cookie', cookie);
   return token;
 }
@@ -79,7 +78,7 @@ function clearSession(res, token) {
   if (token) {
     db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
   }
-  res.setHeader('Set-Cookie', 'session=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict');
+  res.setHeader('Set-Cookie', `session=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict${process.env.AUTH_COOKIE_SECURE === '1' ? '; Secure' : ''}`);
 }
 
 /**
@@ -133,9 +132,12 @@ function generateVerificationCode() {
  * Store a verification code for an email and return it.
  * Old unused codes for this email/purpose are marked used.
  */
-function storeVerificationCode(email, purpose = 'register') {
+function normalizeEmail(value) { return typeof value === 'string' ? value.trim().toLowerCase() : ''; }
+
+function storeVerificationCode(email, purpose = 'register', acceptedCode) {
+  email = normalizeEmail(email);
   const db = getDB();
-  const code = generateVerificationCode();
+  const code = acceptedCode || generateVerificationCode();
   const id = crypto.randomUUID();
 
   // Invalidate previous unused codes for this email+purpose
@@ -154,6 +156,8 @@ function storeVerificationCode(email, purpose = 'register') {
  * Marks the code as used on success.
  */
 function verifyCode(email, code, purpose = 'register') {
+  email = normalizeEmail(email);
+  if (!/^\d{6}$/.test(code)) return false;
   const db = getDB();
   const row = db.prepare(`
     SELECT id, expires_at, used FROM verification_codes
@@ -164,8 +168,7 @@ function verifyCode(email, code, purpose = 'register') {
   if (!row) return false;
   if (hasExpired(row.expires_at)) return false;
 
-  db.prepare('UPDATE verification_codes SET used = 1 WHERE id = ?').run(row.id);
-  return true;
+  return db.prepare('UPDATE verification_codes SET used = 1 WHERE id = ? AND used = 0').run(row.id).changes === 1;
 }
 
 // ─── Email (Resend) ──────────────────────────────────────────────────────
@@ -187,35 +190,71 @@ function _getResend() {
 
 /**
  * Send a verification code email via Resend.
- * Falls back to console.log if Resend is not configured (dev mode).
+ * Requires configured delivery; missing transport must never report success.
  */
-async function sendVerificationEmail(email, code) {
+async function sendVerificationEmail(email, code, requestId = crypto.randomUUID()) {
   const resend = _getResend();
-  const from = process.env.RESEND_FROM || 'Eagleye <noreply@resend.dev>';
+  const from = process.env.RESEND_FROM?.trim();
 
-  if (!resend) {
-    console.warn(`  📧 [DEV] Verification code for ${email}: ${code} (Resend not configured)`);
-    return { id: 'dev-mode' };
-  }
+  if (!resend || !from) throw new Error('Email delivery is not configured');
 
   const { data, error } = await resend.emails.send({
     from,
     to: email,
-    subject: `Eagleye 验证码 / Verification Code: ${code}`,
+    subject: 'Eagleye 邮箱验证 / Verify your email',
+    text: `Eagleye 注册验证码：${code}。10 分钟内有效。如非本人操作，请忽略此邮件。`,
     html: `
-      <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
-        <h2 style="color: #e0e0e8;">🦅 Eagleye</h2>
-        <p style="color: #a0a0b0; font-size: 14px;">您的注册验证码 / Your verification code:</p>
+      <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #ffffff; color: #253047;">
+        <h2 style="color: #253047;">🦅 Eagleye</h2>
+        <p style="color: #455168; font-size: 14px;">您的注册验证码 / Your verification code:</p>
         <div style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #64b5f6; text-align: center; padding: 24px 0; border: 1px solid #333; border-radius: 8px; margin: 16px 0;">
           ${code}
         </div>
         <p style="color: #707080; font-size: 12px;">验证码 10 分钟内有效。如非本人操作请忽略此邮件。<br>The code expires in 10 minutes.</p>
       </div>
     `,
-  });
+  }, { idempotencyKey: `eagleye-verification/${requestId}`, signal: AbortSignal.timeout(20000) });
 
-  if (error) throw new Error(`Resend error: ${error.message}`);
+  if (error || !data?.id) {
+    const failure = new Error('Verification email provider rejected the request');
+    failure.code = error?.name || 'provider_error';
+    throw failure;
+  }
   return data;
+}
+
+// Reserve a durable per-email slot before network I/O. Keep the previous code
+// valid if sending fails; replace it only after Resend accepts the new email.
+async function requestVerificationEmail(rawEmail) {
+  const email = normalizeEmail(rawEmail);
+  const db = getDB();
+  const requestId = crypto.randomUUID();
+  db.transaction(() => {
+    const last = db.prepare('SELECT attempted_at FROM verification_delivery WHERE email=?').get(email);
+    const retryAfter = last ? Math.ceil((last.attempted_at + 60000 - Date.now()) / 1000) : 0;
+    if (retryAfter > 0) throw Object.assign(new Error('Please wait before requesting another code'), {status:429,retryAfter});
+    db.prepare(`INSERT INTO verification_delivery(email,request_id,attempted_at,status)
+      VALUES(?,?,?,'sending') ON CONFLICT(email) DO UPDATE SET request_id=excluded.request_id,
+      attempted_at=excluded.attempted_at,status='sending',provider_id=NULL,error_class=NULL`)
+      .run(email,requestId,Date.now());
+  }).immediate();
+  const code = generateVerificationCode();
+  try {
+    const sent = await sendVerificationEmail(email,code,requestId);
+    db.transaction(() => {
+      const current = db.prepare('SELECT request_id FROM verification_delivery WHERE email=?').get(email);
+      if (current?.request_id !== requestId) throw new Error('Verification request superseded');
+      storeVerificationCode(email,'register',code);
+      db.prepare("UPDATE verification_delivery SET status='accepted',provider_id=? WHERE email=? AND request_id=?")
+        .run(sent.id,email,requestId);
+    }).immediate();
+    return {retry_after:60};
+  } catch (error) {
+    db.prepare("UPDATE verification_delivery SET status='failed',error_class=? WHERE email=? AND request_id=?")
+      .run(error.code || 'delivery_error',email,requestId);
+    console.warn('[verification-email] delivery failed', error.code || 'delivery_error');
+    throw Object.assign(new Error('Verification email could not be sent. Please resend after 60 seconds.'), {status:503,retryAfter:60});
+  }
 }
 
 // ─── User Helpers ────────────────────────────────────────────────────────
@@ -315,6 +354,8 @@ function revokeApiKey(key) {
 }
 
 module.exports = {
+  normalizeEmail,
+  requestVerificationEmail,
   hashPassword,
   verifyPassword,
   createSession,

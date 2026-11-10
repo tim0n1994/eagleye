@@ -15,30 +15,30 @@ function register(routes) {
   // ─── Auth Routes ──────────────────────────────────────────────────────
 
   // POST /api/auth/register — create unverified user + send verification code
-  routes['/api/auth/register'] = async (req, res, parsed) => {
+  routes['/api/auth/register'] = async (req, res, _parsed) => {
     if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
     if (authThrottled(req, res)) return;
-    if (!process.env.RESEND_API_KEY) return sendError(res, 503, 'Email registration is unavailable. Contact the administrator for access.');
+    if (!process.env.RESEND_API_KEY?.trim() || !process.env.RESEND_FROM?.trim()) return sendError(res, 503, 'Email registration is unavailable. Contact the administrator for access.');
     try {
-      const { email, password } = await readBody(req);
-      if (!email || !password) return sendError(res, 400, 'Email and password required');
+      const body = await readBody(req);
+      const email = auth.normalizeEmail(body?.email);
+      const password = body?.password;
+      if (!email || typeof password !== 'string' || !password) return sendError(res, 400, 'Email and password required');
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return sendError(res, 400, 'Invalid email');
-      if (password.length < 6) return sendError(res, 400, 'Password must be at least 6 characters');
+      if (password.length < 6 || Buffer.byteLength(password,'utf8') > 72) return sendError(res, 400, 'Password must be at least 6 characters and at most 72 UTF-8 bytes');
 
       const existing = auth.getUserByEmail(email);
-      if (existing) return sendError(res, 409, 'Email already registered');
+      if (existing) return sendJSON(res, 409, {error: existing.email_verified ? 'Email already registered. Please sign in.' : 'Registration is pending. Please resend the verification code.', pending_verification: !existing.email_verified && existing.status === 'active', email});
 
       const hash = await auth.hashPassword(password);
       const user = auth.createUser(email, hash);
-      const code = auth.storeVerificationCode(email, 'register');
-
       try {
-        await auth.sendVerificationEmail(email, code);
-      } catch (e) {
-        return sendError(res, 503, 'Verification email could not be sent. Use resend to try again later.');
+        const delivery = await auth.requestVerificationEmail(email);
+        sendJSON(res, 200, { status:'ok', message:'Verification email accepted for sending', email, isFirstUser:user.isFirstUser, ...delivery });
+      } catch (error) {
+        res.setHeader('Retry-After',String(error.retryAfter || 60));
+        return sendJSON(res,error.status || 503,{error:error.message,pending_verification:true,email,retry_after:error.retryAfter || 60});
       }
-
-      sendJSON(res, 200, { status: 'ok', message: 'Verification code sent', email, isFirstUser: user.isFirstUser });
     } catch (err) {
       sendError(res, 500, err.message);
     }
@@ -47,57 +47,65 @@ function register(routes) {
   routes['/api/auth/resend'] = async (req, res) => {
     if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
     if (authThrottled(req, res)) return;
-    if (!process.env.RESEND_API_KEY) return sendError(res, 503, 'Email registration is unavailable. Contact the administrator for access.');
+    if (!process.env.RESEND_API_KEY?.trim() || !process.env.RESEND_FROM?.trim()) return sendError(res, 503, 'Email registration is unavailable. Contact the administrator for access.');
     try {
-      const { email } = await readBody(req);
+      const body = await readBody(req);
+      const email = auth.normalizeEmail(body?.email);
       if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return sendError(res, 400, 'Valid email required');
       const user = auth.getUserByEmail(email);
       if (user && !user.email_verified && user.status === 'active') {
-        const code = auth.storeVerificationCode(email, 'register');
-        await auth.sendVerificationEmail(email, code);
+        await auth.requestVerificationEmail(email);
       }
-      return sendJSON(res, 200, { status: 'ok', message: 'If registration is pending, a verification email has been sent.' });
-    } catch {
-      return sendError(res, 503, 'Verification email could not be sent. Try again later.');
+      return sendJSON(res, 200, { status: 'ok', message: 'If registration is pending, a verification email has been accepted for sending.', retry_after:60 });
+    } catch (error) {
+      res.setHeader('Retry-After',String(error.retryAfter || 60));
+      return sendJSON(res,error.status || 503,{error:error.message,retry_after:error.retryAfter || 60});
     }
   };
 
   // POST /api/auth/verify — verify email code + activate account + create session
-  routes['/api/auth/verify'] = async (req, res, parsed) => {
+  routes['/api/auth/verify'] = async (req, res, _parsed) => {
     if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
     // A 6-digit code is only 10^6 wide; without a brake it is brute-forceable.
     if (authThrottled(req, res)) return;
     try {
-      const { email, code } = await readBody(req);
-      if (!email || !code) return sendError(res, 400, 'Email and code required');
-
-      const valid = auth.verifyCode(email, String(code).trim(), 'register');
-      if (!valid) return sendError(res, 400, 'Invalid or expired verification code');
-
-      const user = auth.getUserByEmail(email);
-      if (!user) return sendError(res, 404, 'User not found');
-      if (user.status !== 'active') return sendError(res, 403, 'Account disabled');
-
-      // Mark email as verified
-      getDB().prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(user.id);
-
-      auth.createSession(res, user.id);
+      const body = await readBody(req);
+      const email = auth.normalizeEmail(body?.email);
+      const code = typeof body?.code === 'string' ? body.code.trim() : '';
+      if (!email || !/^\d{6}$/.test(code)) return sendError(res,400,'Email and a 6-digit code are required');
+      // Email ownership authorizes the password chosen by this verifier. Never
+      // activate a pending account with a password a prior registrant chose.
+      const password = body?.password;
+      if (typeof password !== 'string' || password.length < 6 || Buffer.byteLength(password,'utf8') > 72) return sendError(res,400,'Choose a password of at least 6 characters and at most 72 UTF-8 bytes');
+      const passwordHash = await auth.hashPassword(password);
+      const user = getDB().transaction(() => {
+        const account = auth.getUserByEmail(email);
+        if (!account || account.status !== 'active' || account.email_verified || !auth.verifyCode(email,code,'register')) {
+          throw Object.assign(new Error('Invalid or expired verification code'), {status:400});
+        }
+        getDB().prepare('UPDATE users SET email_verified=1,password_hash=? WHERE id=?').run(passwordHash,account.id);
+        auth.createSession(res,account.id);
+        return account;
+      }).immediate();
+      resetAuthAttempts(req);
       sendJSON(res, 200, {
         status: 'ok',
         user: { id: user.id, email: user.email, role: user.role, display_name: user.display_name },
       });
     } catch (err) {
-      sendError(res, 500, err.message);
+      sendError(res, err.status || 500, err.status ? err.message : 'Verification could not be completed. Please retry.');
     }
   };
 
   // POST /api/auth/login — verify password + create session
-  routes['/api/auth/login'] = async (req, res, parsed) => {
+  routes['/api/auth/login'] = async (req, res, _parsed) => {
     if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
     if (authThrottled(req, res)) return;
     try {
-      const { email, password } = await readBody(req);
-      if (!email || !password) return sendError(res, 400, 'Email and password required');
+      const body = await readBody(req);
+      const email = auth.normalizeEmail(body?.email);
+      const password = body?.password;
+      if (!email || typeof password !== 'string' || !password) return sendError(res, 400, 'Email and password required');
 
       const user = auth.getUserByEmail(email);
       if (!user) return sendError(res, 401, 'Invalid email or password');
@@ -119,7 +127,7 @@ function register(routes) {
   };
 
   // POST /api/auth/logout — clear session
-  routes['/api/auth/logout'] = async (req, res, parsed) => {
+  routes['/api/auth/logout'] = async (req, res, _parsed) => {
     if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
     const cookieHeader = req.headers?.cookie || '';
     const match = cookieHeader.match(/(?:^|;\s*)session=([a-f0-9]+)/);
@@ -128,7 +136,7 @@ function register(routes) {
   };
 
   // GET /api/auth/me — current user info
-  routes['/api/auth/me'] = (req, res, parsed) => {
+  routes['/api/auth/me'] = (req, res, _parsed) => {
     const user = auth.getSessionUser(req);
     if (!user) return sendJSON(res, 200, { user: null });
     sendJSON(res, 200, { user });
@@ -137,7 +145,7 @@ function register(routes) {
   // ─── Admin Routes ─────────────────────────────────────────────────────
 
   // GET /api/admin/users — list all users (admin only; enforced by auth gate)
-  routes['/api/admin/users'] = (req, res, parsed) => {
+  routes['/api/admin/users'] = (req, res, _parsed) => {
     const users = auth.getAllUsers();
     sendJSON(res, 200, { status: 'ok', users });
   };
@@ -174,7 +182,7 @@ function register(routes) {
 
   // GET /api/auth/keys — list current user's API keys
   // POST /api/auth/keys — create a new API key { name }
-  routes['/api/auth/keys'] = async (req, res, parsed) => {
+  routes['/api/auth/keys'] = async (req, res, _parsed) => {
     if (!req.user) return sendError(res, 401, 'Authentication required');
     if (req.method === 'POST') {
       try {
