@@ -47,7 +47,8 @@ evidence reports url/doi/arxiv/title_similarity/standalone reasons.
 
 The discovery page groups material by event before pagination. Industry pages
 retain their original article feed and provide an explicit merged-event view.
-The existing discovery reader retains its 6000-record window bound, shows
+Industry filtering happens before the discovery reader's 6000-record window bound. The discovery period uses collection dates, while
+quality metrics use publication dates, so their counts can differ. The reader shows
 partial coverage when hit, and exposes only evidence in that read window.
 
 ## Runtime
@@ -72,3 +73,7 @@ health ledger. Other RSS sources keep their existing transport.
 Rollback: restore the previous application release. Migration 056 is additive;
 leave its tables/queue intact for a later resume. Do not restore the full DB or
 delete source articles to undo an event association.
+
+Deployment must retain the private config/mcp-token and config/mcp-tunnel-secret
+links in each release; never commit their contents. Check authenticated proxy
+health after switching releases, not just the transient systemd start state.

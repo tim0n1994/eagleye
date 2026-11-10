@@ -5,13 +5,15 @@ const { createHash } = require('node:crypto');
 const MAX_ITEMS = 6000;
 const shiftDay = (date, days) => new Date(Date.parse(`${date}T12:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 
-function readSnapshot(db, { date, days }) {
+function readSnapshot(db, { date, days, industry }) {
+  const industryColumn = {physical:'physical',education:'education',neuroscience:'neuroscience'}[industry];
+  const industryFilter = industryColumn ? `AND EXISTS (SELECT 1 FROM intelligence_items a WHERE a.item_id=information_items.id AND a.${industryColumn}=1)` : '';
   const start = shiftDay(date, 1 - days);
   const previousStart = shiftDay(start, -days);
   const previousEnd = shiftDay(start, -1);
   const statement = db.prepare(`SELECT id, source_id, canonical_url, title, title_zh,
     substr(original_summary,1,600) AS original_summary, published_at, digest_date
-    FROM information_items INDEXED BY idx_items_digest_date WHERE digest_date >= ? AND digest_date <= ? AND duplicate_of IS NULL
+    FROM information_items INDEXED BY idx_items_digest_date WHERE digest_date >= ? AND digest_date <= ? AND duplicate_of IS NULL ${industryFilter}
     ORDER BY digest_date DESC, rowid DESC LIMIT ?`);
   const current = statement.all(start, date, MAX_ITEMS + 1);
   const previous = statement.all(previousStart, previousEnd, MAX_ITEMS + 1);

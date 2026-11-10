@@ -6,7 +6,7 @@ export async function renderQuality(container, industry, days) {
   if (!slot) return;
   const zh = getLanguage() === 'zh';
   const eventDays = days > 7 ? 30 : 7;
-  const eventLink = `<a href="/discover?industry=${a(industry)}&days=${eventDays}&sort=sources">${zh ? '查看合并事件与原文证据 →' : 'Merged events & original evidence →'}</a>`;
+  const eventLink = `<a href="/discover?industry=${a(industry)}&days=${eventDays}&sort=sources">${zh ? `查看近 ${eventDays} 天收录的合并事件与原文证据 →` : `Merged events collected in ${eventDays} days →`}</a>`;
   slot.innerHTML = eventLink;
   try {
     const response = await fetch(`/api/intelligence-quality?industry=${encodeURIComponent(industry)}&days=${[1,7,30,90,180].includes(days) ? days : 30}`);

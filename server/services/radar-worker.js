@@ -18,7 +18,7 @@ parentPort.on('message', ({ id, query }) => {
       parentPort.postMessage({id,data:entry.data});
       return;
     }
-    const key = `${query.date}:${query.days}`;
+    const key = `${query.date}:${query.days}:${query.industry || ''}`;
     let entry = cache.get(key);
     if (!entry || Date.now() - entry.at > 300000) {
       const snapshot = db.transaction(() => readSnapshot(db, query))();
