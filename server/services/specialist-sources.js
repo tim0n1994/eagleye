@@ -49,6 +49,7 @@ module.exports = {
     "context": "Education community · Open edX"
   },
   "neuroscience-nature": {
+    "transport": "curl",
     "label": "Nature Neuroscience",
     "description": "Nature Neuroscience 研究、评论、更正与期刊动态",
     "homepage": "https://www.nature.com/neuro/",

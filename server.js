@@ -671,6 +671,8 @@ server.listen(PORT, process.env.EAGLEYE_HOST || undefined, async () => {
     console.log(`  🧹 Marked ${interruptedJobs} interrupted background job(s); recovery decisions logged above`);
   }
 
+  require('./server/services/intelligence').start();
+
   // Optional: initial sync (disabled by default — user starts manually or via API)
   console.log('  System ready. Start sync via /api/sync');
 
@@ -688,6 +690,8 @@ server.listen(PORT, process.env.EAGLEYE_HOST || undefined, async () => {
 
 // Handle graceful shutdown
 let shuttingDown = false;
+process.on('SIGTERM', () => require('./server/services/intelligence').stop());
+process.on('SIGINT', () => require('./server/services/intelligence').stop());
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;

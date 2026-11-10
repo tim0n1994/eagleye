@@ -1,3 +1,4 @@
+import { qualitySlot, renderQuality } from './intelligence-quality.js';
 /** Physical AI intelligence, organized as a source-linked topic briefing. */
 import { $, escapeAttr, escapeHtml } from '../utils.js';
 import { getLanguage } from '../i18n.js';
@@ -120,7 +121,7 @@ export async function renderPhysicalAI() {
           <p>${zh ? '追踪 AI 走向物理世界的进展：从机器人研究、人形产品到开源工具与应用落地。' : 'Follow AI in the physical world, from robotics research and humanoid products to open tools and real-world applications.'}</p>
         </div>
         <div class="education-hero-note"><span>${zh ? '观察范围' : 'COVERAGE'}</span><strong>${date ? escapeHtml(date) : (zh ? `最近 ${days} 天` : `Last ${days} days`)}</strong><small>${date ? (zh ? '按采集日期查看快照' : 'Collection-date snapshot') : (zh ? '来自 Eagleye 已收录的信息源' : 'From sources collected by Eagleye')}</small></div>
-      </header>
+      </header>${qualitySlot()}
       <div class="education-overview" aria-label="${zh ? '分类概览' : 'Category overview'}">
         ${CATEGORIES.map(c => `<a class="education-overview-card ${category === c.key ? 'is-active' : ''}" href="${escapeAttr(href({ category: c.key }))}" ${category === c.key ? 'aria-current="true"' : ''}><span>${escapeHtml(zh ? c.zh : c.en)}</span><strong>${count(c.key)}</strong><small>${escapeHtml(zh ? c.detailZh : c.detailEn)}${categoryData.get(c.key)?.is_active === 0 || categoryData.get(c.key)?.is_active === false ? ` · ${zh ? '信息源已停用' : 'Source disabled'}` : ''}</small></a>`).join('')}
       </div>
@@ -143,6 +144,7 @@ export async function renderPhysicalAI() {
       <div class="education-feed pa-feed">${items.length ? items.map(card).join('') : `<div class="education-empty"><strong>${zh ? '这个范围内暂无匹配内容' : 'No matching stories in this period'}</strong><p>${emptyMessage}</p></div>`}</div>
       ${offset > 0 || offset + items.length < total ? `<nav class="education-pagination" aria-label="${zh ? '分页' : 'Pagination'}">${offset > 0 ? `<a href="${escapeAttr(href({ offset: Math.max(0, offset - PAGE_SIZE) }))}">← ${zh ? '上一页' : 'Previous'}</a>` : '<span></span>'}${offset + items.length < total && items.length ? `<a href="${escapeAttr(href({ offset: offset + PAGE_SIZE }))}">${zh ? '下一页' : 'Next'} →</a>` : ''}</nav>` : ''}
     </section>`;
+    void renderQuality(container, 'physical', days);
   } catch {
     if (request !== requestNumber || window.location.pathname !== '/physical-ai') return;
     container.innerHTML = `<section class="page-section education-page pa-page"><div class="education-empty" role="alert"><strong>${zh ? '暂时无法加载具身智能资讯' : 'Unable to load physical AI intelligence'}</strong><p>${zh ? '请稍后重试。' : 'Please try again later.'}</p><button type="button" class="action-btn" id="physicalRetry">${zh ? '重试' : 'Retry'}</button></div></section>`;

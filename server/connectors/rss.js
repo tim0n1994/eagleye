@@ -336,7 +336,9 @@ class RSSConnector extends BaseConnector {
     }
 
     let res;
-    if (useNative) {
+    if (this.transport === 'curl') {
+      res = await require('./rss-curl').fetchFeedCurl(feedUrl, {signal,headers,sleep,stats});
+    } else if (useNative) {
       res = await fetchFeedNative(feedUrl, { signal, headers, sleep, stats });
     } else {
       res = { body: await fetchURL(feedUrl, { signal, headers, sleep, stats }) };
@@ -367,7 +369,7 @@ class RSSConnector extends BaseConnector {
     if (stats) stats.parsed = true;
     // Register only after parsing, so a failed primary feed cannot commit its
     // validators when a fallback feed succeeds later in the same round.
-    if (conditional && db && useNative && stats) {
+    if (conditional && db && (useNative || this.transport === 'curl') && stats) {
       (stats.commitValidators ||= []).push(() =>
         saveValidators(db, readCondState(db), feedUrl, res.etag, res.lastModified));
     }
@@ -383,7 +385,7 @@ class RSSConnector extends BaseConnector {
       } catch {
         /* keep entries null → rejected below as an invalid feed */
       }
-      if (entries === null) throw new Error(`Invalid RSS/Atom response for ${this.slug}`);
+      if (entries === null) throw Object.assign(new Error(`Invalid RSS/Atom response for ${this.slug}`), {name: 'SyntaxError'});
       return this.buildItems(entries, date, feedUrl);
     }
     return this.parseRSSLegacy(xml, date, feedUrl);
@@ -432,7 +434,7 @@ class RSSConnector extends BaseConnector {
   // Legacy regex parser — degradation path when fast-xml-parser is not
   // loadable. Behavior is byte-for-byte the pre-Round-2 implementation.
   parseRSSLegacy(xml, date, feedUrl = this.getFeedUrl()) {
-    if (!/<(?:rss|feed)\b/i.test(xml)) throw new Error(`Invalid RSS/Atom response for ${this.slug}`);
+    if (!/<(?:rss|feed)\b/i.test(xml)) throw Object.assign(new Error(`Invalid RSS/Atom response for ${this.slug}`), {name: 'SyntaxError'});
     const items = [];
     const digestDate = date || compactDigestDate(todayDigestDate());
     const itemRegex = /<(item|entry)>([\s\S]*?)<\/\1>/gi;

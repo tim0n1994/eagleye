@@ -4,6 +4,7 @@ const AI_TOPIC = /\b(?:ai|llms?|gpt|chatgpt|artificial intelligence|generative|i
 
 // Reuse conditional requests, time windows, retries and ingestion deduplication.
 class SpecialistRSSConnector extends RSSConnector {
+  constructor(slug) { super(slug); this.transport = catalog[slug]?.transport; }
   normalize(raw) {
     const source = catalog[this.slug];
     return super.normalize({ ...raw,

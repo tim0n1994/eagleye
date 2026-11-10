@@ -1,3 +1,4 @@
+import { qualitySlot, renderQuality } from './intelligence-quality.js';
 /** AI education intelligence: a source-linked view over the existing corpus. */
 import { $, escapeAttr, escapeHtml } from '../utils.js';
 import { getLanguage } from '../i18n.js';
@@ -75,7 +76,7 @@ export async function renderEducation() {
           <p>${zh ? '关注 AI 如何改变教与学：从课堂实践、学习产品到研究与政策。' : 'Follow how AI is changing teaching and learning, from classroom practice and products to research and policy.'}</p>
         </div>
         <div class="education-hero-note"><span>${zh ? '观察范围' : 'COVERAGE'}</span><strong>${zh ? `最近 ${days} 天` : `Last ${days} days`}</strong><small>${zh ? '来自 Eagleye 已收录的信息源' : 'From sources collected by Eagleye'}</small></div>
-      </header>
+      </header>${qualitySlot()}
       <div class="education-overview" aria-label="${zh ? '分类概览' : 'Category overview'}">
         ${CATEGORIES.map(c => `<a class="education-overview-card ${category === c.key ? 'is-active' : ''}" href="${escapeAttr(href({ category: c.key }))}"><span>${escapeHtml(zh ? c.zh : c.en)}</span><strong>${counts.get(c.key) || 0}</strong><small>${escapeHtml(zh ? c.detailZh : c.detailEn)}</small></a>`).join('')}
       </div>
@@ -90,6 +91,7 @@ export async function renderEducation() {
       <div class="education-feed">${items.length ? items.map(card).join('') : `<div class="education-empty"><strong>${zh ? '这个时间范围内暂无匹配内容' : 'No matching stories in this period'}</strong><p>${zh ? '试试扩大时间范围，或切换到其他分类。' : 'Try a longer time range or another category.'}</p></div>`}</div>
       ${offset > 0 || offset + items.length < total ? `<nav class="education-pagination" aria-label="${zh ? '分页' : 'Pagination'}">${offset > 0 ? `<a href="${escapeAttr(href({ offset: String(Math.max(0, offset - PAGE_SIZE)) }))}">← ${zh ? '上一页' : 'Previous'}</a>` : '<span></span>'}${offset + items.length < total && items.length ? `<a href="${escapeAttr(href({ offset: String(offset + PAGE_SIZE) }))}">${zh ? '下一页' : 'Next'} →</a>` : ''}</nav>` : ''}
     </section>`;
+    void renderQuality(container, 'education', days);
   } catch {
     if (request !== requestNumber || window.location.pathname !== '/ai-education') return;
     container.innerHTML = `<section class="page-section education-page"><div class="education-empty" role="alert"><strong>${zh ? '暂时无法加载 AI 教育资讯' : 'Unable to load AI education intelligence'}</strong><p>${zh ? '请稍后重试。' : 'Please try again later.'}</p><button type="button" class="action-btn" id="educationRetry">${zh ? '重试' : 'Retry'}</button></div></section>`;

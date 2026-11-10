@@ -7,6 +7,17 @@ db.pragma('query_only = ON');
 const cache = new Map();
 parentPort.on('message', ({ id, query }) => {
   try {
+    if (query.view === 'quality') {
+      const key = `quality:${query.industry}:${query.days}`;
+      let entry = cache.get(key);
+      if (!entry || Date.now()-entry.at>60000) {
+        entry = {at:Date.now(),data:db.transaction(() => require('./intelligence-index').quality(db,query))()};
+        if (cache.size>=8) cache.delete(cache.keys().next().value);
+        cache.set(key,entry);
+      }
+      parentPort.postMessage({id,data:entry.data});
+      return;
+    }
     const key = `${query.date}:${query.days}`;
     let entry = cache.get(key);
     if (!entry || Date.now() - entry.at > 300000) {

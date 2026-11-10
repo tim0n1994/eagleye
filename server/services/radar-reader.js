@@ -34,6 +34,7 @@ function readSnapshot(db, { date, days }) {
   for (let offset = 0; offset < ids.length; offset += 400) {
     const batch = ids.slice(offset, offset + 400);
     const ph = batch.map(() => '?').join(',');
+    for (const fact of db.prepare(`SELECT item_id,event_id,match_reason,confidence,physical,education,neuroscience FROM intelligence_items WHERE item_id IN (${ph})`).all(...batch)) Object.assign(byId.get(fact.item_id), fact);
     const assignments = db.prepare(`SELECT DISTINCT item_id,topic_id FROM item_topic_assignments WHERE item_id IN (${ph}) AND topic_kind='taxonomy'`).all(...batch);
     const oldAssignments = db.prepare(`SELECT item_id,topic_id FROM item_topics WHERE item_id IN (${ph})`).all(...batch);
     for (const [rows, mapping] of [[assignments, taxonomyIds], [oldAssignments, legacyIds]]) {
@@ -64,7 +65,8 @@ function readSnapshot(db, { date, days }) {
     meta: { date, days, start, previous_start: previousStart, previous_end: previousEnd,
       generated_at: new Date().toISOString(), partial, current_partial: currentPartial, previous_partial: previousPartial,
       current_items: currentItems.length, previous_items: previousItems.length, limit_per_period: MAX_ITEMS,
-      date_basis: 'digest_date', grouping: 'canonical_url' },
+      index_pending: db.prepare('SELECT count(*) n FROM intelligence_queue').get().n,
+      date_basis: 'digest_date', grouping: 'incremental_evidence_events_v1' },
     topics: [...topics.values()], current: currentItems, previous: previousItems,
   };
 }
@@ -84,7 +86,7 @@ function evidenceKey(item) {
 function groupEvents(items) {
   const groups = new Map();
   for (const item of items) {
-    const key = evidenceKey(item);
+    const key = item.event_id || evidenceKey(item);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(item);
   }
@@ -138,6 +140,7 @@ function present(snapshot, query) {
   const meta = snapshot.meta;
   const topicMap = new Map(snapshot.topics.map(t => [t.slug,t]));
   let items = snapshot.current;
+  if (query.industry) items = items.filter(i => i[query.industry] === 1);
   if (query.topic) items = items.filter(i => i.topics.includes(query.topic));
   if (query.entity) items = items.filter(i => i.entities.some(e => e.slug === query.entity));
   if (query.view === 'following') {

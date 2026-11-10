@@ -30,6 +30,7 @@ function timeline(points = []) {
 function coverage(meta) {
   const generated = new Date(meta.generated_at).toLocaleString(getLanguage() === 'zh' ? 'zh-CN' : 'en-US');
   return `<div class="radar-coverage"><span>${h(meta.start)} — ${h(meta.date)}</span><span>${text('按收录日期 · 已排除标记重复项 · 当天数据仍会变化','By collection date · duplicates excluded · today is still updating')}</span><span>${text('更新','Updated')} ${h(generated)}</span></div>
+    ${meta.index_pending ? `<p class="radar-notice">${text(`事件索引补齐中：${meta.index_pending} 条待处理。行业筛选只包含已索引内容。`,`Event indexing in progress: ${meta.index_pending} pending. Industry filters include indexed records only.`)}</p>` : ''}
     ${meta.partial ? `<p class="radar-notice" role="status">${text(`当前窗口已收录 ${meta.current_items} 条用于展示，上期 ${meta.previous_items} 条；每期最多读取 ${meta.limit_per_period} 条，已触及上限。这里只展示部分材料，停用增长率和变化量，请缩短时间范围。`,`Showing ${meta.current_items} current and ${meta.previous_items} previous items; the ${meta.limit_per_period}-item per-period cap was reached. Results are partial; change metrics are disabled. Choose a shorter period.`)}</p>` : ''}`;
 }
 function controls(view,params,data) {
@@ -38,7 +39,7 @@ function controls(view,params,data) {
   return `<form class="radar-controls" id="radarFilters">
     <label>${text('截至日期','Through')}<input name="date" type="date" value="${a(meta.date)}" required></label>
     <label>${text('时间范围','Period')}<select name="days">${options}</select></label>
-    ${view === 'discover' ? `<label>${text('专题','Topic')}<select name="topic"><option value="">${text('全部专题','All topics')}</option>${(data.topics || []).map(t => `<option value="${a(t.slug)}" ${params.topic === t.slug ? 'selected' : ''}>${h(name(t))}</option>`).join('')}</select></label>
+    ${view === 'discover' ? `<label>${text('行业','Industry')}<select name="industry"><option value="">${text('全部','All')}</option>${[['physical','具身智能','Embodied AI'],['education','AI 教育','AI education'],['neuroscience','脑科学','Neuroscience']].map(([key,zh,en])=>`<option value="${key}" ${params.industry === key ? 'selected' : ''}>${text(zh,en)}</option>`).join('')}</select></label><label>${text('专题','Topic')}<select name="topic"><option value="">${text('全部专题','All topics')}</option>${(data.topics || []).map(t => `<option value="${a(t.slug)}" ${params.topic === t.slug ? 'selected' : ''}>${h(name(t))}</option>`).join('')}</select></label>
       <label>${text('排序','Sort')}<select name="sort"><option value="recent">${text('最新收录','Recently collected')}</option><option value="sources" ${params.sort === 'sources' ? 'selected' : ''}>${text('多来源覆盖','Source diversity')}</option></select></label>` : ''}
     ${view === 'trends' ? `<label>${text('分析对象','Analyze')}<select name="kind"><option value="entity">${text('实体','Entities')}</option><option value="topic" ${params.kind === 'topic' ? 'selected' : ''}>${text('专题','Topics')}</option></select></label>` : ''}
     <button class="radar-primary" type="submit">${text('查看','Apply')}</button>
@@ -52,12 +53,12 @@ function eventCards(data,params,subs) {
     const summary = getLanguage() === 'zh' ? item.one_liner_zh || item.one_liner : item.one_liner || item.one_liner_zh;
     const description = summary || item.original_summary || '';
     return `<article class="radar-event">
-      <div class="radar-event-meta"><span>${h(item.source_label)}</span><span>${h(item.digest_date)}</span><span>${event.source_count} ${text('个来源','sources')} · ${event.evidence_count} ${text('条材料','records')}</span></div>
+      <div class="radar-event-meta"><span>${h(item.source_label)}</span><span>${h(item.digest_date)}</span><span>${event.source_count} ${text('个采集来源','collection sources')} · ${event.evidence_count} ${text('条材料','records')}</span></div>
       <h3><a href="${a(safeUrl(item.canonical_url))}" target="_blank" rel="noopener noreferrer">${h(title(item))} <span aria-hidden="true">↗</span></a></h3>
       ${description ? `<p class="radar-summary"><span>${summary ? text('AI 摘要','AI summary') : text('来源摘要','Source excerpt')}</span> ${h(description)}</p>` : ''}
       <div class="radar-tags">${event.topics.slice(0,4).map(slug => `<a href="${a(link(`/topics/${encodeURIComponent(slug)}`,{date:data.meta.date,days:data.meta.days}))}">${h(name(topicMap.get(slug) || {slug}))}</a>`).join('')}</div>
       ${event.entities.length ? `<div class="radar-objects">${event.entities.slice(0,3).map(e => `<span><a href="${a(link('/discover',{date:data.meta.date,days:data.meta.days,entity:e.slug}))}">${h(e.name)}</a>${followButton('entity',e.slug,e.name,subs)}</span>`).join('')}</div>` : ''}
-      <details class="radar-evidence"><summary>${text('查看证据与发布时间','Evidence & publication dates')} (${event.evidence_count})</summary><ul>${event.evidence.map(e => `<li><a href="${a(safeUrl(e.canonical_url))}" target="_blank" rel="noopener noreferrer">${h(e.source_label)} · ${h(title(e))}</a><small>${text('发布','Published')}: ${h(e.published_at || text('未知','Unknown'))} · ${text('收录','Collected')}: ${h(e.digest_date)}</small></li>`).join('')}</ul>${event.evidence_truncated ? `<p>${text('仅展开前 12 条材料。','Showing the first 12 records.')}</p>` : ''}<p>${text('相同原文链接合并展示；不同链接不会自动推断为同一事件。','Records sharing an original URL are grouped. Different URLs are not inferred to be the same event.')}</p></details>
+      <details class="radar-evidence"><summary>${text('查看合并依据与原文','Grouping reasons & originals')} (${event.evidence_count})</summary><ul>${event.evidence.map(e => `<li><a href="${a(safeUrl(e.canonical_url))}" target="_blank" rel="noopener noreferrer">${h(e.source_label)} · ${h(title(e))}</a><small>${h(({url:text('同一规范链接','Same canonical URL'),doi:text('同一 DOI','Same DOI'),arxiv:text('同一论文','Same paper'),title_similarity:text('近三天标题高度相似（规则匹配）','Highly similar titles within 3 days'),standalone:text('事件锚点','Event anchor')})[e.match_reason] || text('规范链接归组','Canonical URL grouping'))} · ${text('发布','Published')}: ${h(e.published_at || text('未知','Unknown'))} · ${text('收录','Collected')}: ${h(e.digest_date)}</small></li>`).join('')}</ul>${event.evidence_truncated ? `<p>${text('仅展开前 12 条材料。','Showing the first 12 records.')}</p>` : ''}<p>${text('相同原文链接合并展示；不同链接不会自动推断为同一事件。','Records sharing an original URL are grouped. Different URLs are not inferred to be the same event.')}</p></details>
     </article>`;
   }).join('')}</div>` : empty(text('这个范围内没有匹配的材料','No matching records in this period'));
 }
@@ -101,7 +102,7 @@ async function render(view,params = {}) {
   router.onCleanup(() => controller.abort());
   showLoader(container,text('正在读取情报…','Loading intelligence…'));
   const query = new URLSearchParams({view});
-  for (const key of ['date','days','offset','topic','entity','sort','kind']) if (params[key]) query.set(key,params[key]);
+  for (const key of ['date','days','offset','topic','entity','sort','kind','industry']) if (params[key]) query.set(key,params[key]);
   if (view === 'topic') query.set('topic',params.slug);
   const request = async url => {
     const response = await fetch(url,{signal:controller.signal});

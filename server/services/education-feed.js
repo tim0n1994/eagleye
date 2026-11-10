@@ -333,4 +333,8 @@ function getEducationFeed(db, opts = {}) {
   };
 }
 
-module.exports = { getEducationFeed, CATEGORY_KEYS };
+function classifyEducation(row) {
+  const text = buildText(row);
+  return classifyItem(row, text, text.replace(STRIP_RE, ' '));
+}
+module.exports = { getEducationFeed, CATEGORY_KEYS, classifyEducation };

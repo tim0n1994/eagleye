@@ -3,6 +3,15 @@ const { readRadar } = require('../services/radar');
 const { getAll } = require('../services/watchlist');
 const { sendJSON,sendError } = require('./_shared');
 function register(routes) {
+  routes['/api/intelligence-quality'] = async (req,res,parsed) => {
+    if (req.method !== 'GET') return sendError(res,405,'GET required');
+    const {industry,days='30'} = parsed.query || {};
+    if (!['physical','education','neuroscience'].includes(industry) || !['1','7','30','90','180'].includes(days)) return sendError(res,400,'Invalid quality filters');
+    res.setHeader('Cache-Control','private, no-store');
+    try { sendJSON(res,200,{status:'ok',...await readRadar({view:'quality',industry,days:Number(days)})}); }
+    catch { sendError(res,503,'Analytics temporarily unavailable'); }
+  };
+
   routes['/api/radar'] = async (req,res,parsed) => {
     if (req.method !== 'GET') return sendError(res,405,'GET required');
     const q = parsed.query || {};
@@ -14,12 +23,13 @@ function register(routes) {
       ![1,7,30].includes(days) || !Number.isInteger(offset) || offset < 0 || offset > 6000 ||
       !['discover','topics','topic','trends','following','system'].includes(view) || (view === 'topic' && !q.topic) ||
       (q.topic && (typeof q.topic !== 'string' || q.topic.length > 160)) ||
+      (q.industry && !['physical','education','neuroscience'].includes(q.industry)) ||
       (q.entity && (typeof q.entity !== 'string' || q.entity.length > 160))) return sendError(res,400,'Invalid radar filters');
     if (view === 'following' && !req.user) return sendError(res,401,'Authentication required');
     res.setHeader('Cache-Control','private, no-store');
     try {
       const data = await readRadar({ date,days,offset,view,topic:q.topic || '',entity:q.entity || '',
-        kind:q.kind === 'topic' ? 'topic' : 'entity',sort:q.sort === 'sources' ? 'sources' : 'recent',
+        industry:q.industry || '',kind:q.kind === 'topic' ? 'topic' : 'entity',sort:q.sort === 'sources' ? 'sources' : 'recent',
         ...(view === 'following' ? {subs:getAll(req.user.id).subs} : {}) });
       sendJSON(res,200,{ status:'ok',...data });
     } catch (error) {

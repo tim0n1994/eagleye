@@ -1,3 +1,4 @@
+import { qualitySlot, renderQuality } from './intelligence-quality.js';
 /** Neuroscience briefing. Lazy-loaded, source-linked and without a chart runtime. */
 import { $, escapeAttr, escapeHtml } from '../utils.js';
 import { getLanguage } from '../i18n.js';
@@ -79,7 +80,7 @@ export async function renderNeuroscience() {
           <p>${zh ? '追踪脑机制、认知研究与脑机接口，从论文到开源工具和社区实践。' : 'Follow brain and cognition research, brain interfaces, open tools and community practice.'}</p>
         </div>
         <div class="education-hero-note"><span>${zh ? '观察范围' : 'COVERAGE'}</span><strong>${zh ? `最近 ${days} 天` : `Last ${days} days`}</strong><small>${zh ? '独立的脑科学专题来源' : 'Dedicated neuroscience sources'}</small></div>
-      </header>
+      </header>${qualitySlot()}
       <div class="education-overview" aria-label="${zh ? '分类概览' : 'Category overview'}">
         ${CATEGORIES.map(c => `<a class="education-overview-card ${category === c.key ? 'is-active' : ''}" href="${escapeAttr(href({ category: c.key }))}"><span>${escapeHtml(zh ? c.zh : c.en)}</span><strong>${counts.get(c.key) || 0}</strong><small>${escapeHtml(zh ? c.detailZh : c.detailEn)}</small></a>`).join('')}
       </div>
@@ -105,6 +106,7 @@ export async function renderNeuroscience() {
         <p>${zh ? '延伸关注（账号链接，未自动采集）' : 'Further reading (account links, not automatically collected)'}: ${(data.recommended_accounts || []).map(account => safeLink(account.url) ? `<a href="${escapeAttr(safeLink(account.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(account.label)}</a>` : '').join(' · ')}</p>
       </details>
     </section>`;
+    void renderQuality(container, 'neuroscience', days);
   } catch {
     if (request !== requestNumber || window.location.pathname !== '/neuroscience') return;
     container.innerHTML = `<section class="page-section education-page"><div class="education-empty" role="alert"><strong>${zh ? '暂时无法加载脑科学资讯' : 'Unable to load neuroscience intelligence'}</strong><p>${zh ? '请稍后重试。' : 'Please try again later.'}</p><button type="button" class="action-btn" id="neuroscienceRetry">${zh ? '重试' : 'Retry'}</button></div></section>`;
