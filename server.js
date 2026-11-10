@@ -359,6 +359,7 @@ async function handleRequest(req, res) {
 
       // ─── Auth gate: all /api/ routes require login except auth endpoints ───
       const AUTH_WHITELIST = new Set([
+        '/api/auth/forgot-password', '/api/auth/reset-password',
         '/api/auth/login', '/api/auth/register', '/api/auth/resend', '/api/auth/verify', '/api/auth/me', '/api/auth/logout',
       ]);
       if (!AUTH_WHITELIST.has(pathname)) {

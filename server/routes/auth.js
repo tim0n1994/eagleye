@@ -115,14 +115,76 @@ function register(routes) {
       if (user.status !== 'active') return sendError(res, 403, 'Account disabled');
       if (!user.email_verified) return sendError(res, 403, 'Email not verified');
 
+      // Password verification yields to other requests. Check the current
+      // hash under the same write lock as session creation to fence resets.
+      getDB().transaction(() => {
+        const current = auth.getUserByEmail(email);
+        if (!current || current.password_hash !== user.password_hash || current.status !== 'active' || !current.email_verified) {
+          throw Object.assign(new Error('Credentials changed. Please sign in again.'),{status:401});
+        }
+        auth.createSession(res,current.id);
+      }).immediate();
       resetAuthAttempts(req);
-      auth.createSession(res, user.id);
       sendJSON(res, 200, {
         status: 'ok',
         user: { id: user.id, email: user.email, role: user.role, display_name: user.display_name },
       });
     } catch (err) {
-      sendError(res, 500, err.message);
+      sendError(res, err.status || 500, err.status ? err.message : 'Login could not be completed. Please retry.');
+    }
+  };
+
+  // Password recovery does not disclose account existence or activate pending users.
+  routes['/api/auth/forgot-password'] = async (req,res) => {
+    if (req.method !== 'POST') return sendError(res,405,'Method not allowed');
+    if (authThrottled(req,res)) return;
+    if (!process.env.RESEND_API_KEY?.trim() || !process.env.RESEND_FROM?.trim()) return sendError(res,503,'Email recovery is temporarily unavailable.');
+    try {
+      const body = await readBody(req);
+      const email = auth.normalizeEmail(body?.email);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>254) return sendError(res,400,'Valid email required');
+      const user = auth.getUserByEmail(email);
+      if (user?.status === 'active' && user.email_verified) {
+        try { await auth.requestVerificationEmail(email,'reset'); }
+        catch (error) {
+          // The mail helper records provider failures. Cooldown and delivery
+          // outcomes must not change the public account-existence response.
+          if (error.status !== 429) console.warn('[password-recovery] delivery unavailable');
+        }
+      }
+      return sendJSON(res,200,{status:'ok',message:'If this email belongs to an active verified account, a reset code will be sent. Please check your inbox.',retry_after:60});
+    } catch { return sendError(res,400,'Invalid recovery request'); }
+  };
+
+  routes['/api/auth/reset-password'] = async (req,res) => {
+    if (req.method !== 'POST') return sendError(res,405,'Method not allowed');
+    if (authThrottled(req,res)) return;
+    try {
+      const body = await readBody(req);
+      const email = auth.normalizeEmail(body?.email);
+      const code = typeof body?.code === 'string' ? body.code.trim() : '';
+      const password = body?.password;
+      if (!email || !/^\d{6}$/.test(code)) return sendError(res,400,'Email and a 6-digit reset code are required');
+      if (typeof password !== 'string' || password.length<6 || Buffer.byteLength(password,'utf8')>72) return sendError(res,400,'Password must be at least 6 characters and at most 72 UTF-8 bytes');
+      const hash = await auth.hashPassword(password);
+      getDB().transaction(() => {
+        const user = auth.getUserByEmail(email);
+        if (!user || user.status !== 'active' || !user.email_verified || !auth.verifyCode(email,code,'reset')) {
+          throw Object.assign(new Error('Invalid or expired reset code'),{status:400});
+        }
+        getDB().prepare('UPDATE users SET password_hash=? WHERE id=?').run(hash,user.id);
+        getDB().prepare('DELETE FROM sessions WHERE user_id=?').run(user.id);
+        getDB().prepare('UPDATE verification_codes SET used=1 WHERE email=? AND used=0').run(email);
+        // A reset must also fence mail requests already in flight; their late
+        // response must not publish another usable pre-reset code.
+        getDB().prepare("UPDATE verification_delivery SET request_id=?,status='invalidated',attempted_at=? WHERE email=?")
+          .run(require('node:crypto').randomUUID(),Date.now(),email);
+      }).immediate();
+      auth.clearSession(res);
+      resetAuthAttempts(req);
+      sendJSON(res,200,{status:'ok',message:'Password reset. Please sign in again.'});
+    } catch (error) {
+      sendError(res,error.status || 500,error.status ? error.message : 'Password reset could not be completed. Please retry.');
     }
   };
 

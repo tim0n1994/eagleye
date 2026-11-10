@@ -5602,6 +5602,7 @@ body.auth-page #mainFooter { display: none !important; }
 .auth-title { font-size: 24px; font-weight: 800; color: var(--fg, #e0e0e8); margin: 0 0 4px; }
 .auth-subtitle { color: var(--fg-mute, #707080); font-size: 13px; margin: 0 0 24px; }
 
+.auth-form[hidden] { display: none; }
 .auth-form { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 
 .auth-input {

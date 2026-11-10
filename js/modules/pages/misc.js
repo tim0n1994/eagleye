@@ -77,6 +77,7 @@ export async function renderLogin(_params) {
           <input type="password" id="loginPassword" class="auth-input" placeholder="${zh ? '密码' : 'Password'}" required autocomplete="current-password" />
           <button type="submit" class="auth-btn">${zh ? '登录' : 'Sign In'}</button>
         </form>
+        <p class="auth-switch"><a href="/forgot-password" class="auth-link">${zh ? '忘记密码？' : 'Forgot password?'}</a></p>
         <p class="auth-switch">${zh ? '没有账户？' : 'No account?'} <a href="/register" class="auth-link">${zh ? '注册' : 'Register'}</a></p>
         <div id="authError" class="auth-error"></div>
       </div>

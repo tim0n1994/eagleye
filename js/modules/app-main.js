@@ -248,10 +248,17 @@ export async function initApp() {
   // Auth routes
   router.register('/login', renderLogin);
   router.register('/register', renderRegister);
+  for (const path of ['/forgot-password','/reset-password']) {
+    router.register(path, async () => {
+    const location = window.location.href;
+    const module = await import('./pages/password-recovery.js');
+    if (window.location.href === location) return module.renderPasswordRecovery();
+    });
+  }
 
   // ─── Auth state: check login on every route change ────────────────────
   let _currentUser = null;
-  const AUTH_ROUTES = new Set(['/login', '/register']);
+  const AUTH_ROUTES = new Set(['/login', '/register', '/forgot-password', '/reset-password']);
 
   async function refreshAuthState() {
     try { _currentUser = await API.me(); } catch { _currentUser = null; }
@@ -286,7 +293,7 @@ export async function initApp() {
       return false;
     }
     // If logged in and on auth page, redirect to home
-    if (_currentUser && AUTH_ROUTES.has(path)) {
+    if (_currentUser && ['/login','/register'].includes(path)) {
       window.location.href = '/';
       return false;
     }

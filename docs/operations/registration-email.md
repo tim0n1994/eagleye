@@ -33,3 +33,32 @@ Resend Domains. Add the supplied DKIM TXT and sending-subdomain SPF TXT/MX at
 the DNS provider; do not invent a DKIM key or overwrite root-domain MX. Sending
 keys may lack permission to list domains or inspect delivery logs; use the
 Resend dashboard for that status instead of broadening production-key scope.
+
+## Password recovery
+
+Login links to /forgot-password; /reset-password also opens code entry directly.
+POST /api/auth/forgot-password accepts an email and uses the same sender and
+persistent per-address cooldown as registration. For valid email syntax it
+returns a generic response for eligible, unknown, disabled and unverified
+accounts. Provider failures remain in the private delivery ledger; the public
+response does not prove account existence or inbox delivery. Only active,
+verified accounts receive recovery mail. Unverified users finish registration.
+
+POST /api/auth/reset-password accepts email, code and password. Codes are
+stored/checked with purpose=reset, separate from purpose=register, and expire
+in 10 minutes. New password rules match registration; the UI also requires
+password confirmation. In one transaction, resetting consumes the reset code,
+updates the password hash, deletes every browser session for the account,
+invalidates all outstanding verification codes and fences in-flight mail
+requests. No automatic login follows. Service API keys are not browser sessions
+and are not revoked by this workflow.
+
+A login rechecks the current password hash under the session-creation write
+lock after asynchronous bcrypt verification. This prevents an old-password
+login racing a reset from creating a surviving session. A mail request whose
+reservation was invalidated by reset cannot commit a late usable code.
+
+Validation does not reset existing users' passwords. The operator accepts the
+full mailbox/code/new-password/login path with their own account. Provider
+acceptance of a reset-template message to Resend's test recipient and public
+page/invalid-input checks only establish transport and basic connectivity.
