@@ -363,16 +363,14 @@ class RSSConnector extends BaseConnector {
       return [];
     }
 
-    // Validators are only observable on the native transport.
-    if (conditional && db && useNative) {
-      if (stats) {
-          (stats.commitValidators ||= []).push(() =>
-            saveValidators(db, readCondState(db), feedUrl, res.etag, res.lastModified));
-        }
-    }
-
     const items = this.parseRSS(res.body, date, feedUrl);
     if (stats) stats.parsed = true;
+    // Register only after parsing, so a failed primary feed cannot commit its
+    // validators when a fallback feed succeeds later in the same round.
+    if (conditional && db && useNative && stats) {
+      (stats.commitValidators ||= []).push(() =>
+        saveValidators(db, readCondState(db), feedUrl, res.etag, res.lastModified));
+    }
     return items;
   }
 
