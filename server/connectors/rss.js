@@ -33,14 +33,15 @@ const withFetchRetry = typeof sharedUtils.withFetchRetry === 'function'
   ? sharedUtils.withFetchRetry
   : (attempt, opts = {}) => attempt({ signal: opts.signal });
 const { getDB } = require('../db/connection');
-const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../services/date-contract');
+const { compactDigestDate, todayDigestDate } = require('../services/date-contract');
 // 案2 fix-morning-1022: this connector writes user_data directly (not via
 // db/user-data.js setValue), so it shares the same write-time secret redaction.
 const { redactForStorage } = require('../services/secret-redaction');
 
 /* ---------- ③ conditional-request state (user_data, global scope) ---------- */
 
-const COND_STATE_KEY = 'rss_conditional_state';
+// v2 ignores validators written before durable ingestion was guaranteed.
+const COND_STATE_KEY = 'rss_conditional_state_v2';
 
 // Default ON; only an explicit off value disables it ('0' | 'false' | 'off').
 function conditionalEnabled() {
@@ -341,6 +342,7 @@ class RSSConnector extends BaseConnector {
       res = { body: await fetchURL(feedUrl, { signal, headers, sleep, stats }) };
     }
 
+    if (stats) stats.requestSucceeded = true;
     if (res.notModified) {
       // ③ C2: 304 = "no new content" → resolve to zero items, no parsing.
       // R2 观测性 B: the short-circuit used to be fully silent — an all-zero
@@ -353,17 +355,25 @@ class RSSConnector extends BaseConnector {
       if (stats) stats.notModified = (Number(stats.notModified) || 0) + 1;
       console.log(`  ↻ 304 ${feedUrl}`);
       if (conditional && db && (res.etag || res.lastModified)) {
-        saveValidators(db, state, feedUrl, res.etag, res.lastModified);
+        if (stats) {
+          (stats.commitValidators ||= []).push(() =>
+            saveValidators(db, readCondState(db), feedUrl, res.etag, res.lastModified));
+        }
       }
       return [];
     }
 
     // Validators are only observable on the native transport.
     if (conditional && db && useNative) {
-      saveValidators(db, state, feedUrl, res.etag, res.lastModified);
+      if (stats) {
+          (stats.commitValidators ||= []).push(() =>
+            saveValidators(db, readCondState(db), feedUrl, res.etag, res.lastModified));
+        }
     }
 
-    return this.parseRSS(res.body, date, feedUrl);
+    const items = this.parseRSS(res.body, date, feedUrl);
+    if (stats) stats.parsed = true;
+    return items;
   }
 
   parseRSS(xml, date, feedUrl = this.getFeedUrl()) {
@@ -401,15 +411,7 @@ class RSSConnector extends BaseConnector {
       const pubDate = textOf(pick(entry, ['pubDate', 'published', 'updated', 'atom:published', 'atom:updated', 'dc:date', 'dcterms:issued']));
       const description = textOf(pick(entry, ['description', 'content:encoded', 'content', 'summary', 'atom:summary', 'atom:content']));
 
-      // D2 time-window freshness: keep items published within
-      // [now - SOURCE_LOOKBACK_HOURS (default 36h), now + 1h]. The old
-      // digest-day == item-UTC-day equality check killed cross-UTC-day items
-      // during the 01:00 Asia/Shanghai run. Items without a parseable pubDate
-      // keep the legacy keep-behavior (judged against fetch time).
-      const pubTs = Date.parse(pubDate);
-      const effectiveTs = Number.isFinite(pubTs) ? pubTs : Date.now();
-      if (date && !isWithinFetchWindow(effectiveTs)) continue;
-
+      // Retain the publisher's complete feed; URL dedup handles overlap after downtime.
       items.push({
         ...this.normalize({
           title,
@@ -460,10 +462,6 @@ class RSSConnector extends BaseConnector {
       const pubDate = getField('pubDate') || getField('published') || getField('updated') || getField('dc:date') || getField('dcterms:issued');
       const description = getField('description') || getField('content') || getField('summary') || '';
       const title = getField('title') || '[No Title]';
-
-      const pubTs = Date.parse(pubDate);
-      const effectiveTs = Number.isFinite(pubTs) ? pubTs : Date.now();
-      if (date && !isWithinFetchWindow(effectiveTs)) continue;
 
       const extractImage = (html) => {
         if (!html) return '';

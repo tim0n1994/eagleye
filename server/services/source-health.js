@@ -45,6 +45,9 @@ function positiveIntervalHours(value) {
 // made health and /sources imply a schedule that never ran. The final fallback
 // preserves the old conservative 48-hour grading floor for unconfigured rigs.
 function expectedIntervalForSource(source = {}, schedulerIntervalHours = null) {
+  if (process.env.COLLECTION_SCHEDULE_ENABLED === '1' && source.slug && source.slug !== 'x-following') {
+    return { hours: require('./collection-control').intervalHours(source), basis: 'independent_source_schedule' };
+  }
   const explicitHours = positiveIntervalHours(source?.expected_interval_hours);
   if (explicitHours !== null) {
     return { hours: explicitHours, basis: 'source_expected_interval' };

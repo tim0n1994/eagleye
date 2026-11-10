@@ -36,6 +36,8 @@ const ENRICH_PRIORITY_SOURCES = [
 ];
 
 const ENRICH_PRIORITY_SQL = `
+  CASE WHEN s.slug GLOB 'physical-ai-*' OR s.slug GLOB 'education-*' OR s.slug GLOB 'neuroscience-*' THEN 0
+    ELSE 1 END,
   CASE s.slug
     WHEN 'x-following' THEN 0
     WHEN 'hacker-news' THEN 1

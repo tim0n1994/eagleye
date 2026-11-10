@@ -128,7 +128,7 @@ class BaseConnector {
     //      empty round: the source is alive, so last_success_at is still
     //      refreshed and consecutive_empty is left unchanged;
     //   3) success with zero items (not even duplicates) → the only real
-    //      empty round: consecutive_empty +1, no last_success_at refresh;
+    //      empty round: consecutive_empty +1, last_success_at refreshed;
     //   4) fetch/transaction error → last_error_class recorded (037 column)
     //      and health_status='failing'; an error round is not case 3, so the
     //      streak is left untouched.
@@ -188,9 +188,11 @@ class BaseConnector {
       if (!sourceId) return;
       try {
         if (stampLastAttempt) stampLastAttempt.run(sourceId);
-        if ((roundKind === 'new-content' || roundKind === 'dup-only') && stampSuccess) {
+        if (stampSuccess) {
           stampSuccess.run(sourceId);
         }
+        if (clearErrorClass) clearErrorClass.run(sourceId);
+        if (markHealthy) markHealthy.run(sourceId);
         if (roundKind === 'new-content') {
           // 定案1 + §7 Q1 裁决 A：有产出（新插入或同日 existing）→ 清零 +
           // healthy + 戳 last_new_content_at（recomputeSourceHealth 的输入

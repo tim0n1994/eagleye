@@ -145,6 +145,8 @@ export async function renderSources(_params) {
                 ${staleBadge}
               </div>
               <p class="source-last-success">${zh ? '最近成功' : 'Last success'}: ${src.last_success_at ? escapeHtml(new Date(parseTimestampMs(src.last_success_at)).toLocaleString(zh ? 'zh-CN' : 'en-US')) : (zh ? '暂无记录' : 'Not recorded')}</p>
+              ${src.collection ? `<p class="source-last-success">${escapeHtml(zh ? ({ stored: '已入库', unchanged: '内容已收录', empty: '请求成功，暂无内容', not_modified: '没有更新（304）', failed: '采集失败，等待重试' }[src.collection.outcome] || src.collection.outcome) : src.collection.outcome)} · ${zh ? '新增' : 'New'} ${Number(src.collection.inserted) || 0} · ${zh ? '重复' : 'Duplicates'} ${Number(src.collection.duplicates) || 0}</p>
+              ${src.is_active ? `<p class="source-last-success">${zh ? '下次采集' : 'Next collection'}: ${escapeHtml(new Date(src.collection.next_due_at).toLocaleString(zh ? 'zh-CN' : 'en-US'))}</p>` : ''}` : ''}
               ${(src.trend && src.trend.length > 0) ? (() => {
                 const maxC = Math.max(1, ...src.trend.map(t => t.count));
                 return `<div class="source-trend-bars" title="7-day item trend">` +

@@ -15,8 +15,7 @@ class SpecialistRSSConnector extends RSSConnector {
   async fetch(date, opts = {}) {
     const items = await super.fetch(date, opts);
     return items.filter(item => this.slug !== 'education-openedx-community'
-      || AI_TOPIC.test(`${JSON.parse(item.source_payload).original_title} ${item.original_summary}`))
-      .slice(0, 30);
+      || AI_TOPIC.test(`${JSON.parse(item.source_payload).original_title} ${item.original_summary}`));
   }
 }
 module.exports = { SpecialistRSSConnector };

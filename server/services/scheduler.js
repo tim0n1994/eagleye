@@ -10,6 +10,7 @@ const MAX_ENQUEUE_ATTEMPTS = 3;
 const TASK_REQUIRED_SWITCHES = {
   pipeline: ['collect', 'enrich', 'digest'],
   rescore: ['enrich'],
+  digest: ['digest'],
 };
 
 let _timer = null;
@@ -20,7 +21,7 @@ function normalizeConfig(c = {}) {
   return {
     enabled: c.enabled === true,
     time: /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(c.time || '') ? c.time : DEFAULTS.time,
-    task: c.task === 'rescore' ? 'rescore' : DEFAULTS.task,
+    task: ['rescore', 'digest'].includes(c.task) ? c.task : DEFAULTS.task,
     lastRun: c.lastRun || null,
     last_attempt: c.last_attempt || null,
     attempt_count: Number.isInteger(c.attempt_count) && c.attempt_count >= 0 ? c.attempt_count : 0,
@@ -160,7 +161,8 @@ async function fire(cfg) {
   let id;
   try {
     const { runJob, JOB_TYPES } = require('./jobs');
-    const taskType = cfg.task === 'rescore' ? JOB_TYPES.RESCORE_ALL : JOB_TYPES.FULL_PIPELINE;
+    const taskType = cfg.task === 'rescore' ? JOB_TYPES.RESCORE_ALL
+      : cfg.task === 'digest' ? JOB_TYPES.BUILD_DIGEST : JOB_TYPES.FULL_PIPELINE;
     id = await runJob(taskType, {});
     if (typeof id !== 'string' || !id) throw new Error('Scheduler could not create a background job');
   } catch (err) {
@@ -172,10 +174,50 @@ async function fire(cfg) {
   return id;
 }
 
+// Due times are durable. A restart resumes overdue collection without replaying
+// successful sources; manual full pipelines remain available independently.
+async function tickIndependent(cfg) {
+  if (!cfg.enabled || process.env.COLLECTION_SCHEDULE_ENABLED !== '1') return;
+  const db = require('../db/connection').getDB();
+  const { runJob, JOB_TYPES } = require('./jobs');
+  const switches = getSwitches();
+  const collecting = db.prepare("SELECT 1 FROM background_jobs WHERE status IN ('queued','running') AND job_type IN ('fetch-all','fetch-source','full-pipeline') LIMIT 1").get();
+  if (switches.collect && !collecting) {
+    const due = db.prepare(`SELECT 1 FROM sources s LEFT JOIN source_collection_state c ON c.slug=s.slug
+      WHERE s.is_active=1 AND s.slug != 'x-following'
+      AND (c.slug IS NULL OR c.next_due_at <= ?) LIMIT 1`).get(new Date().toISOString());
+    if (due) await runJob(JOB_TYPES.FETCH_ALL, { dueOnly: true, skipEnrich: true });
+  }
+  // Expensive graph aggregation is weekly, independent of both ingestion and
+  // the existing incremental KG drainer. Run one idle maintenance task per tick.
+  const maintenanceBusy = db.prepare("SELECT 1 FROM background_jobs WHERE status IN ('queued','running') AND job_type IN ('enrich-items','translate-backfill','full-pipeline','build-topic-graph','build-tag-hierarchy','kg-drain') LIMIT 1").get();
+  if (switches.graph && !maintenanceBusy) {
+    for (const type of [JOB_TYPES.BUILD_TOPIC_GRAPH, JOB_TYPES.BUILD_TAG_HIERARCHY]) {
+      const key = `${type}_next_due`;
+      const due = getValue(key);
+      if (!due) { setValue(key, new Date(Date.now() + 7 * 86400000).toISOString()); continue; }
+      if (due > new Date().toISOString()) continue;
+      const id = await runJob(type, {});
+      if (id) setValue(key, new Date(Date.now() + 7 * 86400000).toISOString());
+      return;
+    }
+  }
+  // Existing enrichment and KG drainers retain their bounded queues. Chinese
+  // cards get their own hourly batch and do not compete with an active LLM job.
+  const next = getValue('translation_next_due') || '';
+  const busy = db.prepare("SELECT 1 FROM background_jobs WHERE status IN ('queued','running') AND job_type IN ('enrich-items','translate-backfill','full-pipeline') LIMIT 1").get();
+  if (switches.translate && !busy && next <= new Date().toISOString()) {
+    const id = await runJob(JOB_TYPES.TRANSLATE_BACKFILL, { batchSize: 50 });
+    if (id) setValue('translation_next_due', new Date(Date.now() + 3600000).toISOString());
+  }
+}
+
 async function tick() {
   if (_firing) return;
   try {
+    _firing = true;
     const cfg = getConfig();
+    await tickIndependent(cfg);
     if (!shouldFire(cfg)) return;
     const required = TASK_REQUIRED_SWITCHES[cfg.task] || [];
     const switches = getSwitches();

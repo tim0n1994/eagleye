@@ -126,9 +126,11 @@ function resolvePublishedMs(published) {
 function isWithinFetchWindow(published, options) {
   const opts = options || {};
   const now = Number.isFinite(opts.now) ? opts.now : Date.now();
-  const lookbackHours = Number.isFinite(opts.lookbackHours) && opts.lookbackHours > 0
+  const contextLookback = require('./utils').currentFetchLookbackHours();
+  const configuredLookback = Number.isFinite(opts.lookbackHours) && opts.lookbackHours > 0
     ? opts.lookbackHours
     : fetchLookbackHours();
+  const lookbackHours = Math.max(configuredLookback, contextLookback);
   const futureHours = Number.isFinite(opts.futureHours) && opts.futureHours > 0
     ? opts.futureHours
     : DEFAULT_FETCH_FUTURE_HOURS;

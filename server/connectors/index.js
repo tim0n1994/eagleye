@@ -139,6 +139,11 @@ function recordFailedAttempt(slug, err, durationMs) {
  * Fetch items from a specific source for a given date.
  */
 async function fetchSource(slug, date, opts = {}) {
+  const { withSourceSlot } = require('../services/collection-control');
+  return withSourceSlot(slug, opts.signal, () => fetchSourceAdmitted(slug, date, opts));
+}
+
+async function fetchSourceAdmitted(slug, date, opts = {}) {
   opts.signal?.throwIfAborted();
   const limit = parseItemLimit(opts.limit);
   const returnDetails = opts.returnDetails === true || limit !== undefined;
@@ -208,7 +213,8 @@ async function fetchSource(slug, date, opts = {}) {
     // — the source then ends on its last network error instead of the
     // "exceeded <budget>ms budget" abort that the old 30s/120s backoffs
     // caused. Zero connector changes required.
-    fetchPromise = runWithFetchContext({ stats, signal, deadline }, () =>
+    fetchPromise = runWithFetchContext({ stats, signal, deadline,
+      lookbackHours: require('../services/collection-control').lookbackHours(slug) }, () =>
       connector.fetch(compactDigestDate(date) || date, { limit, stats, signal }));
   } catch (err) {
     fetchPromise = Promise.reject(err);
@@ -227,6 +233,7 @@ async function fetchSource(slug, date, opts = {}) {
       if (Date.now() >= deadline) controller.abort(timeoutError);
       signal.throwIfAborted();
       if (!Array.isArray(items)) throw new Error(`Invalid item response from source: ${slug}`);
+      stats.parsed = !stats.notModified;
       const selected = limit === undefined ? items : items.slice(0, limit);
       if (opts.isCancelled?.()) {
         const durationMs = elapsedMs();
@@ -237,16 +244,20 @@ async function fetchSource(slug, date, opts = {}) {
           skipped: stats.skipped + items.length, duration_ms: durationMs, retries: retryCount(),
           notModified: notModifiedCount() } : [];
       }
-      if (!returnDetails) {
-        const outcome = connector.saveItems(selected);
-        recordFetchDuration(slug, elapsedMs());
-        return outcome;
-      }
-      // saveItems normally returns a details envelope; legacy/stub connectors
-      // may ignore returnDetails and return a bare saved array — normalize
-      // both so every returnDetails caller gets an envelope with an items
-      // array (spreading a bare array would drop the items key entirely).
       const saved = connector.saveItems(selected, { returnDetails: true });
+      if (saved?.error || saved?.failed) throw new Error(saved.error || 'Items could not be persisted');
+      // A bounded manual sample must not advance a whole-feed validator.
+      if (selected.length === items.length && !stats.failed && !saved.skipped) {
+        for (const commit of stats.commitValidators || []) commit();
+      }
+      const { recordCollection } = require('../services/collection-control');
+      recordCollection(slug, { ...stats, ...saved, fetched: items.length,
+        partial: selected.length < items.length || stats.failed > 0,
+        requestSucceeded: true, parsed: !stats.notModified });
+      if (!returnDetails) {
+        recordFetchDuration(slug, elapsedMs());
+        return Array.isArray(saved) ? saved : saved.items;
+      }
       const durationMs = elapsedMs();
       recordFetchDuration(slug, durationMs);
       const savedIsArray = Array.isArray(saved);
@@ -288,6 +299,8 @@ async function fetchSource(slug, date, opts = {}) {
         if (err.retries === undefined) err.retries = retryCount();
       }
       recordFailedAttempt(slug, err, durationMs);
+      try { require('../services/collection-control').recordCollection(slug,
+        { ...stats, error: classifyFetchError(err) }); } catch { /* preserve original error */ }
       throw err;
     }
   } finally {
@@ -309,6 +322,7 @@ async function fetchAllSources(date, opts = {}) {
 
   const sources = db.prepare(`
     SELECT slug FROM sources WHERE is_active = 1
+      AND (? = 0 OR slug IN (SELECT s.slug FROM sources s LEFT JOIN source_collection_state c ON c.slug=s.slug WHERE c.slug IS NULL OR c.next_due_at <= ?))
     ORDER BY CASE slug
       WHEN 'x-following' THEN 0
       WHEN 'hacker-news' THEN 1
@@ -319,7 +333,7 @@ async function fetchAllSources(date, opts = {}) {
       WHEN 'xiaohongshu' THEN 91
       ELSE 99
     END, slug
-  `).all();
+  `).all(opts.dueOnly ? 1 : 0, new Date().toISOString());
   // A resumed fetch carries the previous job's per-source rows. Rows that
   // reached a successful terminal state (including a genuine empty round or
   // the feed-mode ownership skip) are already a durable checkpoint: do not

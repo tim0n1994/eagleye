@@ -47,6 +47,7 @@ async function syncAllSources(opts = {}) {
   const results = await fetchAllSources(date, {
     signal: opts.signal,
     checkpoint,
+    dueOnly: opts.dueOnly === true,
     isCancelled: () => !!jobId && isJobCancelled(jobId),
     onProgress: (progress) => updateProgress({ date, ...progress }),
     schedulerIntervalHours: schedulerExpectedIntervalHours(),

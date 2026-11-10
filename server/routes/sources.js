@@ -68,9 +68,12 @@ function register(routes) {
     for (const s of sources) s.trend = trendMap[s.slug] || [];
 
     for (const s of sources) {
+      s.collection = db.prepare('SELECT * FROM source_collection_state WHERE slug = ?').get(s.slug) || null;
       s.group = groupFor(s.slug);
       s.reference_source = referenceSlugs.includes(s.slug);
-      const cadence = expectedIntervalForSource(s, schedulerHours);
+      const cadence = process.env.COLLECTION_SCHEDULE_ENABLED === '1' && s.slug !== 'x-following'
+        ? { hours: require('../services/collection-control').intervalHours(s), basis: 'independent_source_schedule' }
+        : expectedIntervalForSource(s, schedulerHours);
       s.expected_interval_hours = cadence.hours;
       s.expected_interval_basis = cadence.basis;
     }
@@ -107,6 +110,7 @@ function register(routes) {
 
     const source = db.prepare('SELECT * FROM sources WHERE slug = ?').get(slug);
     if (!source) return sendError(res, 404, 'Source not found');
+    source.collection = db.prepare('SELECT * FROM source_collection_state WHERE slug = ?').get(slug) || null;
 
     let items;
     if (isPhysicalAiSlug(slug)) {

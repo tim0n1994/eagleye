@@ -131,7 +131,9 @@ async function withFetchRetry(attempt, options = {}) {
   try {
     for (;;) {
       try {
-        return await attempt({ signal });
+        const result = await require('./collection-control').withHostSlot(label, signal, () => attempt({ signal }));
+        if (stats) stats.requestSucceeded = true;
+        return result;
       } catch (err) {
         if (retries >= RETRY_BACKOFF_MS.length || !isRetryableFetchError(err)) throw err;
         signal?.throwIfAborted();
@@ -257,4 +259,6 @@ function escapeXML(str) {
     .replace(/'/g, '&apos;');
 }
 
-module.exports = { generateId, fetchURL, contentHash, escapeXML, runWithFetchContext, currentFetchDeadline, withFetchRetry, isRetryableFetchError, RETRY_BACKOFF_MS };
+function currentFetchLookbackHours() { return fetchContext.getStore()?.lookbackHours || 0; }
+
+module.exports = { currentFetchLookbackHours, generateId, fetchURL, contentHash, escapeXML, runWithFetchContext, currentFetchDeadline, withFetchRetry, isRetryableFetchError, RETRY_BACKOFF_MS };

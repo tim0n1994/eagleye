@@ -256,6 +256,7 @@ export async function refreshSchedulerPanel() {
       `<label><input type="checkbox" id="schedEnabled" ${cfg.enabled ? 'checked' : ''}/> ${getLanguage() === 'zh' ? '启用' : 'Enabled'}</label>` +
       `<label>${getLanguage() === 'zh' ? '时间' : 'Time'} <input type="time" id="schedTime" value="${escapeAttr(cfg.time || '04:00')}" class="form-input" style="width:auto;display:inline-block"/></label>` +
       `<label>${getLanguage() === 'zh' ? '任务' : 'Task'} <select id="schedTask" class="form-input" style="width:auto;display:inline-block">` +
+      `<option value="digest" ${cfg.task === 'digest' ? 'selected' : ''}>每日简报（采集与后处理独立运行）</option>` +
       `<option value="pipeline" ${cfg.task === 'pipeline' ? 'selected' : ''}>FULL_PIPELINE</option>` +
       `<option value="rescore" ${cfg.task === 'rescore' ? 'selected' : ''}>RESCORE_ALL</option></select></label>` +
       `<span>${getLanguage() === 'zh' ? '时区（服务端）' : 'Timezone (server)'}: <strong id="schedTimezone">${escapeHtml(cfg.timezone || '—')}</strong></span>` +

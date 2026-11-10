@@ -41,12 +41,11 @@ Check the active host ingress unit rather than assuming a historical unit name.
 
 ## SSD policy and daily incremental collection
 
-The ThinkPad policy is daily **incremental collection at 01:00 Asia/Shanghai**
-through the application's existing scheduler (`pipeline`, enabled). Collection
-deduplicates incoming items; it is not a database backup. Keep the existing
-Outbox, enrichment and KG drain jobs. Do not add a second daily pipeline timer.
-The public application's default scheduler remains disabled at 04:00; the host
-policy explicitly configures the global `scheduler_config` database setting.
+The ThinkPad uses independent source schedules and a daily **01:00 Asia/Shanghai**
+briefing. See [collection configuration](README-collection.md) for cadence,
+checkpoint semantics and rollout/rollback. Keep the existing Outbox, enrichment,
+X and KG drain jobs. Do not add a second full-pipeline timer. The public default
+scheduler remains disabled; private host configuration enables the policy.
 
 Daily full-database snapshots are **disabled and masked**. Reapplying this policy
 preserves the mask, so enabling timers during deployment cannot silently restore

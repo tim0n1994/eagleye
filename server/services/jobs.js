@@ -51,6 +51,10 @@ const DEFAULT_JOB_ENRICH_BATCH = Number.isInteger(configuredEnrichBatch) && conf
   ? Math.min(1600, configuredEnrichBatch) : 100;
 const SINGLETON_JOB_TYPES = new Set([
   JOB_TYPES.FETCH_ALL,
+  JOB_TYPES.ENRICH_ITEMS,
+  JOB_TYPES.BUILD_DIGEST,
+  JOB_TYPES.BUILD_TOPIC_GRAPH,
+  JOB_TYPES.BUILD_TAG_HIERARCHY,
   JOB_TYPES.FULL_PIPELINE,
   JOB_TYPES.TRANSLATE_BACKFILL,
   JOB_TYPES.X_FOLLOWING_SYNC,
@@ -847,7 +851,8 @@ async function executeJob(jobId) {
     switch (job.job_type) {
       case JOB_TYPES.FETCH_ALL: {
         const { syncAllSources } = require('./sync');
-        result = await syncAllSources({ jobId, signal });
+        const params = JSON.parse(job.params || '{}');
+        result = await syncAllSources({ ...params, jobId, signal });
         break;
       }
 
@@ -865,6 +870,9 @@ async function executeJob(jobId) {
       }
 
       case JOB_TYPES.BUILD_DIGEST: {
+        const { updateSourceProfiles, updateEntityMomentum } = require('./source-profiles');
+        updateSourceProfiles();
+        updateEntityMomentum();
         const params = JSON.parse(job.params || '{}');
         const date = jobDate(params.date);
         result = await generateDailyDigest(date, { jobId, signal });

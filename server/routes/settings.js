@@ -276,7 +276,7 @@ function register(routes) {
           }
           patch.time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
         }
-        if (data.task === 'pipeline' || data.task === 'rescore') patch.task = data.task;
+        if (['pipeline', 'rescore', 'digest'].includes(data.task)) patch.task = data.task;
         const next = scheduler.saveConfig(patch);
         sendJSON(res, 200, { status: 'ok', config: next });
       } catch (err) {
