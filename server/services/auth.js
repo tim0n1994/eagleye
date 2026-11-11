@@ -192,7 +192,7 @@ function _getResend() {
  * Send a verification code email via Resend.
  * Requires configured delivery; missing transport must never report success.
  */
-async function sendVerificationEmail(email, code, requestId = crypto.randomUUID(), purpose = 'register') {
+async function sendVerificationEmail(email, code, requestId = crypto.randomUUID(), purpose = 'register', language = 'en') {
   if (!['register','reset'].includes(purpose)) throw new Error('Invalid verification purpose');
   const resetting = purpose === 'reset';
   const resend = _getResend();
@@ -200,19 +200,22 @@ async function sendVerificationEmail(email, code, requestId = crypto.randomUUID(
 
   if (!resend || !from) throw new Error('Email delivery is not configured');
 
+  const zh = language === 'zh';
+  const title = resetting ? (zh ? '重置密码' : 'Reset your password') : zh ? '验证你的邮箱' : 'Verify your email';
+  const instruction = resetting ? (zh ? '输入以下验证码重置密码。收到邮件本身不会更改密码。' : 'Enter this code to reset your password. Receiving this email does not change your password.') : zh ? '输入以下验证码，完成 Eagleye 注册。' : 'Enter this code to finish your Eagleye registration.';
+  const expiry = zh ? `验证码在 10 分钟内有效。如果不是你发起的请求，请忽略此邮件。` : `This code expires in 10 minutes. If you did not request it, ignore this email.`;
   const { data, error } = await resend.emails.send({
     from,
     to: email,
-    subject: resetting ? 'Eagleye 重置密码 / Reset your password' : 'Eagleye 邮箱验证 / Verify your email',
-    text: `Eagleye ${resetting ? '重置密码' : '注册'}验证码：${code}。10 分钟内有效。如非本人操作，请忽略此邮件。${resetting ? '密码不会因收到此邮件而改变。' : ''}`,
+    subject: resetting ? (zh ? 'Eagleye 重置密码' : 'Eagleye password reset') : (zh ? 'Eagleye 邮箱验证码' : 'Eagleye email verification'),
+    text: `${title}\n\n${instruction}\n\n${code}\n\n${expiry}`,
     html: `
-      <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #ffffff; color: #253047;">
-        <h2 style="color: #253047;">🦅 Eagleye</h2>
-        <p style="color: #455168; font-size: 14px;">${resetting ? '您的重置密码验证码 / Your password reset code:' : '您的注册验证码 / Your verification code:'}</p>
-        <div style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #64b5f6; text-align: center; padding: 24px 0; border: 1px solid #333; border-radius: 8px; margin: 16px 0;">
-          ${code}
-        </div>
-        <p style="color: #707080; font-size: 12px;">验证码 10 分钟内有效。如非本人操作请忽略此邮件。<br>The code expires in 10 minutes.</p>
+      <div lang="${zh ? 'zh-CN' : 'en'}" style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f7f7f3; color: #202725;">
+        <h2 style="font-size: 24px; font-weight: 600;">Eagleye</h2>
+        <h3>${title}</h3>
+        <p style="font-size: 16px; line-height: 1.7;">${instruction}</p>
+        <div style="font-size: 36px; font-weight: 600; letter-spacing: 8px; color: #a23e18; padding: 24px 0;">${code}</div>
+        <p style="color: #46514e; font-size: 14px; line-height: 1.7;">${expiry}</p>
       </div>
     `,
   }, { idempotencyKey: `eagleye-verification/${requestId}`, signal: AbortSignal.timeout(20000) });
@@ -227,7 +230,7 @@ async function sendVerificationEmail(email, code, requestId = crypto.randomUUID(
 
 // Reserve a durable per-email slot before network I/O. Keep the previous code
 // valid if sending fails; replace it only after Resend accepts the new email.
-async function requestVerificationEmail(rawEmail, purpose = 'register') {
+async function requestVerificationEmail(rawEmail, purpose = 'register', language = 'en') {
   if (!['register','reset'].includes(purpose)) throw new Error('Invalid verification purpose');
   const email = normalizeEmail(rawEmail);
   const db = getDB();
@@ -243,7 +246,7 @@ async function requestVerificationEmail(rawEmail, purpose = 'register') {
   }).immediate();
   const code = generateVerificationCode();
   try {
-    const sent = await sendVerificationEmail(email,code,requestId,purpose);
+    const sent = await sendVerificationEmail(email,code,requestId,purpose,language);
     db.transaction(() => {
       const current = db.prepare('SELECT request_id FROM verification_delivery WHERE email=?').get(email);
       if (current?.request_id !== requestId) throw new Error('Verification request superseded');
@@ -322,7 +325,7 @@ function getApiKeyOwner(key) {
   if (!key || !key.startsWith('eg_')) return null;
   const row = db.prepare(`
     SELECT k.key, k.name, k.active, k.expires_at,
-           u.id, u.email, u.display_name, u.role, u.status
+           u.id, u.email, u.display_name, u.role, u.status, u.email_verified
     FROM api_keys k
     JOIN users u ON k.user_id = u.id
     WHERE k.key = ? AND k.active = 1
@@ -340,6 +343,7 @@ function getApiKeyOwner(key) {
     display_name: row.display_name,
     role: row.role,
     status: row.status,
+    email_verified: !!row.email_verified,
   };
 }
 

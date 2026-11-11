@@ -71,16 +71,16 @@ export async function renderEducation() {
 
     container.innerHTML = `<section class="page-section education-page">
       <header class="education-hero">
-        <div><div class="education-eyebrow">EAGLEYE / AI EDUCATION</div>
+        <div><div class="education-eyebrow">${zh ? 'EAGLEYE / AI 教育' : 'EAGLEYE / AI education'}</div>
           <h2>${zh ? 'AI 教育情报' : 'AI education intelligence'}</h2>
           <p>${zh ? '关注 AI 如何改变教与学：从课堂实践、学习产品到研究与政策。' : 'Follow how AI is changing teaching and learning, from classroom practice and products to research and policy.'}</p>
         </div>
-        <div class="education-hero-note"><span>${zh ? '观察范围' : 'COVERAGE'}</span><strong>${zh ? `最近 ${days} 天` : `Last ${days} days`}</strong><small>${zh ? '来自 Eagleye 已收录的信息源' : 'From sources collected by Eagleye'}</small></div>
+        <div class="education-hero-note"><span>${zh ? '观察范围' : 'Coverage'}</span><strong>${zh ? `最近 ${days} 天` : `Last ${days} days`}</strong><small>${zh ? '来自 Eagleye 已收录的信息源' : 'From sources collected by Eagleye'}</small></div>
       </header>${qualitySlot()}
       <div class="education-overview" aria-label="${zh ? '分类概览' : 'Category overview'}">
         ${CATEGORIES.map(c => `<a class="education-overview-card ${category === c.key ? 'is-active' : ''}" href="${escapeAttr(href({ category: c.key }))}"><span>${escapeHtml(zh ? c.zh : c.en)}</span><strong>${counts.get(c.key) || 0}</strong><small>${escapeHtml(zh ? c.detailZh : c.detailEn)}</small></a>`).join('')}
       </div>
-      <div class="education-content-head"><div><div class="education-eyebrow">${zh ? '专题资讯' : 'THE LATEST'}</div><h3>${zh ? '探索动态' : 'Explore the feed'}</h3><p>${zh ? '按 AI 与教育的相关线索筛选，打开原文查看完整上下文。' : 'Selected using AI and education signals. Open the original source for context.'}</p></div>
+      <div class="education-content-head"><div><div class="education-eyebrow">${zh ? '专题资讯' : 'The latest'}</div><h3>${zh ? '探索动态' : 'Explore the feed'}</h3><p>${zh ? '按 AI 与教育的相关线索筛选，打开原文查看完整上下文。' : 'Selected using AI and education signals. Open the original source for context.'}</p></div>
         <nav class="education-periods" aria-label="${zh ? '时间范围' : 'Time range'}">${[30, 90, 180].map(n => `<a href="${escapeAttr(href({ days: String(n) }))}" class="${days === n ? 'is-active' : ''}" ${days === n ? 'aria-current="true"' : ''}>${zh ? `${n} 天` : `${n} days`}</a>`).join('')}</nav>
       </div>
       <nav class="education-filters" aria-label="${zh ? '内容分类' : 'Content categories'}">

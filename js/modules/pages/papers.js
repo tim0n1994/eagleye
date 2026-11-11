@@ -8,14 +8,14 @@
 import { $, escapeAttr, escapeHtml, timeAgo } from '../utils.js';
 import { KnowledgeGraph } from '../graph-viz.js';
 import { getLanguage, t } from '../i18n.js';
-import { API_BASE, fetchJSON, pickZh, showError, showLoader, tagHref } from './shared.js';
+import { API_BASE, fetchJSON, getItemDisplayTitle, pickZh, showError, showLoader, tagHref } from './shared.js';
 
 
 // ─── Papers ────────────────────────────────────────────────
 
 export async function renderPapers(_params) {
   const container = $('#pageContent');
-  showLoader(container, getLanguage() === 'zh' ? '正在加载论文流...' : 'LOADING PAPERS...');
+  showLoader(container, getLanguage() === 'zh' ? '正在加载论文流…' : 'Loading papers...');
 
   // Normalize authors: API returns either ["Name", ...] (arXiv) or
   // [{_id, name, hidden}, ...] (hugging-face). Unify to string array.
@@ -60,7 +60,6 @@ export async function renderPapers(_params) {
       const active = source.slug === currentSource;
       return `
         <a class="sources-tab-pill ${active ? 'active' : ''}" href="${href}">
-          <span class="sources-tab-pill-icon">${source.slug === 'all' ? '📚' : '📄'}</span>
           <span>${escapeHtml(source.label)}</span>
           <span class="sources-tab-pill-count">${source.count}</span>
         </a>
@@ -69,7 +68,7 @@ export async function renderPapers(_params) {
 
     const renderPaper = (paper) => {
       const title = pickZh(paper.title, paper.title_zh);
-      const oneLiner = pickZh(paper.one_liner_zh || paper.short_summary_zh, paper.one_liner_zh || paper.short_summary_zh);
+      const oneLiner = pickZh(paper.one_liner || paper.short_summary, paper.one_liner_zh || paper.short_summary_zh);
       // Normalize authors: API returns either ["Name", ...] (arXiv) or
       // [{_id, name, hidden}, ...] (hugging-face). Unify to string array.
       const authorNames = (paper.authors || []).map(a => typeof a === 'string' ? a : (a && a.name) || '').filter(Boolean);
@@ -90,7 +89,7 @@ export async function renderPapers(_params) {
       const arxivId = paper.arxiv_id || '';
       const citeKey = (authorNames[0]?.split(' ').pop() || 'anon').toLowerCase() + (paper.published_at?.slice(0,4) || '2026') + (title.split(' ')[0]?.toLowerCase() || 'paper');
       const bibtex = `@article{${citeKey},\n  title = {${title}},\n  author = {${authorNames.join(' and ')}},\n  ${arxivId ? `eprint = {${arxivId}},\n  archivePrefix = {arXiv},\n  ` : ''}url = {${paper.canonical_url || ''}},\n  year = {${paper.published_at?.slice(0,4) || '2026'}},\n}`;
-      const bibtexBtn = `<button class="mini-action" onclick='window.__copyBibtex(${JSON.stringify(bibtex).replace(/'/g,"\\'")})'>📋 BibTeX</button>`;
+      const bibtexBtn = `<button class="mini-action" onclick='window.__copyBibtex(${JSON.stringify(bibtex).replace(/'/g,"\\'")})'>BibTeX</button>`;
       return `
         <article class="mini-card paper-card">
           <div class="mini-card-top">
@@ -100,7 +99,7 @@ export async function renderPapers(_params) {
             ${oneLiner ? `<p class="mini-oneliner">${escapeHtml(oneLiner)}</p>` : ''}
           </div>
           <div class="mini-card-mid">
-            <span class="mini-source">${escapeHtml(paper.source_label || '')}</span>
+            <span class="mini-source">${escapeHtml(pickZh(paper.source_label || '', paper.source_label_zh || ''))}</span>
             ${paper.provider ? `<span class="mini-lang">${escapeHtml(paper.provider)}</span>` : ''}
             ${paper.published_at ? `<span class="mini-time">${timeAgo(paper.published_at)}</span>` : ''}
           </div>
@@ -120,7 +119,7 @@ export async function renderPapers(_params) {
     container.innerHTML = `
       <section class="page-section papers-page">
         <div class="page-header">
-          <h2 class="page-title">📄 ${t('papers.title')}</h2>
+        <h2 class="page-title">${t('papers.title')}</h2>
           <p class="page-description">${t('papers.subtitle')}</p>
         </div>
 
@@ -150,7 +149,7 @@ export async function renderPapers(_params) {
           if (cats.length === 0) return '';
           const urlCat = new URLSearchParams(window.location.search).get('cat') || '';
           return `<div class="range-tabs" style="margin:8px 0">` +
-            `<a href="/papers${currentSource !== 'all' ? '?source=' + currentSource : ''}" class="range-tab ${!urlCat ? 'active' : ''}">All cats</a>` +
+            `<a href="/papers${currentSource !== 'all' ? '?source=' + currentSource : ''}" class="range-tab ${!urlCat ? 'active' : ''}">${getLanguage() === 'zh' ? '全部分类' : 'All categories'}</a>` +
             cats.map(c => {
               const params = new URLSearchParams();
               if (currentSource !== 'all') params.set('source', currentSource);
@@ -221,7 +220,7 @@ export async function renderPapers(_params) {
               }
             }
             const authorList = Object.values(authorMap).sort((a, b) => b.count - a.count).slice(0, 30);
-            if (authorList.length === 0) return `<p class="empty-state">No author data.</p>`;
+            if (authorList.length === 0) return `<p class="empty-state">${getLanguage() === 'zh' ? '暂无作者数据。' : 'No author data.'}</p>`;
             return `<div class="metrics-block"><ul class="metrics-bars">` +
               authorList.map(a => {
                 const maxCount = Math.max(1, ...authorList.map(x => x.count));
@@ -258,7 +257,7 @@ export async function renderPapers(_params) {
               }
             }
             const nodes = [...nodeMap.values()];
-            if (nodes.length < 2 || edges.length === 0) return `<p class="empty-state">Not enough co-author data for a network.</p>`;
+            if (nodes.length < 2 || edges.length === 0) return `<p class="empty-state">${getLanguage() === 'zh' ? '合作网络数据不足。' : 'Not enough co-author data for a network.'}</p>`;
             // Render as a D3 KnowledgeGraph (reuse the existing class).
             setTimeout(async () => {
               const el = document.getElementById('papersNetworkGraph');
@@ -266,7 +265,7 @@ export async function renderPapers(_params) {
                 try {
                   const g = new KnowledgeGraph('papersNetworkGraph');
                   await g.init({ nodes, edges: edges.map(e => ({ ...e, source: e.source, target: e.target })) });
-                } catch { el.innerHTML = '<p class="subtle">Graph render failed.</p>'; }
+                } catch { el.innerHTML = '<p class="subtle">' + (getLanguage() === 'zh' ? '图谱渲染失败。' : 'Graph render failed.') + '</p>'; }
               }
             }, 100);
             return `<div id="papersNetworkGraph" style="height:400px;border:1px solid var(--rule);border-radius:var(--radius);margin-top:8px"></div>` +

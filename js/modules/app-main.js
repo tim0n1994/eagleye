@@ -1,6 +1,6 @@
 import { API } from './api.js';
 import { UI } from './ui.js';
-import { $, escapeHtml } from './utils.js';
+import { $, escapeHtml, escapeAttr } from './utils.js';
 import { router } from './router.js';
 import { KnowledgeGraph } from './graph-viz.js';
 import { t, getLanguage, toggleLanguage, onLanguageChange, applyI18n } from './i18n.js';
@@ -18,19 +18,19 @@ import {
 import { renderMarkdown } from './markdown.js';
 
   const NAV_LINKS = [
-  { path: '/for-you',      i18n: 'nav.foryou',      icon: '🎯' },
-  { path: '/',             i18n: 'nav.news',        icon: '📰' },
-  { path: '/physical-ai',  i18n: 'nav.physical_ai', icon: '🤖' },
-  { path: '/ai-education', i18n: 'nav.ai_education', icon: '🎓' },
-  { path: '/neuroscience', i18n: 'nav.neuroscience', icon: '🧠' },
-  { path: '/papers',       i18n: 'nav.papers',      icon: '📄' },
-  { path: '/signals',      i18n: 'nav.signals',     icon: '📡' },
-  { path: '/digest',       i18n: 'nav.digest',      icon: '📋' },
-  { path: '/sources',      i18n: 'nav.sources',     icon: '🔗' },
-  { path: '/discover',     i18n: 'nav.discover',    icon: '🔍' },
-  { path: '/topics',       i18n: 'nav.topics',      icon: '▦' },
-  { path: '/trends',       i18n: 'nav.trends',      icon: '↗' },
-  { path: '/watchlist',    i18n: 'nav.watchlist',   icon: '☆' },
+  { path: '/for-you',      i18n: 'nav.foryou' },
+  { path: '/',             i18n: 'nav.news' },
+  { path: '/physical-ai',  i18n: 'nav.physical_ai' },
+  { path: '/ai-education', i18n: 'nav.ai_education' },
+  { path: '/neuroscience', i18n: 'nav.neuroscience' },
+  { path: '/papers',       i18n: 'nav.papers' },
+  { path: '/signals',      i18n: 'nav.signals' },
+  { path: '/digest',       i18n: 'nav.digest' },
+  { path: '/sources',      i18n: 'nav.sources' },
+  { path: '/discover',     i18n: 'nav.discover' },
+  { path: '/topics',       i18n: 'nav.topics' },
+  { path: '/trends',       i18n: 'nav.trends' },
+  { path: '/watchlist',    i18n: 'nav.watchlist' },
 ];
 
 function renderNav() {
@@ -40,8 +40,8 @@ function renderNav() {
   const isActive = (link) => currentPath === link.path || (link.path !== '/' && currentPath.startsWith(link.path));
 
   nav.innerHTML = NAV_LINKS.map(link => `
-    <a href="${link.path}" class="nav-link ${isActive(link) ? 'active' : ''}">
-      <span class="nav-icon">${link.icon}</span>
+    <a href="${link.path}" class="nav-link ${isActive(link) ? 'active' : ''}" ${isActive(link) ? 'aria-current="page"' : ''}>
+
       <span class="nav-label">${t(link.i18n)}</span>
     </a>
   `).join('');
@@ -108,16 +108,16 @@ function renderFooter() {
         <a href="/feed.json">JSON Feed</a>
       </div>
       <div class="footer-group">
-        <h4>${getLanguage() === 'zh' ? '快捷键' : 'Shortcuts'}</h4>
+        <h4>${t('footer.shortcuts')}</h4>
         <span style="font-size:11px;color:var(--fg-mute);line-height:1.8">
-          <kbd class="kbd">⌘K</kbd> ${getLanguage() === 'zh' ? '命令面板' : 'Command palette'}<br/>
-          <kbd class="kbd">/</kbd> ${getLanguage() === 'zh' ? '搜索' : 'Search'}<br/>
-          <kbd class="kbd">g</kbd>+${getLanguage() === 'zh' ? '字母 导航' : 'letter Navigate'}
+          <kbd class="kbd">⌘K</kbd> ${t('footer.command_palette')}<br/>
+          <kbd class="kbd">/</kbd> ${t('nav.search')}<br/>
+          <kbd class="kbd">g</kbd>+${t('footer.navigate')}
         </span>
-        <a href="/help" style="font-size:11px;display:block;margin-top:4px">${getLanguage() === 'zh' ? '全部快捷键 →' : 'All shortcuts →'}</a>
+        <a href="/help" style="font-size:11px;display:block;margin-top:4px">${t('footer.all_shortcuts')}</a>
       </div>
       <div class="footer-brand">
-        <span class="footer-logo">🦅 Eagleye</span>
+        <span class="footer-logo">Eagleye</span>
         <span class="footer-tagline">${t('brand.tagline')}</span>
       </div>
     </div>
@@ -135,6 +135,7 @@ function updateLangButton() {
     label.textContent = getLanguage() === 'en' ? '中' : 'EN';
   }
   btn.setAttribute('title', t('lang.switchTo'));
+  btn.setAttribute('aria-label', t('lang.switchTo'));
   btn.setAttribute('data-lang-active', getLanguage());
 }
 
@@ -158,7 +159,7 @@ export async function initApp() {
       const currentTheme = document.documentElement.getAttribute('data-theme');
       const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', newTheme);
-      localStorage.setItem('eagleye-theme', newTheme);
+      try { localStorage.setItem('eagleye-theme', newTheme); } catch { /* Theme still applies when storage is blocked. */ }
       const svg = themeToggle.querySelector('svg');
       if (newTheme === 'dark') {
         svg.innerHTML = `<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>`;
@@ -167,6 +168,20 @@ export async function initApp() {
       }
     });
   }
+
+  const menu = $('#navMenuToggle');
+  menu?.addEventListener('click', () => {
+    const expanded = menu.getAttribute('aria-expanded') !== 'true';
+    menu.setAttribute('aria-expanded', String(expanded));
+    document.querySelector('.header').classList.toggle('nav-open', expanded);
+  });
+  document.querySelector('.header')?.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && menu?.getAttribute('aria-expanded') === 'true') {
+      menu.setAttribute('aria-expanded', 'false');
+      document.querySelector('.header').classList.remove('nav-open');
+      menu.focus();
+    }
+  });
 
   const langToggle = $('#langToggle');
   if (langToggle) {
@@ -194,7 +209,16 @@ export async function initApp() {
     });
   }
 
-  onLanguageChange(() => {
+  onLanguageChange(async () => {
+    const path = window.location.pathname + window.location.search;
+    const scrollY = window.scrollY;
+    const controls = [...document.querySelectorAll('#pageContent input[id], #pageContent select[id], #pageContent textarea[id]')]
+      .filter(el => !['file', 'submit', 'button'].includes(el.type))
+      .map(el => ({ id: el.id, value: el.value, checked: el.checked }));
+    const openDetails = [...document.querySelectorAll('#pageContent details[id][open]')].map(el => el.id);
+    updateUserButton();
+    fullGraphInstance?.refreshLanguage();
+    document.getElementById('commandPalette')?.remove();
     updateLangButton();
     renderNav();
     renderFooter();
@@ -202,7 +226,18 @@ export async function initApp() {
     UI.dom.lastUpdated.textContent = t('system.online');
     UI.log(t('system.ready'), 'system');
     document.title = `${t('brand.tagline')} — Eagleye`;
-    router.rerenderCurrentRoute();
+    await router.rerenderCurrentRoute();
+    if (path !== window.location.pathname + window.location.search) return;
+    for (const saved of controls) {
+      const el = document.getElementById(saved.id);
+      if (!el) continue;
+      el.value = saved.value;
+      if ('checked' in el) el.checked = saved.checked;
+      // Reapply text filtering without firing configuration writes.
+      if (el.id === 'heroSearchInput' && saved.value) el.dispatchEvent(new Event('input'));
+    }
+    for (const id of openDetails) { const el = document.getElementById(id); if (el) el.open = true; }
+    window.scrollTo({ top: scrollY, behavior: 'instant' });
   });
   document.title = `${t('brand.tagline')} — Eagleye`;
 
@@ -248,6 +283,7 @@ export async function initApp() {
   // Auth routes
   router.register('/login', renderLogin);
   router.register('/register', renderRegister);
+  for (const path of ['/pricing','/billing']) router.register(path,async()=>{ const page=await import('./pages/billing.js'); return page.renderBilling(); });
   for (const path of ['/forgot-password','/reset-password']) {
     router.register(path, async () => {
     const location = window.location.href;
@@ -258,7 +294,7 @@ export async function initApp() {
 
   // ─── Auth state: check login on every route change ────────────────────
   let _currentUser = null;
-  const AUTH_ROUTES = new Set(['/login', '/register', '/forgot-password', '/reset-password']);
+  const AUTH_ROUTES = new Set(['/login', '/register', '/forgot-password', '/reset-password', '/pricing']);
 
   async function refreshAuthState() {
     try { _currentUser = await API.me(); } catch { _currentUser = null; }
@@ -270,14 +306,13 @@ export async function initApp() {
     const btn = $('#userLink');
     if (!btn) return;
     if (_currentUser) {
-      const zh = getLanguage() === 'zh';
       const name = _currentUser.display_name || _currentUser.email.split('@')[0];
-      btn.innerHTML = `<span>👤 ${escapeHtml(name)}</span>`;
+      btn.innerHTML = `<span>${escapeHtml(name)}</span>`;
       btn.title = _currentUser.email;
-      btn.href = '/settings';
+      btn.href = '/billing';
     } else {
       btn.innerHTML = `<span>${getLanguage() === 'zh' ? '登录' : 'Sign In'}</span>`;
-      btn.title = 'Login';
+      btn.title = t('auth.signin');
       btn.href = '/login';
     }
   }
@@ -292,6 +327,11 @@ export async function initApp() {
       window.location.href = '/login';
       return false;
     }
+    if (_currentUser && !AUTH_ROUTES.has(path) && path!=='/billing') {
+      await refreshAuthState();
+      if (!_currentUser?.billing?.access) { window.location.href='/billing'; return false; }
+      if (_currentUser.billing.plan!=='analyst' && /^\/(topics|trends|trajectory|graph|watchlist|discover|signals)(\/|$)/.test(path)) { window.location.href='/billing?upgrade=analyst'; return false; }
+    }
     // If logged in and on auth page, redirect to home
     if (_currentUser && ['/login','/register'].includes(path)) {
       window.location.href = '/';
@@ -299,6 +339,9 @@ export async function initApp() {
     }
 
     renderNav();
+    document.querySelector('.header').classList.remove('nav-open');
+    menu?.setAttribute('aria-expanded', 'false');
+    document.body.dataset.page = path === '/login' || path === '/register' ? 'auth' : 'workspace';
     const pageContent = $('#pageContent');
     const itemsGrid = $('#itemsGrid');
     const statusBar = $('#statusBar');
@@ -315,13 +358,13 @@ export async function initApp() {
     if (!bar) {
       bar = document.createElement('div');
       bar.id = 'navProgress';
-      bar.style.cssText = 'position:fixed;top:0;left:0;height:2px;background:var(--accent);z-index:9998;transition:width 0.3s ease;width:0';
+      bar.style.cssText = 'position:fixed;top:0;left:0;height:2px;background:var(--accent);z-index:9998;width:100%;transform:scaleX(0);transform-origin:left;transition:transform 0.2s ease';
       document.body.appendChild(bar);
     }
-    bar.style.width = '30%';
+    bar.style.transform = 'scaleX(.3)';
     bar.style.opacity = '1';
-    requestAnimationFrame(() => { bar.style.width = '70%'; });
-    setTimeout(() => { bar.style.width = '100%'; setTimeout(() => { bar.style.opacity = '0'; bar.style.width = '0'; }, 200); }, 600);
+    requestAnimationFrame(() => { bar.style.transform = 'scaleX(.7)'; });
+    setTimeout(() => { bar.style.transform = 'scaleX(1)'; setTimeout(() => { bar.style.opacity = '0'; bar.style.transform = 'scaleX(0)'; }, 200); }, 600);
   });
 
   // ─── Per-route document.title + screen-reader announcement ────────────
@@ -417,7 +460,7 @@ export async function initApp() {
   // Global: copy BibTeX citation to clipboard (used by paper cards).
   (/** @type {any} */ (window)).__copyBibtex = function(bibtex) {
     navigator.clipboard?.writeText(bibtex).then(() => {
-      UI.log('BibTeX copied to clipboard', 'success');
+      UI.log(t('export.bibtex_copied'), 'success');
     }).catch(() => {});
   };
 
@@ -426,10 +469,10 @@ export async function initApp() {
     let d;
     try { d = JSON.parse(digestJson); } catch { return; }
     const parseList = (field) => { try { const a = typeof field === 'string' ? JSON.parse(field) : field; return Array.isArray(a) ? a : []; } catch { return []; } };
-    let md = `# Eagleye Daily Digest — ${date}\n\n`;
+    let md = `# ${t('export.digest')} / ${date}\n\n`;
     md += `**${d.headline || ''}**\n\n`;
     md += `${d.executive_summary || ''}\n\n`;
-    const sections = [['Top Signals', 'top_signals', 'title'], ['Emerging Topics', 'emerging_topics', 'topic'], ['Repo Watch', 'repo_watch', 'repo'], ['Paper Watch', 'paper_watch', 'paper'], ['Product Watch', 'product_watch', 'product'], ['Risk Watch', 'risk_watch', 'risk']];
+    const sections = [[t('export.top_signals'), 'top_signals', 'title'], [t('export.emerging_topics'), 'emerging_topics', 'topic'], [t('export.repo_watch'), 'repo_watch', 'repo'], [t('export.paper_watch'), 'paper_watch', 'paper'], [t('export.product_watch'), 'product_watch', 'product'], [t('export.risk_watch'), 'risk_watch', 'risk']];
     for (const [label, field, nameKey] of sections) {
       const items = parseList(d[field]);
       if (items.length) { md += `## ${label}\n`; for (const it of items) md += `- ${it[nameKey] || it.title || ''}${it.why || it.reason ? ` — ${it.why || it.reason}` : ''}\n`; md += '\n'; }
@@ -491,10 +534,11 @@ export async function initApp() {
     const btn = document.createElement('button');
     btn.id = 'backToTop';
     btn.innerHTML = '↑';
-    btn.title = 'Back to top';
+    btn.title = t('common.back_top');
+    btn.setAttribute('data-i18n-attr', 'title|common.back_top;aria-label|common.back_top');
     btn.style.cssText = 'position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;border:1px solid var(--rule);background:var(--bg-card);color:var(--accent);font-size:18px;cursor:pointer;display:none;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
     document.body.appendChild(btn);
-    btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
     window.addEventListener('scroll', () => {
       btn.style.display = window.scrollY > 600 ? 'block' : 'none';
     });
@@ -510,7 +554,7 @@ export async function initApp() {
       document.body.appendChild(container);
     }
     const toast = document.createElement('div');
-    const colors = { success: 'var(--accent)', error: '#e74c3c', info: 'var(--fg-dim)' };
+    const colors = { success: 'var(--accent)', error: 'var(--color-error)', info: 'var(--fg-dim)' };
     toast.style.cssText = `background:var(--bg-card);border:1px solid ${colors[type] || colors.info};border-left:3px solid ${colors[type] || colors.info};border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--fg);box-shadow:0 2px 12px rgba(0,0,0,0.3);max-width:320px;pointer-events:auto;opacity:0;transition:opacity 0.3s`;
     toast.textContent = msg;
     container.appendChild(toast);
@@ -528,35 +572,27 @@ export async function initApp() {
     if (existing) { existing.remove(); return; }
 
     const commands = [
-      { label: 'For You', icon: '🎯', url: '/for-you', kw: 'foryou personal feed' },
-      { label: 'News', icon: '📰', url: '/', kw: 'news home' },
-      { label: 'Papers', icon: '📄', url: '/papers', kw: 'papers arxiv' },
-      { label: 'Signals', icon: '📡', url: '/signals', kw: 'signals radar' },
-      { label: 'Digest', icon: '📋', url: '/digest', kw: 'digest daily' },
-      { label: 'Sources', icon: '🔗', url: '/sources', kw: 'sources connectors' },
-      { label: 'Search', icon: '🔍', url: '/search', kw: 'search find' },
-      { label: 'Watchlist', icon: '🔔', url: '/watchlist', kw: 'watchlist subscribe' },
-      { label: 'Saved', icon: '🔖', url: '/saved', kw: 'saved bookmarks' },
-      { label: 'Lens', icon: '🎛️', url: '/lens', kw: 'lens weights personalize' },
-      { label: 'Year Archive', icon: '📅', url: '/year', kw: 'year archive history' },
-      { label: 'Compare', icon: '⚖️', url: '/compare', kw: 'compare competitors' },
-      { label: 'Entity Compare', icon: '📊', url: '/compare-entities', kw: 'entity compare trajectory' },
-      { label: 'Trends / 趋势', icon: '↗', url: '/trends', kw: 'intelligence entities momentum 趋势' },
-      { label: 'System status / 系统状态', icon: '◉', url: '/system-status', kw: 'system metrics status 系统状态' },
-      { label: 'Topics / 专题', icon: '▦', url: '/topics', kw: 'topics knowledge 专题' },
-      { label: 'Help', icon: '❓', url: '/help', kw: 'help faq shortcuts' },
-      { label: 'Settings', icon: '⚙️', url: '/settings', kw: 'settings scheduler llm' },
-      { label: 'Stories', icon: '📚', url: '/stories', kw: 'stories clusters dedup' },
-      { label: 'Tags', icon: '#️⃣', url: '/tags', kw: 'tags hierarchy' },
-    ];
+      ...NAV_LINKS.map(link => ({ label: t(link.i18n), url: link.path, kw: link.path })),
+      ...[['/search', 'nav.search'], ['/saved', 'footer.saved'], ['/lens', 'nav.lens'],
+        ['/year', 'nav.year'], ['/compare', 'nav.compare'], ['/compare-entities', 'nav.entity_compare'],
+        ['/trends', 'nav.trends'], ['/system-status', 'nav.system_status'], ['/help', 'footer.about'],
+        ['/settings', 'nav.settings'], ['/stories', 'nav.stories'], ['/tags', 'nav.tags']]
+        .map(([url, key]) => ({ label: t(key), url, kw: url })),
+    ].filter((command, index, list) => list.findIndex(item => item.url === command.url) === index);
+    const opener = document.activeElement;
+    const close = () => { overlay.remove(); if (opener?.isConnected) opener.focus(); };
 
     const overlay = document.createElement('div');
     overlay.id = 'commandPalette';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding-top:15vh';
+    overlay.className = 'command-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', t('footer.command_palette'));
     overlay.innerHTML = `
-      <div style="background:var(--bg-card);border:1px solid var(--accent);border-radius:8px;width:90%;max-width:600px;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden">
-        <input type="text" id="cmdPaletteInput" placeholder="Search commands... (or type to filter)" style="width:100%;padding:16px 20px;background:transparent;border:none;border-bottom:1px solid var(--rule);color:var(--fg);font-size:16px;font-family:var(--font-sans);outline:none"/>
-        <div id="cmdPaletteResults" style="max-height:400px;overflow-y:auto"></div>
+      <div class="command-panel">
+        <div class="command-search"><input type="search" id="cmdPaletteInput" aria-label="${escapeAttr(t('nav.search_commands'))}" placeholder="${escapeAttr(t('nav.search_commands'))}" autocomplete="off"/>
+        <button type="button" class="icon-btn command-close" aria-label="${escapeAttr(t('common.close'))}">×</button></div>
+        <div id="cmdPaletteResults"></div>
       </div>`;
 
     document.body.appendChild(overlay);
@@ -566,23 +602,37 @@ export async function initApp() {
     const renderResults = (q) => {
       const ql = q.toLowerCase().trim();
       const filtered = ql ? commands.filter(c => c.label.toLowerCase().includes(ql) || c.kw.includes(ql)) : commands;
-      resultsEl.innerHTML = filtered.length === 0 ? '<p style="padding:16px;color:var(--fg-mute)">No matches.</p>' :
-        filtered.map((c, i) => `<a href="${c.url}" style="display:flex;align-items:center;gap:12px;padding:10px 20px;color:var(--fg);text-decoration:none;border-bottom:1px solid var(--rule);${i === 0 ? 'background:var(--accent-dim,rgba(229,130,78,0.1))' : ''}" data-url="${c.url}"><span style="font-size:18px">${c.icon}</span><span>${c.label}</span><span style="margin-left:auto;font-size:10px;color:var(--fg-mute);font-family:var(--font-mono)">${c.kw.split(' ')[0]}</span></a>`).join('');
+      resultsEl.innerHTML = filtered.length === 0 ? `<p class="command-empty">${t('nav.no_matches')}</p>` :
+        filtered.map(c => `<a href="${c.url}" class="command-result" data-url="${c.url}"><span>${escapeHtml(c.label)}</span><span class="command-path">${escapeHtml(c.url)}</span></a>`).join('');
     };
 
     renderResults('');
     input.focus();
 
     input.addEventListener('input', () => renderResults(input.value));
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { overlay.remove(); }
-      else if (e.key === 'Enter') {
-        const first = resultsEl.querySelector('a[data-url]');
-        if (first) router.navigate(first.dataset.url);
-        overlay.remove();
+    overlay.querySelector('.command-close').addEventListener('click', close);
+    overlay.addEventListener('keydown', e => {
+      const links = [...resultsEl.querySelectorAll('a[data-url]')];
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const current = links.indexOf(document.activeElement);
+        const next = e.key === 'ArrowDown' ? current + 1 : current < 0 ? links.length - 1 : current - 1;
+        (links[(next + links.length) % links.length] || input).focus();
+      }
+      if (e.key === 'Enter' && e.target === input && links[0]) { e.preventDefault(); links[0].click(); }
+      if (e.key === 'Tab') {
+        const focusable = [...overlay.querySelectorAll('input, button, a[href]')];
+        const first = focusable[0], last = focusable.at(-1);
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
       }
     });
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) close();
+      const link = e.target.closest('a[data-url]');
+      if (link) { e.preventDefault(); e.stopPropagation(); close(); router.navigate(link.dataset.url); }
+    });
   };
 }
 
@@ -603,7 +653,7 @@ function wireLegacyInteractions() {
         const data = await API.fetchGraph();
         renderGraph(data);
       } catch (err) {
-        canvas.innerHTML = `<p style="color:red; text-align:center; padding-top:100px;">${t('common.graph_error', { msg: err.message })}</p>`;
+        canvas.innerHTML = `<p style="color:var(--color-error); text-align:center; padding-top:100px;">${t('common.graph_error', { msg: err.message })}</p>`;
       }
     });
   }

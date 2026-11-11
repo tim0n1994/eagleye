@@ -5,9 +5,9 @@
  * Split out of pages.js; render functions are unchanged.
  */
 
-import { $, escapeAttr, escapeHtml, normalizeDateStr } from '../utils.js';
-import { getLanguage, t } from '../i18n.js';
-import { API_BASE, fetchJSON, showError, showLoader } from './shared.js';
+import { $, escapeAttr, escapeHtml } from '../utils.js';
+import { formatDate, formatNumber, getLanguage, t } from '../i18n.js';
+import { API_BASE, fetchJSON, getItemDisplayTitle, pickZh, showError, showLoader } from './shared.js';
 
 
 // ─── Entity Trajectory (PRD-1: trend sparkline + burst highlight) ───
@@ -48,10 +48,7 @@ function trajectorySparkline(series) {
     : '';
 
   // X-axis date labels (first / peak / last) so the reader has orientation.
-  const fmt = (value) => {
-    const iso = normalizeDateStr(value);
-    return typeof iso === 'string' ? `${iso.slice(5, 7)}/${iso.slice(8, 10)}` : '';
-  };
+  const fmt = (value) => formatDate(value, { month: '2-digit', day: '2-digit' });
   const labels = [
     { i: 0, anchor: 'start' },
     { i: peakIdx, anchor: 'middle' },
@@ -74,8 +71,9 @@ function trajectorySparkline(series) {
 export async function renderEntityTrajectory(params) {
   const container = $('#pageContent');
   const slug = params?.slug || '';
-  if (!slug) { showError(container, 'No entity'); return; }
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING TRAJECTORY...' : t('common.loading'));
+  const zh = getLanguage() === 'zh';
+  if (!slug) { showError(container, zh ? '未指定实体' : 'No entity specified'); return; }
+  showLoader(container, zh ? '正在加载轨迹…' : 'Loading trajectory...');
 
   try {
     const [seriesData, detailData, wlData] = await Promise.all([
@@ -109,14 +107,14 @@ export async function renderEntityTrajectory(params) {
 
         <div class="topic-detail-actions">
           <button class="action-btn wl-toggle-traj" data-slug="${escapeAttr(slug)}" data-name="${escapeAttr(name)}" data-watched="${watched ? '1' : '0'}">
-            ${watched ? '🔕 ' + t('watchlist.unsub') : '🔔 ' + t('watchlist.sub')}
+            ${watched ? t('watchlist.unsub') : t('watchlist.sub')}
           </button>
-          <button class="action-btn" id="trajExportCsv" data-series='${escapeAttr(JSON.stringify(series || []))}' data-name="${escapeAttr(name)}">⬇ CSV</button>
+          <button class="action-btn" id="trajExportCsv" data-series='${escapeAttr(JSON.stringify(series || []))}' data-name="${escapeAttr(name)}" title="${zh ? '导出 CSV' : 'Export CSV'}">CSV</button>
         </div>
 
         <div class="metrics-stat-grid">
-          ${stat(t('trajectory.mentions_30d'), (stats.total_30d || 0).toLocaleString())}
-          ${stat(t('trajectory.mentions_7d'), (stats.count_7d || 0).toLocaleString())}
+          ${stat(t('trajectory.mentions_30d'), formatNumber(stats.total_30d || 0))}
+          ${stat(t('trajectory.mentions_7d'), formatNumber(stats.count_7d || 0))}
           ${stat(t('industry.wow'), growthPct != null ? (growthPct >= 0 ? '+' : '') + growthPct + '%' : '—', (growthPct || 0) > 0)}
           ${stat(t('trajectory.burst_days'), stats.burst_days || 0, (stats.burst_days || 0) > 0)}
         </div>
@@ -132,8 +130,8 @@ export async function renderEntityTrajectory(params) {
           <ul class="story-members">
             ${items.map(it => `
               <li class="story-member">
-                <span class="story-member-src">${escapeHtml(it.source_label || '')}</span>
-                <a href="${escapeAttr(it.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml((it.title || '').slice(0, 100))}</a>
+                <span class="story-member-src">${escapeHtml(pickZh(it.source_label || '', it.source_label_zh || ''))}</span>
+                <a href="${escapeAttr(it.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(getItemDisplayTitle(it).slice(0, 100))}</a>
               </li>`).join('')}
           </ul>
         </div>` : ''}
@@ -155,7 +153,7 @@ export async function renderEntityTrajectory(params) {
           });
           // Flip the button state in place (no full re-render needed).
           wlBtn.dataset.watched = wasWatched ? '0' : '1';
-          wlBtn.textContent = wasWatched ? '🔔 ' + t('watchlist.sub') : '🔕 ' + t('watchlist.unsub');
+          wlBtn.textContent = wasWatched ? t('watchlist.sub') : t('watchlist.unsub');
         } catch (err) {
           console.warn('Watchlist toggle failed:', err.message);
         }
@@ -198,7 +196,7 @@ export async function renderEntityTrajectory(params) {
           const otherSlug = p.slug_a === slug ? p.slug_b : p.slug_a;
           const otherName = p.slug_a === slug ? p.name_a : p.name_b;
           return `<li class="story-member">` +
-            `<span class="story-member-src">${p.co_count}×</span>` +
+            `<span class="story-member-src">${formatNumber(p.co_count)}×</span>` +
             `<a href="/trajectory/${escapeAttr(otherSlug)}">${escapeHtml(otherName)}</a>` +
             `</li>`;
         }).join('') + `</ul>`;

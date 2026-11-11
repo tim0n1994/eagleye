@@ -36,6 +36,7 @@ const registerTaxonomyRoutes = require('./taxonomy');
 function registerRoutes(routes) {
   registerApiKeysRoutes(routes);
   registerAuthRoutes(routes);
+  require('./billing')(routes);
   registerSignalsRoutes(routes);
   registerDigestRoutes(routes);
   registerDiscoveryRoutes(routes);

@@ -62,6 +62,9 @@ export function setLanguage(lang) {
     document.documentElement.setAttribute('lang', lang === 'zh' ? 'zh-CN' : 'en');
     document.documentElement.setAttribute('data-lang', lang);
   }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('eagleye:langchange', { detail: { language: lang } }));
+  }
   _listeners.forEach((fn) => {
     try {
       fn(lang);
@@ -80,7 +83,24 @@ export function onLanguageChange(fn) {
   return () => _listeners.delete(fn);
 }
 
-const LANGS = ['en', 'zh'];
+export function getLocale() {
+  return _current === 'zh' ? 'zh-CN' : 'en-US';
+}
+
+export function formatNumber(value, options) {
+  return new Intl.NumberFormat(getLocale(), options).format(value);
+}
+
+export function formatDate(value, options) {
+  // Calendar dates have no timezone: interpret them in the reader's local day.
+  const raw = String(value ?? '');
+  const calendar = /^(\d{4})-?(\d{2})-?(\d{2})$/.exec(raw);
+  const date = value instanceof Date ? value : calendar
+    ? new Date(Number(calendar[1]), Number(calendar[2]) - 1, Number(calendar[3]))
+    : new Date(value);
+  if (value === null || value === undefined || !Number.isFinite(date.getTime())) return t('common.unknown');
+  return new Intl.DateTimeFormat(getLocale(), options).format(date);
+}
 
 /**
  * Walk the current DOM and replace any `data-i18n` or `data-i18n-attr` elements
@@ -88,12 +108,16 @@ const LANGS = ['en', 'zh'];
  */
 export function applyI18n(root) {
   const scope = root || document;
-  scope.querySelectorAll('[data-i18n]').forEach((el) => {
+  const elements = selector => [
+    ...(scope.matches?.(selector) ? [scope] : []),
+    ...scope.querySelectorAll(selector),
+  ];
+  elements('[data-i18n]').forEach((el) => {
     const key = el.getAttribute('data-i18n');
     if (!key) return;
     el.textContent = t(key);
   });
-  scope.querySelectorAll('[data-i18n-attr]').forEach((el) => {
+  elements('[data-i18n-attr]').forEach((el) => {
     const spec = el.getAttribute('data-i18n-attr');
     if (!spec) return;
     spec.split(';').forEach((pair) => {

@@ -85,7 +85,7 @@ class PageRouter {
     let params = {};
     // Merge all query params into params object
     for (const [key, value] of searchParams) {
-      params[key] = decodeURIComponent(value);
+      params[key] = value;
     }
 
     if (this._stringRoutes[path]) {
@@ -175,7 +175,7 @@ class PageRouter {
     for (const cb of this.beforeRouteCallbacks) {
       if (await cb(found.path, found.params) === false) return;
     }
-    found.renderFn(found.params);
+    await found.renderFn(found.params);
     // Re-focus + re-announce on language-change rerenders too, so the title
     // and live region reflect the new language.
     this._moveFocusToMain();

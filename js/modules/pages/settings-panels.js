@@ -9,6 +9,7 @@
 
 import { escapeAttr, escapeHtml } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
+import { st } from '../i18n/settings-extra.js';
 import { API } from '../api.js';
 import { API_BASE, fetchJSON } from './shared.js';
 
@@ -42,7 +43,7 @@ export async function refreshUserManagement() {
     const data = await API.adminUsers();
     const users = data.users || [];
     panel.innerHTML = `
-      <h3 class="settings-card-title">👥 ${zh ? '用户管理' : 'User Management'}</h3>
+      <h3 class="settings-card-title">${zh ? '用户管理' : 'User Management'}</h3>
       <table class="user-mgmt-table">
         <thead><tr>
           <th>${zh ? '邮箱' : 'Email'}</th>
@@ -60,8 +61,8 @@ export async function refreshUserManagement() {
               <td style="font-size:11px;color:var(--fg-mute)">${(u.created_at || '').slice(0, 10)}</td>
               <td>
                 ${u.id !== currentUser.id ? `
-                  <button class="user-mgmt-action" onclick="window.__toggleRole('${u.id}','${u.role}')">${u.role === 'admin' ? '↓ user' : '↑ admin'}</button>
-                  <button class="user-mgmt-action" onclick="window.__toggleStatus('${u.id}','${u.status}')">${u.status === 'active' ? '🚫 ' + (zh ? '禁用' : 'Disable') : '✅ ' + (zh ? '启用' : 'Enable')}</button>
+                  <button class="user-mgmt-action" onclick="window.__toggleRole('${u.id}','${u.role}')">${u.role === 'admin' ? st('settingsExtra.role_target_user') : st('settingsExtra.role_target_admin')}</button>
+                  <button class="user-mgmt-action" onclick="window.__toggleStatus('${u.id}','${u.status}')">${u.status === 'active' ? '' + (zh ? '禁用' : 'Disable') : '' + (zh ? '启用' : 'Enable')}</button>
                 ` : '<span style="color:var(--fg-mute)">—</span>'}
               </td>
             </tr>
@@ -103,7 +104,7 @@ export async function refreshApiKeys() {
     const keys = data.keys || [];
     const mask = (k) => `${k.slice(0, 8)}…${k.slice(-4)}`;
     panel.innerHTML = `
-      <h3 class="settings-card-title">🔑 ${zh ? '服务 API Key' : 'Service API Keys'}</h3>
+      <h3 class="settings-card-title">${zh ? '服务 API Key' : 'Service API Keys'}</h3>
       <p class="subtle" style="margin:4px 0 10px">${zh
         ? '供外部服务（如 Argus）调用 /api/signals 等接口。撤销即时生效。'
         : 'For service-to-service callers (e.g. Argus) hitting /api/signals. Revocation is immediate.'}</p>
@@ -117,7 +118,7 @@ export async function refreshApiKeys() {
       <table class="user-mgmt-table">
         <thead><tr>
           <th>${zh ? '名称' : 'Name'}</th>
-          <th>Key</th>
+          <th>${st('settingsExtra.api_key_column')}</th>
           <th>${zh ? '创建' : 'Created'}</th>
           <th>${zh ? '最后使用' : 'Last used'}</th>
           <th>${zh ? '状态' : 'Status'}</th>
@@ -132,8 +133,8 @@ export async function refreshApiKeys() {
               <td style="font-size:11px;color:var(--fg-mute)">${(k.last_used_at || '').slice(0, 16) || '—'}</td>
               <td><span class="user-mgmt-badge ${k.active ? 'active' : 'disabled'}">${k.active ? (zh ? '启用' : 'active') : (zh ? '已撤销' : 'revoked')}</span></td>
               <td>
-                <button class="user-mgmt-action" onclick="window.__copyApiKey('${escapeAttr(k.key)}')">📋 ${zh ? '复制' : 'Copy'}</button>
-                ${k.active ? `<button class="user-mgmt-action" onclick="window.__revokeApiKey('${escapeAttr(k.key)}')">🚫 ${zh ? '撤销' : 'Revoke'}</button>` : ''}
+                <button class="user-mgmt-action" onclick="window.__copyApiKey('${escapeAttr(k.key)}')">${zh ? '复制' : 'Copy'}</button>
+                ${k.active ? `<button class="user-mgmt-action" onclick="window.__revokeApiKey('${escapeAttr(k.key)}')">${zh ? '撤销' : 'Revoke'}</button>` : ''}
               </td>
             </tr>
           `).join('')}
@@ -179,7 +180,7 @@ export async function refreshApiKeys() {
 };
 
 (/** @type {any} */ (window)).__copyApiKey = async (key) => {
-  try { await navigator.clipboard.writeText(key); } catch { prompt('Copy:', key); }
+  try { await navigator.clipboard.writeText(key); } catch { prompt(st('settingsExtra.copy_prompt'), key); }
 };
 
 // System health dashboard: shows enrichment/translation backlogs, coverage, DB size.
@@ -224,11 +225,11 @@ export async function refreshSystemHealth() {
       `<p class="subtle">${zh ? '最近存入条目' : 'Last item fetched'}: ${escapeHtml(s.latest_item_fetched_at || unknown)}</p>` +
       `<p class="subtle">${zh ? '有效摘要条目' : 'Items with valid summaries'}: ${number(s.enrichment_success ?? s.summaries)} / ${number(s.total_items)} · ${zh ? '可重试' : 'Retryable'}: ${number(s.enrichment_backlog)} · ${zh ? '重试耗尽' : 'Retries exhausted'}: ${number(s.enrichment_exhausted ?? s.poisoned_items)}</p>` +
       (s.total_items === 0 ? `<p class="subtle">${zh ? '无数据，覆盖率不适用。' : 'No data; coverage is not applicable.'}</p>` : '') +
-      (s.translation_backlog > 0 ? `<p class="subtle">⚠ ${zh ? '翻译积压' : 'Translation backlog'}: ${s.translation_backlog}</p>` : '') +
+      (s.translation_backlog > 0 ? `<p class="subtle">${zh ? '翻译积压' : 'Translation backlog'}: ${s.translation_backlog}</p>` : '') +
       `<p class="subtle">${zh ? '数据库大小' : 'DB size'}: ${number(s.db_size_mb)} MB</p>` +
       (s.vector_models || []).map(v => `<p class="subtle">${escapeHtml(v.model_name)} · ${escapeHtml(v.vector_type || unknown)} · ${v.kind === 'hash' ? (zh ? '哈希向量（非语义模型）' : 'Hash vectors (not semantic embeddings)') : v.kind === 'semantic' ? (zh ? '语义向量' : 'Semantic vectors') : unknown}: ${number(v.items)} / ${number(s.total_items)} (${pct(v.items, s.total_items)})</p>`).join('') +
       `<p class="subtle">${zh ? '最近流水线' : 'Latest pipeline'}: ${s.last_pipeline ? escapeHtml(s.last_pipeline.status) + ' · ' + escapeHtml(s.last_pipeline.completed_at || s.last_pipeline.created_at || unknown) : (zh ? '无运行记录' : 'No recorded run')}${s.last_pipeline?.stages_known === false ? ` · ${zh ? '阶段详情未知' : 'Stage details unknown'}` : ''}</p>` +
-      (s.last_pipeline?.failed_stages || []).map(stage => `<p class="subtle">⚠ ${escapeHtml(stage.key || unknown)}: ${escapeHtml(stage.error || (zh ? '阶段失败' : 'Stage failed'))}</p>`).join('') +
+      (s.last_pipeline?.failed_stages || []).map(stage => `<p class="subtle">${escapeHtml(stage.key || unknown)}: ${escapeHtml(stage.error || (zh ? '阶段失败' : 'Stage failed'))}</p>`).join('') +
       `</div>` +
       (s.connectors && s.connectors.length > 0
         ? `<div class="metrics-block" style="margin-top:12px">` +
@@ -347,22 +348,20 @@ export async function refreshLLMStatus() {
     const res = await fetch('/api/settings/llm');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (!data || !data.config) throw new Error('No config returned');
-
     const cfg = data.config;
-    const sourceLabel = cfg.source === 'env' ? 'ENV FALLBACK' : (cfg.source || 'RUNTIME');
-
-    badge.textContent = `${String(cfg.provider || 'none').toUpperCase()} · ${sourceLabel} · ${getLanguage() === 'zh' ? '配置记录，健康未验证' : 'Configured; health unverified'}`;
+    if (!data || !data.config) throw new Error(st('settingsExtra.no_config'));
+    const sourceLabel = cfg.source === 'env' ? t('settings.source_env') : (cfg.source ? cfg.source : t('settings.source_runtime'));
+    badge.textContent = `${String(cfg.provider || 'none').toUpperCase()} · ${sourceLabel} · ${st('settingsExtra.configured_health')}`;
     badge.className = 'settings-card-badge';
 
     card.innerHTML = `
       <div class="kv-grid">
-        <div class="kv"><label>Provider</label><span>${escapeHtml(cfg.provider || '—')}</span></div>
-        <div class="kv"><label>Model</label><span>${escapeHtml(cfg.model || '—')}</span></div>
-        <div class="kv"><label>Base URL</label><span class="mono">${escapeHtml(cfg.base_url || '—')}</span></div>
-        <div class="kv"><label>API Key</label><span class="mono">${cfg.api_key ? '••••' : '—'}</span></div>
-        <div class="kv"><label>Source</label><span>${escapeHtml(cfg.source || 'env')}</span></div>
-        <div class="kv"><label>Updated</label><span class="mono">${escapeHtml(cfg.updated_at || '—')}</span></div>
+        <div class="kv"><label>${t('settings.fields_provider')}</label><span>${escapeHtml(cfg.provider || '—')}</span></div>
+        <div class="kv"><label>${t('settings.fields_model')}</label><span>${escapeHtml(cfg.model || '—')}</span></div>
+        <div class="kv"><label>${t('settings.fields_base_url')}</label><span class="mono">${escapeHtml(cfg.base_url || '—')}</span></div>
+        <div class="kv"><label>${t('settings.fields_api_key')}</label><span class="mono">${cfg.api_key ? '••••' : '—'}</span></div>
+        <div class="kv"><label>${t('settings.source')}</label><span>${escapeHtml(cfg.source || 'env')}</span></div>
+        <div class="kv"><label>${t('settings.updated')}</label><span class="mono">${escapeHtml(cfg.updated_at || '—')}</span></div>
       </div>
     `;
 
@@ -376,7 +375,7 @@ export async function refreshLLMStatus() {
   } catch (err) {
     badge.textContent = t('common.error_cap');
     badge.className = 'settings-card-badge error';
-    const failedToLoad = getLanguage() === 'zh' ? `加载失败: ${escapeHtml(err.message)}` : `Failed to load: ${escapeHtml(err.message)}`;
+    const failedToLoad = st('settingsExtra.failed_load', { msg: escapeHtml(err.message) });
     card.innerHTML = `<div class="empty-state">${failedToLoad}</div>`;
   }
 }

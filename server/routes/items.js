@@ -28,7 +28,7 @@ function register(routes) {
     const limit = parseInt(parsed.query.limit || '50', 10);
     const offset = parseInt(parsed.query.offset || '0', 10);
 
-    let sql = `SELECT i.*, s.label as source_label, s.slug as source_slug FROM information_items i JOIN sources s ON i.source_id = s.id WHERE 1=1`;
+    let sql = `SELECT i.*, s.label as source_label, s.label_zh as source_label_zh, s.slug as source_slug FROM information_items i JOIN sources s ON i.source_id = s.id WHERE 1=1`;
     const params = [];
 
     // Build the WHERE clause once so we can reuse it for the COUNT.
@@ -148,11 +148,11 @@ function register(routes) {
     }
 
     const rows = db.prepare(`
-      SELECT i.*, s.label as source_label, s.slug as source_slug,
+      SELECT i.*, s.label as source_label, s.label_zh as source_label_zh, s.slug as source_slug,
              pm.paper_id, pm.provider, pm.arxiv_id, pm.doi, pm.abstract,
              pm.authors_json, pm.categories_json, pm.pdf_url, pm.landing_url,
              pm.code_url, pm.tasks_json, pm.venue,
-             ais.ai_title_zh, ais.one_liner_zh, ais.short_summary_zh, ais.confidence
+             ais.ai_title, ais.ai_title_zh, ais.one_liner, ais.one_liner_zh, ais.short_summary, ais.short_summary_zh, ais.confidence
       FROM information_items i
       JOIN sources s ON s.id = i.source_id
       LEFT JOIN paper_metadata pm ON pm.item_id = i.id
@@ -181,10 +181,13 @@ function register(routes) {
       id: row.id,
       title: row.title,
       title_zh: row.ai_title_zh || '',
+      one_liner: row.one_liner || '',
+      short_summary: row.short_summary || '',
       one_liner_zh: row.one_liner_zh || '',
       short_summary_zh: row.short_summary_zh || '',
       abstract: row.abstract || row.original_summary || '',
       source_label: row.source_label,
+      source_label_zh: row.source_label_zh,
       source_slug: row.source_slug,
       canonical_url: row.landing_url || row.canonical_url,
       pdf_url: row.pdf_url || '',
@@ -263,7 +266,7 @@ function register(routes) {
 
     const itemId = params?.id || '';
     const item = db.prepare(`
-      SELECT i.*, s.label as source_label, s.slug as source_slug
+      SELECT i.*, s.label as source_label, s.label_zh as source_label_zh, s.slug as source_slug
       FROM information_items i
       JOIN sources s ON i.source_id = s.id
       WHERE i.id = ?
@@ -346,7 +349,7 @@ function register(routes) {
     if (!db) return sendError(res, 500, 'Database not available');
 
     const items = db.prepare(`
-      SELECT i.*, s.label as source_label, s.slug as source_slug, sv.note, sv.created_at as saved_at
+      SELECT i.*, s.label as source_label, s.label_zh as source_label_zh, s.slug as source_slug, sv.note, sv.created_at as saved_at
       FROM saved_items sv
       JOIN information_items i ON sv.item_id = i.id
       JOIN sources s ON i.source_id = s.id

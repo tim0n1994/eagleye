@@ -1,11 +1,11 @@
 import { $, escapeHtml as h, escapeAttr as a } from '../utils.js';
 import { getLanguage } from '../i18n.js';
 import { router } from '../router.js';
-import { showLoader, showError } from './shared.js';
+import { getItemDisplayTitle, pickZh, showLoader, showError } from './shared.js';
 
 const text = (zh,en) => getLanguage() === 'zh' ? zh : en;
 const name = row => getLanguage() === 'zh' ? row.name_zh || row.name || row.slug : row.name || row.name_zh || row.slug;
-const title = item => getLanguage() === 'zh' ? item.title_zh || item.title : item.title;
+const title = item => getItemDisplayTitle(item);
 const safeUrl = raw => { try { const u = new URL(raw); return ['http:','https:'].includes(u.protocol) ? u.href : '#'; } catch { return '#'; } };
 function link(path, params, changes = {}) {
   const q = new URLSearchParams(params);
@@ -17,7 +17,7 @@ function link(path, params, changes = {}) {
 }
 function followButton(kind,value,label,subs) {
   const active = subs.some(s => s.kind === kind && s.value === value);
-  return `<button type="button" class="radar-follow ${active ? 'is-following' : ''}" data-follow-kind="${a(kind)}" data-follow-value="${a(value)}" data-follow-label="${a(label)}" aria-pressed="${active}">${active ? text('已关注','Following') : text('＋ 关注','＋ Follow')}</button>`;
+  return `<button type="button" class="radar-follow ${active ? 'is-following' : ''}" data-follow-kind="${a(kind)}" data-follow-value="${a(value)}" data-follow-label="${a(label)}" aria-pressed="${active}">${active ? text('已关注','Following') : text('+ 关注','+ Follow')}</button>`;
 }
 function empty(message) {
   return `<div class="radar-empty"><h3>${h(message)}</h3><p>${text('可调整日期或时间范围，或从专题中选择关注方向。','Change the date or period, or follow a subject from Topics.')}</p><a href="/topics">${text('浏览专题 →','Browse topics →')}</a></div>`;
@@ -53,12 +53,12 @@ function eventCards(data,params,subs) {
     const summary = getLanguage() === 'zh' ? item.one_liner_zh || item.one_liner : item.one_liner || item.one_liner_zh;
     const description = summary || item.original_summary || '';
     return `<article class="radar-event">
-      <div class="radar-event-meta"><span>${h(item.source_label)}</span><span>${h(item.digest_date)}</span><span>${event.source_count} ${text('个采集来源','collection sources')} · ${event.evidence_count} ${text('条材料','records')}</span></div>
+      <div class="radar-event-meta"><span>${h(pickZh(item.source_label,item.source_label_zh))}</span><span>${h(item.digest_date)}</span><span>${event.source_count} ${text('个采集来源','collection sources')} · ${event.evidence_count} ${text('条材料','records')}</span></div>
       <h3><a href="${a(safeUrl(item.canonical_url))}" target="_blank" rel="noopener noreferrer">${h(title(item))} <span aria-hidden="true">↗</span></a></h3>
       ${description ? `<p class="radar-summary"><span>${summary ? text('AI 摘要','AI summary') : text('来源摘要','Source excerpt')}</span> ${h(description)}</p>` : ''}
       <div class="radar-tags">${event.topics.slice(0,4).map(slug => `<a href="${a(link(`/topics/${encodeURIComponent(slug)}`,{date:data.meta.date,days:data.meta.days}))}">${h(name(topicMap.get(slug) || {slug}))}</a>`).join('')}</div>
       ${event.entities.length ? `<div class="radar-objects">${event.entities.slice(0,3).map(e => `<span><a href="${a(link('/discover',{date:data.meta.date,days:data.meta.days,entity:e.slug}))}">${h(e.name)}</a>${followButton('entity',e.slug,e.name,subs)}</span>`).join('')}</div>` : ''}
-      <details class="radar-evidence"><summary>${text('查看合并依据与原文','Grouping reasons & originals')} (${event.evidence_count})</summary><ul>${event.evidence.map(e => `<li><a href="${a(safeUrl(e.canonical_url))}" target="_blank" rel="noopener noreferrer">${h(e.source_label)} · ${h(title(e))}</a><small>${h(({url:text('同一规范链接','Same canonical URL'),doi:text('同一 DOI','Same DOI'),arxiv:text('同一论文','Same paper'),title_similarity:text('近三天标题高度相似（规则匹配）','Highly similar titles within 3 days'),standalone:text('事件锚点','Event anchor')})[e.match_reason] || text('规范链接归组','Canonical URL grouping'))} · ${text('发布','Published')}: ${h(e.published_at || text('未知','Unknown'))} · ${text('收录','Collected')}: ${h(e.digest_date)}</small></li>`).join('')}</ul>${event.evidence_truncated ? `<p>${text('仅展开前 12 条材料。','Showing the first 12 records.')}</p>` : ''}<p>${text('相同原文链接合并展示；不同链接不会自动推断为同一事件。','Records sharing an original URL are grouped. Different URLs are not inferred to be the same event.')}</p></details>
+      <details class="radar-evidence"><summary>${text('查看合并依据与原文','Grouping reasons & originals')} (${event.evidence_count})</summary><ul>${event.evidence.map(e => `<li><a href="${a(safeUrl(e.canonical_url))}" target="_blank" rel="noopener noreferrer">${h(pickZh(e.source_label,e.source_label_zh))} · ${h(title(e))}</a><small>${h(({url:text('同一规范链接','Same canonical URL'),doi:text('同一 DOI','Same DOI'),arxiv:text('同一论文','Same paper'),title_similarity:text('近三天标题高度相似（规则匹配）','Highly similar titles within 3 days'),standalone:text('事件锚点','Event anchor')})[e.match_reason] || text('规范链接归组','Canonical URL grouping'))} · ${text('发布','Published')}: ${h(e.published_at || text('未知','Unknown'))} · ${text('收录','Collected')}: ${h(e.digest_date)}</small></li>`).join('')}</ul>${event.evidence_truncated ? `<p>${text('仅展开前 12 条材料。','Showing the first 12 records.')}</p>` : ''}<p>${text('相同原文链接合并展示；不同链接不会自动推断为同一事件。','Records sharing an original URL are grouped. Different URLs are not inferred to be the same event.')}</p></details>
     </article>`;
   }).join('')}</div>` : empty(text('这个范围内没有匹配的材料','No matching records in this period'));
 }
@@ -127,7 +127,7 @@ async function render(view,params = {}) {
         ${data.related.length ? `<div class="radar-tags">${data.related.map(t => `<a href="${a(link(`/topics/${encodeURIComponent(t.slug)}`,{date:data.meta.date,days:data.meta.days}))}">${h(name(t))}</a>`).join('')}</div>` : ''}
         ${data.entities.length ? `<details class="radar-topic-entities"><summary>${text('相关实体','Related entities')} (${data.entities.length})</summary><div class="radar-objects">${data.entities.map(e => `<span><a href="${a(link('/discover',{date:data.meta.date,days:data.meta.days,entity:e.slug}))}">${h(e.name)}</a>${followButton('entity',e.slug,e.name,subs)}</span>`).join('')}</div></details>` : ''}` : ''}
       ${eventCards(data,params,subs)}`;
-    container.innerHTML = `<section class="radar-page"><header class="radar-header"><div><p class="radar-eyebrow">EAGLEYE / ${text('情报工作台','INTELLIGENCE')}</p>${view === 'topic' ? '<a href="/topics" class="radar-back">← '+text('全部专题','All topics')+'</a>' : ''}<h1>${h(headings[view])}</h1><p>${h(descriptions[view])}</p></div><a class="radar-archive" href="/news">${text('查看每日原始信息流 ↗','Daily source archive ↗')}</a></header>
+    container.innerHTML = `<section class="radar-page"><header class="radar-header"><div><p class="radar-eyebrow">EAGLEYE / ${text('情报工作台','Intelligence')}</p>${view === 'topic' ? '<a href="/topics" class="radar-back">← '+text('全部专题','All topics')+'</a>' : ''}<h1>${h(headings[view])}</h1><p>${h(descriptions[view])}</p></div><a class="radar-archive" href="/news">${text('查看每日原始信息流 ↗','Daily source archive ↗')}</a></header>
       ${controls(view,params,data)}${coverage(data.meta)}<p class="radar-feedback" role="status" aria-live="polite"></p>${body}${!['topics','system'].includes(view) ? pagination(data,params) : ''}</section>`;
     container.querySelector('#radarFilters').addEventListener('submit',event => {
       event.preventDefault();
@@ -145,7 +145,7 @@ async function render(view,params = {}) {
         const response = await fetch('/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,value,label,add}),signal:controller.signal});
         if (!response.ok) throw new Error(text('关注保存失败，请重试。','Could not save follow preference. Please retry.'));
         if (controller.signal.aborted) return;
-        matching.forEach(b => { b.setAttribute('aria-pressed',String(add));b.classList.toggle('is-following',add);b.textContent = add ? text('已关注','Following') : text('＋ 关注','＋ Follow'); });
+        matching.forEach(b => { b.setAttribute('aria-pressed',String(add));b.classList.toggle('is-following',add);b.textContent = add ? text('已关注','Following') : text('+ 关注','+ Follow'); });
         feedback.textContent = add ? text('已加入关注。','Added to Following.') : text('已取消关注。','Unfollowed.');
         if (view === 'following') { controller.abort();render(view,params); }
       } catch (error) { if (!controller.signal.aborted) feedback.textContent = error.message; }

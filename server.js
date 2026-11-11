@@ -332,6 +332,26 @@ async function handleRequest(req, res) {
     const routeMap = {};
     registerRoutes(routeMap);
 
+    const publicApi = new Set(['/api/auth/forgot-password','/api/auth/reset-password','/api/auth/login','/api/auth/register','/api/auth/resend','/api/auth/verify','/api/auth/me','/api/auth/logout','/api/billing/plans','/api/billing/webhook']);
+    const isFeed = /\/feed\.xml$/.test(pathname) || /^\/feed\//.test(pathname) || ['/feed.xml','/rss.xml','/feed.json','/opml.xml','/rss-proxy','/email/digest'].includes(pathname);
+    if ((pathname.startsWith('/api/') && !publicApi.has(pathname)) || isFeed) {
+      const auth = require('./server/services/auth');
+      const billing = require('./server/services/billing');
+      let user = auth.getSessionUser(req);
+      let apiKey = false;
+      if (!user) {
+        const bearer = (req.headers.authorization || '').replace(/^Bearer /,'');
+        const key = bearer || (isFeed ? parsed.query.key : '');
+        if (key) { user=auth.getApiKeyOwner(key); apiKey=!!user; }
+      }
+      if (!user) return sendError(res,401,'Authentication required');
+      req.user=user;
+      if (!pathname.startsWith('/api/billing/')) {
+        const denial=billing.gate(user,pathname,apiKey || isFeed);
+        if (denial) return sendJSON(res,402,denial);
+      }
+    }
+
     // --- Clean feed URL aliases (§13): rewrite public feed paths to their
     // /api/ handlers so /topics/:slug/feed.xml etc. work as spec'd. Done before
     // the /api/ check so the alias is transparent to everything below.
@@ -359,6 +379,7 @@ async function handleRequest(req, res) {
 
       // ─── Auth gate: all /api/ routes require login except auth endpoints ───
       const AUTH_WHITELIST = new Set([
+        '/api/billing/plans', '/api/billing/webhook',
         '/api/auth/forgot-password', '/api/auth/reset-password',
         '/api/auth/login', '/api/auth/register', '/api/auth/resend', '/api/auth/verify', '/api/auth/me', '/api/auth/logout',
       ]);
@@ -614,6 +635,7 @@ async function handleRequest(req, res) {
 }
 
 // --- Start Server ---
+require('./server/services/billing').db();
 const server = http.createServer(handleRequest);
 
 // Graceful error handling: EADDRINUSE used to crash-loop the server (each

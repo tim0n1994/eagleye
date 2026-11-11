@@ -6,15 +6,16 @@
  */
 
 import { $, escapeAttr, escapeHtml, normalizeDateStr } from '../utils.js';
-import { getLanguage, t } from '../i18n.js';
-import { API_BASE, fetchJSON, showError, showLoader } from './shared.js';
+import { formatNumber, t } from '../i18n.js';
+import { API_BASE, fetchJSON, getItemDisplayTitle, localizedDate, showError, showLoader } from './shared.js';
+import { monthLabel, readerError, rt, signalLabel, xt } from '../i18n/reader-extra.js';
 
 
 // ─── By Year Archive (§7.8) ─────────────────────────────
 
 export async function renderYearArchive(_params) {
   const container = $('#pageContent');
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING YEARS...' : t('common.loading'));
+  showLoader(container, xt('reader.loading_years'));
   try {
     const data = await fetchJSON(`${API_BASE}/year`);
     const years = data.years || [];
@@ -27,56 +28,56 @@ export async function renderYearArchive(_params) {
         <a href="/year/${escapeAttr(y.year)}" class="year-card">
           <div class="year-card-year">${escapeHtml(y.year)}</div>
           <div class="year-card-stats">
-            <span>📊 ${y.items.toLocaleString()} ${t('year.items')}</span>
-            <span>🔗 ${y.sources} ${t('year.sources')}</span>
+            <span>${formatNumber(y.items)} ${t('year.items')}</span>
+            <span>${formatNumber(y.sources)} ${t('year.sources')}</span>
           </div>
         </a>`).join('') +
       `</div></section>`;
-  } catch (err) { showError(container, err.message); }
+  } catch (err) { showError(container, readerError(err.message)); }
 }
 
 export async function renderYearDetail(params) {
   const container = $('#pageContent');
   const year = params?.year || '';
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING YEAR...' : t('common.loading'));
+  showLoader(container, xt('reader.loading_year'));
   try {
     const data = await fetchJSON(`${API_BASE}/year/${encodeURIComponent(year)}`);
-    if (data.error) { showError(container, data.error); return; }
+    if (data.error) { showError(container, readerError(data.error)); return; }
 
     const maxItems = Math.max(1, ...(data.by_month || []).map(x => x.items));
     const monthBar = (m) => {
       const pct = Math.round((m.items / maxItems) * 100);
-      return `<div class="metrics-bar-row"><span class="metrics-bar-label">${escapeHtml(m.month)}</span>` +
+      return `<div class="metrics-bar-row"><span class="metrics-bar-label">${escapeHtml(monthLabel(m.month))}</span>` +
         `<div class="metrics-bar"><div class="metrics-bar-fill" style="width:${pct}%"></div></div>` +
-        `<span class="metrics-bar-pct">${m.items}</span></div>`;
+        `<span class="metrics-bar-pct">${formatNumber(m.items)}</span></div>`;
     };
-    const srcRow = (s) => `<tr><td>${escapeHtml(s.label)}</td><td>${s.items}</td><td>${s.high_alpha || 0}</td></tr>`;
+    const srcRow = (s) => `<tr><td>${escapeHtml(String(s.label || ''))}</td><td>${formatNumber(s.items)}</td><td>${formatNumber(s.high_alpha || 0)}</td></tr>`;
     const itemRow = (it) =>
       `<li class="story-member"><span class="story-member-src">${escapeHtml(it.source_label || '')}</span>` +
-      `<a href="/signals/${escapeAttr(it.id)}">${escapeHtml((it.title || '').slice(0, 100))}</a></li>`;
+      `<a href="/signals/${escapeAttr(it.id)}">${escapeHtml(getItemDisplayTitle(it).slice(0, 100))}</a></li>`;
 
     container.innerHTML =
       `<section class="page-section">` +
       `<div class="page-header"><a href="/year" class="anchor-link">← ${t('year.title')}</a>` +
-      `<h2 class="page-title">${escapeHtml(year)} <small>${data.total.toLocaleString()} ${t('year.items')}</small></h2></div>` +
+      `<h2 class="page-title">${escapeHtml(year)} <small>${formatNumber(data.total)} ${t('year.items')}</small></h2></div>` +
       `<div class="metrics-block"><h3 class="metrics-block-title">${t('year.by_month')}</h3>` +
       `<ul class="metrics-bars">${(data.by_month || []).map(monthBar).join('')}</ul></div>` +
       `<div class="metrics-block"><h3 class="metrics-block-title">${t('year.top_types')}</h3>` +
-      `<div class="metrics-stat-grid">${(data.top_types || []).map(ty => `<div class="metric-stat"><div class="metric-stat-value">${ty.count}</div><div class="metric-stat-label">${escapeHtml(ty.signal_type.replace(/_/g, ' '))}</div></div>`).join('')}</div></div>` +
+      `<div class="metrics-stat-grid">${(data.top_types || []).map(ty => `<div class="metric-stat"><div class="metric-stat-value">${formatNumber(ty.count)}</div><div class="metric-stat-label">${escapeHtml(signalLabel(ty.signal_type))}</div></div>`).join('')}</div></div>` +
       `<div class="metrics-block"><h3 class="metrics-block-title">${t('year.by_source')}</h3>` +
       `<table class="metrics-table"><thead><tr><th>${t('industry.source')}</th><th>${t('year.items')}</th><th>${t('year.high_alpha')}</th></tr></thead>` +
       `<tbody>${(data.by_source || []).map(srcRow).join('')}</tbody></table></div>` +
       `<div class="metrics-block"><h3 class="metrics-block-title">${t('year.top_items')}</h3>` +
       `<ul class="story-members">${(data.top_items || []).slice(0, 15).map(itemRow).join('')}</ul></div>` +
       `</section>`;
-  } catch (err) { showError(container, err.message); }
+  } catch (err) { showError(container, readerError(err.message)); }
 }
 
 // ─── Compare (§7.9) ─────────────────────────────────────
 
 export async function renderCompare(_params) {
   const container = $('#pageContent');
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING COMPARE...' : t('common.loading'));
+  showLoader(container, xt('reader.loading_compare'));
   try {
     const data = await fetchJSON(`${API_BASE}/compare`);
     const dims = data.dimensions || [];
@@ -92,17 +93,17 @@ export async function renderCompare(_params) {
       `<table class="compare-table"><thead><tr><th>${t('compare.feature')}</th>` +
       competitors.map(c => `<th>${compLabels[c]}</th>`).join('') +
       `</tr></thead><tbody>` +
-      dims.map(d => `<tr><td class="compare-feature">${escapeHtml(d.label)}</td>` +
-        competitors.map(c => `<td class="${c === 'eagleye' ? 'compare-eagleye' : ''}">${escapeHtml(d[c] || '—')}</td>`).join('') +
+      dims.map(d => `<tr><td class="compare-feature">${escapeHtml(rt(d.label))}</td>` +
+        competitors.map(c => `<td class="${c === 'eagleye' ? 'compare-eagleye' : ''}">${escapeHtml(rt(d[c] || '—'))}</td>`).join('') +
         `</tr>`).join('') +
       `</tbody></table></div>` +
       `<div class="metrics-block"><h3 class="metrics-block-title">${t('compare.personas')}</h3>` +
       `<div class="persona-grid">` +
-      personas.map(p => `<div class="persona-card"><h4>${escapeHtml(p.label)}</h4>` +
+      personas.map(p => `<div class="persona-card"><h4>${escapeHtml(rt(p.label))}</h4>` +
         `<p class="persona-best"><strong>${escapeHtml(compLabels[p.best] || p.best)}</strong></p>` +
-        `<p class="persona-why">${escapeHtml(p.why)}</p></div>`).join('') +
+        `<p class="persona-why">${escapeHtml(rt(p.why))}</p></div>`).join('') +
       `</div></div></section>`;
-  } catch (err) { showError(container, err.message); }
+  } catch (err) { showError(container, readerError(err.message)); }
 }
 
 // ─── Entity Compare (multi-entity trajectory overlay) ──
@@ -117,14 +118,14 @@ export async function renderCompareEntities(_params) {
 
   container.innerHTML =
     `<section class="page-section">` +
-    `<div class="page-header"><h2 class="page-title">${getLanguage() === 'zh' ? '实体对比' : 'Entity Compare'}</h2>` +
-    `<p class="page-description">${getLanguage() === 'zh' ? '对比多个实体的 30 天归一化轨迹' : 'Compare multiple entities\' 30-day normalized trajectories'}</p></div>` +
+    `<div class="page-header"><h2 class="page-title">${xt('reader.entity_compare_title')}</h2>` +
+    `<p class="page-description">${xt('reader.entity_compare_subtitle')}</p></div>` +
     `<div class="search-box" style="max-width:600px;margin-bottom:12px">` +
-    `<input type="text" id="entityCompareInput" placeholder="${getLanguage() === 'zh' ? '输入实体 slug，逗号分隔' : 'Enter entity slugs, comma-separated'}" value="${escapeAttr(slugs.join(','))}" style="flex:1"/>` +
-    `<button class="action-btn" id="entityCompareBtn">📊 ${getLanguage() === 'zh' ? '对比' : 'Compare'}</button></div>` +
+    `<input type="text" id="entityCompareInput" placeholder="${escapeAttr(xt('reader.entity_compare_placeholder'))}" value="${escapeAttr(slugs.join(','))}" style="flex:1"/>` +
+    `<button class="action-btn" id="entityCompareBtn">${xt('reader.compare')}</button></div>` +
     // Quick-add chips from the momentum leaderboard.
     ((topEntities.entities || []).length > 0
-      ? `<div style="margin-bottom:12px"><span class="subtle" style="font-size:11px">${getLanguage() === 'zh' ? '热门实体（点击添加）' : 'Top entities (click to add)'}:</span><br/>` +
+      ? `<div style="margin-bottom:12px"><span class="subtle" style="font-size:11px">${xt('reader.top_entities')}</span><br/>` +
         (topEntities.entities || []).map(e =>
           `<a href="javascript:void(0)" class="entity-quick-add range-tab" data-slug="${escapeAttr(e.slug)}" style="margin:2px;font-size:10px">${escapeHtml(e.name)}</a>`
         ).join('') + `</div>`
@@ -149,19 +150,19 @@ export async function renderCompareEntities(_params) {
 
   const doCompare = async () => {
     const s = input.value.trim();
-    if (!s) { resultEl.innerHTML = '<p class="subtle">Enter at least 2 entity slugs.</p>'; return; }
-    resultEl.innerHTML = '<p class="subtle">Loading...</p>';
+    if (!s) { resultEl.innerHTML = `<p class="subtle">${xt('reader.enter_entity_slugs')}</p>`; return; }
+    resultEl.innerHTML = `<p class="subtle">${xt('reader.loading_entities')}</p>`;
     try {
       const data = await fetchJSON(`${API_BASE}/entities/compare?slugs=${encodeURIComponent(s)}`);
       const entities = data.entities || [];
-      if (entities.length < 2) { resultEl.innerHTML = '<p class="subtle">Need at least 2 valid entities.</p>'; return; }
+      if (entities.length < 2) { resultEl.innerHTML = `<p class="subtle">${xt('reader.need_valid_entities')}</p>`; return; }
       // Render overlay chart: each entity is a line, normalized 0-100.
       const W = 720, H = 300, PAD = 30;
       const dates = data.dates || [];
       const n = dates.length;
       const x = (i) => PAD + (n > 1 ? (i / (n - 1)) * (W - PAD * 2) : 0);
       const y = (v) => H - PAD - (v / 100) * (H - PAD * 2);
-      const colors = ['#f97316', '#4ec5e5', '#a3e635', '#f43f5e', '#c5e54e'];
+      const colors = ['var(--accent)', 'var(--sea)', 'var(--olive)', 'var(--color-error)', 'var(--olive)'];
       let lines = '';
       let legend = '';
       entities.forEach((e, idx) => {
@@ -175,7 +176,7 @@ export async function renderCompareEntities(_params) {
         legend += `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:16px;font-size:12px">` +
           `<span style="width:12px;height:2px;background:${color};display:inline-block"></span>` +
           `<a href="/trajectory/${escapeAttr(e.slug)}" style="color:${color};text-decoration:none">${escapeHtml(e.name)}</a>` +
-          (growth != null ? ` <small style="color:var(--fg-mute)">${growth >= 0 ? '+' : ''}${growth}%</small>` : '') +
+          (growth != null ? ` <small style="color:var(--fg-mute)">${growth >= 0 ? '+' : ''}${formatNumber(growth)}%</small>` : '') +
           `</span>`;
       });
       // Axis labels
@@ -183,7 +184,7 @@ export async function renderCompareEntities(_params) {
         dates[0] || '', dates[Math.floor(n / 2)] || '', dates[n - 1] || ''
       ].map((d, i) => {
         const iso = normalizeDateStr(d);
-        return `<text x="${x(i === 0 ? 0 : i === 1 ? Math.floor(n / 2) : n - 1).toFixed(1)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === 1 ? 'middle' : 'end'}" class="traj-axis-label">${iso ? iso.slice(5, 7) + '/' + iso.slice(8, 10) : ''}</text>`;
+        return `<text x="${x(i === 0 ? 0 : i === 1 ? Math.floor(n / 2) : n - 1).toFixed(1)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === 1 ? 'middle' : 'end'}" class="traj-axis-label">${iso ? localizedDate(iso, { month: 'short', day: 'numeric' }) : ''}</text>`;
       }).join('');
 
       resultEl.innerHTML =
@@ -193,9 +194,9 @@ export async function renderCompareEntities(_params) {
         `<line x1="${PAD}" y1="${PAD}" x2="${PAD}" y2="${H - PAD}" stroke="var(--rule)" stroke-width="1"/>` +
         lines + axisLabels +
         `</svg>` +
-        `<p class="subtle" style="margin-top:8px">${getLanguage() === 'zh' ? '各实体归一化到自身峰值（0-100），便于跨规模对比趋势形态' : 'Each entity normalized to its own peak (0-100) for cross-scale shape comparison'}</p>`;
+        `<p class="subtle" style="margin-top:8px">${xt('reader.entities_normalized')}</p>`;
     } catch (err) {
-      resultEl.innerHTML = `<p class="subtle">${escapeHtml(err.message)}</p>`;
+      resultEl.innerHTML = `<p class="subtle">${escapeHtml(readerError(err.message))}</p>`;
     }
   };
 

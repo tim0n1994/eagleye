@@ -1,5 +1,6 @@
 import { $, escapeHtml, escapeAttr, timeAgo } from './utils.js';
 import { t } from './i18n.js';
+import { getItemDisplayTitle } from './pages/shared.js';
 
 function pad(n) {
   return String(n).padStart(2, '0');
@@ -140,7 +141,7 @@ export const UI = {
 
     item.className = `agent-item ${status}`;
     item.querySelector('.agent-name').textContent = name;
-    item.querySelector('.agent-status-text').textContent = (statusText || status).toUpperCase();
+    item.querySelector('.agent-status-text').textContent = statusText || t(`agent.${status}`);
 
     // Update count
     const count = container.querySelectorAll('.agent-item').length;
@@ -193,7 +194,7 @@ export const UI = {
     const currentActive = $('.category-item.active', list)?.dataset.category || 'All';
 
     let html = `<a href="#" class="category-item ${currentActive === 'All' ? 'active' : ''}" data-category="All">
-      <span>${t('home.filter_all')}</span> <span class="category-count">LIVE</span>
+      <span>${t('home.filter_all')}</span> <span class="category-count">${t('common.live')}</span>
     </a>`;
 
     // Sort categories alphabetically
@@ -238,7 +239,7 @@ export const UI = {
     row.className = 'item-row fade-in';
     
     const tagsHtml = (item.tags || []).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('');
-    const displayTitle = item.ai_summary?.ai_title_zh || item.title_zh || item.ai_summary?.one_liner_zh || item.title;
+    const displayTitle = getItemDisplayTitle(item);
     const highlightedTitle = this.highlightText(displayTitle, searchQuery);
 
     row.innerHTML = `
@@ -270,6 +271,6 @@ export const UI = {
     const escaped = escapeHtml(text);
     const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp('(' + q + ')', 'gi');
-    return escaped.replace(regex, '<mark style="background: var(--accent); color: #000; padding: 0 2px;">$1</mark>');
+    return escaped.replace(regex, '<mark style="background: var(--accent); color: var(--color-accent-ink); padding: 0 2px;">$1</mark>');
   }
 };

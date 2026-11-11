@@ -8,6 +8,7 @@ export const $ = (sel, ctx) => (ctx || document).querySelector(sel);
 export function timeAgo(dateStr) {
   const now = Date.now();
   const date = new Date(dateStr);
+  if (!dateStr || !Number.isFinite(date.getTime())) return t('common.unknown');
   const diff = now - date.getTime();
   if (diff < 0) return t('time.now');
   const mins = Math.floor(diff / 60000);

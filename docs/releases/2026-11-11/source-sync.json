@@ -1,0 +1,27 @@
+{
+  "baseline": "8233b3d",
+  "release": "paid-plans-20261111",
+  "runtime_file_count": 387,
+  "runtime_tree_sha256": "e198159197c287e0794e2ae8ec438fcdd494745134d3f47bb0089f9a01ec9a15",
+  "hash_method": "sorted repository-relative path + NUL + raw file bytes + NUL",
+  "scope": [
+    "server/",
+    "js/",
+    "css/",
+    "mcp/",
+    "kg-worker/",
+    "config/",
+    "icons/",
+    "index.html",
+    "manifest.json",
+    "package-lock.json",
+    "package.json",
+    "server.js",
+    "sw.js"
+  ],
+  "excluded_private_files": [
+    "config/mcp-token",
+    "config/mcp-tunnel-secret"
+  ],
+  "mismatches": []
+}

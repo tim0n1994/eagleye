@@ -125,9 +125,9 @@ function getSignals(opts = {}) {
   }
 
   let sql = `
-    SELECT ss.*, i.title, i.canonical_url, i.published_at, i.digest_date, i.score,
-           s.label as source_label, s.slug as source_slug,
-           a.one_liner, a.short_summary, a.ai_title,
+    SELECT ss.*, i.title, i.title_zh, i.canonical_url, i.published_at, i.digest_date, i.score,
+           s.label as source_label, s.label_zh as source_label_zh, s.slug as source_slug,
+           a.one_liner, a.one_liner_zh, a.short_summary, a.short_summary_zh, a.ai_title, a.ai_title_zh,
            sp.source_type, sp.noise_rate, sp.early_signal_rate${audienceCol}
     FROM signal_scores ss
     JOIN information_items i ON ss.item_id = i.id
@@ -192,10 +192,10 @@ function getSignalById(itemId) {
   if (!db) return null;
 
   const signal = db.prepare(`
-    SELECT ss.*, i.title, i.canonical_url, i.published_at, i.score,
+    SELECT ss.*, i.title, i.title_zh, i.canonical_url, i.published_at, i.score,
            i.original_summary, i.content_text,
-           s.label as source_label, s.slug as source_slug,
-           a.one_liner, a.short_summary, a.key_points, a.why_it_matters,
+           s.label as source_label, s.label_zh as source_label_zh, s.slug as source_slug,
+           a.one_liner, a.one_liner_zh, a.short_summary, a.short_summary_zh, a.key_points, a.key_points_zh, a.why_it_matters, a.why_it_matters_zh,
            a.ai_title, a.ai_title_zh,
            sp.source_type, sp.noise_rate, sp.early_signal_rate
     FROM signal_scores ss
@@ -208,7 +208,7 @@ function getSignalById(itemId) {
 
   if (signal) {
     signal.topics = db.prepare(`
-      SELECT t.slug, t.name FROM item_topics it
+      SELECT t.slug, t.name, t.name_zh FROM item_topics it
       JOIN topics t ON it.topic_id = t.id WHERE it.item_id = ?
     `).all(itemId);
     // Entities via KG v2 (canonical_entities), with 7d momentum if available.
@@ -302,9 +302,9 @@ function getEntityItems(slug, limit = 20) {
   if (!entity) return null;
 
   const items = db.prepare(`
-    SELECT i.id, i.title, i.canonical_url, i.published_at, i.digest_date,
-           s.label as source_label, s.slug as source_slug,
-           a.one_liner, a.short_summary, a.ai_title,
+    SELECT i.id, i.title, i.title_zh, i.canonical_url, i.published_at, i.digest_date,
+           s.label as source_label, s.label_zh as source_label_zh, s.slug as source_slug,
+           a.one_liner, a.one_liner_zh, a.short_summary, a.short_summary_zh, a.ai_title, a.ai_title_zh,
            ss.alpha_score, ss.signal_type
     FROM entity_links el
     JOIN entity_mentions em ON em.id = el.mention_id

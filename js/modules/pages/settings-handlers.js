@@ -7,6 +7,7 @@
 
 import { escapeAttr, escapeHtml } from '../utils.js';
 import { getLanguage, t } from '../i18n.js';
+import { st } from '../i18n/settings-extra.js';
 import { SAMPLE_PASTE, refreshLLMStatus } from './settings-panels.js';
 import { router } from '../router.js';
 
@@ -34,7 +35,7 @@ export function wireSettingsHandlers() {
     const saveBtn = $('llmSaveBtn');
     if (!text.trim()) {
       pv.hidden = false;
-      const emptyPaste = getLanguage() === 'zh' ? '<div class="settings-warn">请先粘贴接口配置。</div>' : '<div class="settings-warn">Paste your endpoint config first.</div>';
+      const emptyPaste = `<div class="settings-warn">${st('settingsExtra.paste_first')}</div>`;
       pv.innerHTML = emptyPaste;
       return;
     }
@@ -49,13 +50,13 @@ export function wireSettingsHandlers() {
         _lastParsedConfig = null;
         saveBtn.disabled = true;
         pv.hidden = false;
-        pv.innerHTML = `<div class="settings-warn">${t('settings.parse_failed', { msg: escapeHtml(data.error || (getLanguage() === 'zh' ? '解析失败' : 'Parse failed')) })}</div>`;
+        pv.innerHTML = `<div class="settings-warn">${t('settings.parse_failed', { msg: escapeHtml(data.error || st('settingsExtra.parse_failed')) })}</div>`;
         return;
       }
       _lastParsedConfig = data;
       saveBtn.disabled = false;
       pv.hidden = false;
-      const parsedLabel = getLanguage() === 'zh' ? `✓ 已解析 — 确认后点击 <strong>${escapeHtml(t('settings.save_activate'))}</strong>` : `✓ Parsed — review and click <strong>${escapeHtml(t('settings.save_activate'))}</strong>`;
+      const parsedLabel = st('settingsExtra.parsed_review', { action: escapeHtml(t('settings.save_activate')) });
       pv.innerHTML = `
         <div class="settings-ok">${parsedLabel}</div>
         <div class="kv-grid">
@@ -67,7 +68,7 @@ export function wireSettingsHandlers() {
       `;
     } catch (err) {
       pv.hidden = false;
-      pv.innerHTML = `<div class="settings-warn">⚠ ${escapeHtml(err.message)}</div>`;
+      pv.innerHTML = `<div class="settings-warn">${escapeHtml(err.message)}</div>`;
     }
   });
 
@@ -82,8 +83,8 @@ export function wireSettingsHandlers() {
         body: JSON.stringify({ pasted: $('llmPaste').value }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || (getLanguage() === 'zh' ? '保存失败' : 'Save failed'));
-      const savedMsg = getLanguage() === 'zh' ? '✓ 单端点兼容配置已保存；启用池时由端点池路由。' : '✓ Single-endpoint settings saved; an enabled pool controls routing.';
+      if (!res.ok || data.error) throw new Error(data.error || st('settingsExtra.save_failed'));
+      const savedMsg = st('settingsExtra.single_saved');
       out.textContent = savedMsg;
       $('llmPaste').value = '';
       _lastParsedConfig = null;
@@ -110,8 +111,8 @@ export function wireSettingsHandlers() {
         body: JSON.stringify({ config: cfg }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || (getLanguage() === 'zh' ? '保存失败' : 'Save failed'));
-      const savedMsg = getLanguage() === 'zh' ? '✓ 单端点兼容配置已保存；启用池时由端点池路由。' : '✓ Single-endpoint settings saved; an enabled pool controls routing.';
+      if (!res.ok || data.error) throw new Error(data.error || st('settingsExtra.save_failed'));
+      const savedMsg = st('settingsExtra.single_saved');
       out.textContent = savedMsg;
       $('llmApiKey').value = '';
       await refreshLLMStatus();
@@ -122,14 +123,14 @@ export function wireSettingsHandlers() {
 
   $('llmTestBtn')?.addEventListener('click', async () => {
     const out = $('llmTestResult');
-    out.textContent = getLanguage() === 'zh' ? '测试中…' : 'Testing…';
+    out.textContent = st('settingsExtra.testing');
     try {
       const res = await fetch('/api/settings/llm/test', { method: 'POST' });
       const data = await res.json();
       if (res.ok && data.ok) {
-        out.textContent = `✓ ${getLanguage() === 'zh' ? '接口已响应，业务质量未验证' : 'Endpoint responded; business quality unverified'} · ${data.latent_ms || data.latency_ms} ms`;
+        out.textContent = `✓ ${st('settingsExtra.endpoint_responded')} · ${data.latent_ms || data.latency_ms} ms`;
       } else {
-        out.textContent = '⚠ ' + (data.message || (getLanguage() === 'zh' ? '测试失败' : 'Test failed'));
+        out.textContent = '⚠ ' + (data.message || st('settingsExtra.test_failed'));
       }
     } catch (err) {
       out.textContent = '⚠ ' + err.message;
@@ -137,14 +138,14 @@ export function wireSettingsHandlers() {
   });
 
   $('llmResetBtn')?.addEventListener('click', async () => {
-    const confirmMsg = getLanguage() === 'zh' ? '确定重置为 .env 默认值吗？粘贴的配置将被清除。' : 'Reset to .env defaults? Your pasted config will be cleared.';
+    const confirmMsg = st('settingsExtra.reset_confirm');
     if (!confirm(confirmMsg)) return;
     const out = $('llmTestResult');
-    out.textContent = getLanguage() === 'zh' ? '重置中…' : 'Resetting…';
+    out.textContent = st('settingsExtra.resetting');
     try {
       const res = await fetch('/api/settings/llm', { method: 'DELETE' });
-      if (!res.ok) throw new Error(getLanguage() === 'zh' ? '重置失败' : 'Reset failed');
-      const okMsg = getLanguage() === 'zh' ? '✓ 已重置为 .env 默认值。' : '✓ Reset to .env defaults.';
+      if (!res.ok) throw new Error(st('settingsExtra.reset_failed'));
+      const okMsg = st('settingsExtra.reset_done');
       out.textContent = okMsg;
       await refreshLLMStatus();
     } catch (err) {
@@ -213,8 +214,8 @@ export function wireSettingsHandlers() {
   function formatSourceResults(results) {
     if (!Array.isArray(results) || results.length === 0) return '';
     return results.slice(-6).map(r => {
-      const suffix = r.error ? `error: ${escapeHtml(r.error)}` : `${r.items || 0} items`;
-      return `${escapeHtml(r.source || 'unknown')}: ${suffix}`;
+      const suffix = r.error ? st('settingsExtra.error_line', { msg: escapeHtml(r.error) }) : st('settingsExtra.items_count', { count: r.items || 0 });
+      return st('settingsExtra.source_result', { source: escapeHtml(r.source || st('settingsExtra.unknown_source')), count: suffix });
     }).join('<br>');
   }
 
@@ -222,30 +223,30 @@ export function wireSettingsHandlers() {
     if (!payload || typeof payload !== 'object') return '';
     const parts = [];
     if (payload.phase === 'fetching') {
-      parts.push(`source ${payload.completed_sources ?? payload.current_index ?? 0}/${payload.total_sources || '?'}`);
+      parts.push(st('settingsExtra.source_progress', { completed: payload.completed_sources ?? payload.current_index ?? 0, total: payload.total_sources || '?' }));
       if (payload.current_source) parts.push(escapeHtml(payload.current_source));
       const items = (payload.results || []).reduce((sum, r) => sum + (Number(r.items) || 0), 0);
-      parts.push(`${items} items`);
-      if (payload.heartbeat !== undefined) parts.push(`tick ${payload.heartbeat}`);
+      parts.push(st('settingsExtra.items_count', { count: items }));
+      if (payload.heartbeat !== undefined) parts.push(st('settingsExtra.tick', { count: payload.heartbeat }));
     } else if (payload.phase === 'enriching' || payload.phase === 'scoring') {
-      parts.push(`processed ${payload.processed || 0}/${payload.total || 0}`);
-      parts.push(`enriched ${payload.enriched || 0}`);
-      parts.push(`failed ${payload.failed || 0}`);
-      if (payload.entities !== undefined) parts.push(`entities ${payload.entities}`);
-      if (payload.topics !== undefined) parts.push(`topics ${payload.topics}`);
+      parts.push(st('settingsExtra.processed_progress', { completed: payload.processed || 0, total: payload.total || 0 }));
+      parts.push(st('settingsExtra.enriched_count', { count: payload.enriched || 0 }));
+      parts.push(st('settingsExtra.failed_count', { count: payload.failed || 0 }));
+      if (payload.entities !== undefined) parts.push(st('settingsExtra.entities_count', { count: payload.entities }));
+      if (payload.topics !== undefined) parts.push(st('settingsExtra.topics_count', { count: payload.topics }));
     } else if (payload.phase === 'translating') {
-      parts.push(`processed ${payload.processed || 0}/${payload.total || 0}`);
-      parts.push(`translated ${payload.translated || 0}`);
-      parts.push(`failed ${payload.failed || 0}`);
-      parts.push(`remaining ${payload.remaining ?? '—'}`);
+      parts.push(st('settingsExtra.processed_progress', { completed: payload.processed || 0, total: payload.total || 0 }));
+      parts.push(st('settingsExtra.translated_count', { count: payload.translated || 0 }));
+      parts.push(st('settingsExtra.failed_count', { count: payload.failed || 0 }));
+      parts.push(st('settingsExtra.remaining_count', { count: payload.remaining ?? '—' }));
     } else if (Array.isArray(payload.fetch)) {
       const items = payload.fetch.reduce((sum, r) => sum + (Number(r.items) || 0), 0);
-      parts.push(`${payload.fetch.length} sources`);
-      parts.push(`${items} items`);
+      parts.push(st('settingsExtra.sources_count', { count: payload.fetch.length }));
+      parts.push(st('settingsExtra.items_count', { count: items }));
     } else {
       if (payload.message) parts.push(escapeHtml(payload.message));
-      if (payload.error) parts.push(`error: ${escapeHtml(payload.error)}`);
-      if (payload.date) parts.push(`date ${escapeHtml(payload.date)}`);
+      if (payload.error) parts.push(st('settingsExtra.error_line', { msg: escapeHtml(payload.error) }));
+      if (payload.date) parts.push(st('settingsExtra.date_line', { value: escapeHtml(payload.date) }));
       if (payload.sources) parts.push(escapeHtml(payload.sources));
     }
     return parts.filter(Boolean).join(' · ');
@@ -261,17 +262,17 @@ export function wireSettingsHandlers() {
         const bPaper = paperSources.has(b.source) ? -1 : 0;
         return aPaper - bPaper || (b.items || 0) - (a.items || 0);
       });
-      return `<span class="job-mini-result-list">${sorted.map(r => `<span class="source-line ${(r.items||0)>0?'has-items':''}">${escapeHtml(r.source || 'unknown')}: ${r.error ? `error: ${escapeHtml(r.error)}` : r.items || 0}</span>`).join('<br>')}</span>`;
+      return `<span class="job-mini-result-list">${sorted.map(r => `<span class="source-line ${(r.items||0)>0?'has-items':''}">${st('settingsExtra.source_result', { source: escapeHtml(r.source || st('settingsExtra.unknown_source')), count: r.error ? st('settingsExtra.error_line', { msg: escapeHtml(r.error) }) : st('settingsExtra.items_count', { count: r.items || 0 }) })}</span>`).join('<br>')}</span>`;
     }
-    if (result.enriched !== undefined) return `enriched ${result.enriched}/${result.total || 0} · failed ${result.failed || 0}`;
-    if (result.translated !== undefined) return `translated ${result.translated}/${result.total || 0} · failed ${result.failed || 0} · remaining ${result.remaining ?? '—'}`;
-    if (result.nodes !== undefined || result.edges !== undefined) return `nodes ${result.nodes || 0} · edges ${result.edges || 0}`;
-    if (result.domains !== undefined) return `${result.domains} 领域 · ${result.topics || 0} 方向 · ${result.uniqueTags || result.tags || 0} 标签`;
+    if (result.enriched !== undefined) return st('settingsExtra.enriched_result', { count: result.enriched, total: result.total || 0, failed: result.failed || 0 });
+    if (result.translated !== undefined) return st('settingsExtra.translated_result', { count: result.translated, total: result.total || 0, failed: result.failed || 0, remaining: result.remaining ?? '—' });
+    if (result.nodes !== undefined || result.edges !== undefined) return st('settingsExtra.nodes_edges', { nodes: result.nodes || 0, edges: result.edges || 0 });
+    if (result.domains !== undefined) return st('settingsExtra.graph_summary', { domains: result.domains, topics: result.topics || 0, tags: result.uniqueTags || result.tags || 0 });
     if (result.extract || result.embed || result.topics) {
-      return `extract ${result.extract?.total || 0} · embed ${result.embed?.vectors || 0} · topics ${result.topics?.dynamic_topics || 0}`;
+      return st('settingsExtra.extraction_summary', { extract: result.extract?.total || 0, embed: result.embed?.vectors || 0, topics: result.topics?.dynamic_topics || 0 });
     }
-    if (result.generated !== undefined) return result.generated ? '已生成' : '无摘要';
-    if (result.edges_updated !== undefined) return `edges ${result.edges_updated} · scores ${result.scores_updated}`;
+    if (result.generated !== undefined) return result.generated ? st('settingsExtra.generated') : st('settingsExtra.no_summary');
+    if (result.edges_updated !== undefined) return st('settingsExtra.edges_scores', { edges: result.edges_updated, scores: result.scores_updated });
     if (result.sources !== undefined) return `${result.sources}`;
     return escapeHtml(JSON.stringify(result).slice(0, 120));
   }
@@ -287,7 +288,15 @@ export function wireSettingsHandlers() {
       const elapsed = stage.started_at && status === 'running'
         ? `${Math.max(0, Math.round((Date.now() - new Date(stage.started_at).getTime()) / 1000))}s`
         : '';
-      const statusText = elapsed ? `${status} · ${elapsed}` : status;
+      const statusLabels = {
+        pending: st('settingsExtra.status_pending'),
+        running: st('settingsExtra.status_running'),
+        completed: st('settingsExtra.status_completed'),
+        failed: st('settingsExtra.status_failed'),
+        cancelled: st('settingsExtra.status_cancelled'),
+        queued: st('settingsExtra.status_queued'),
+      };
+      const statusText = elapsed ? `${statusLabels[status] || status} · ${elapsed}` : (statusLabels[status] || status);
       return `
         <div class="pipeline-stage pipeline-stage-${escapeAttr(status)} ${stage.key === current ? 'active' : ''}">
           <span class="pipeline-stage-label">${escapeHtml(label)}</span>
@@ -310,12 +319,12 @@ export function wireSettingsHandlers() {
 
     if (parsed.phase === 'translating') {
       const lines = [
-        `Translating ${parsed.processed || 0}/${parsed.total || 0}`,
-        `Translated: ${parsed.translated || 0}, failed: ${parsed.failed || 0}`,
-        `Remaining: ${parsed.remaining ?? '—'}`,
+        st('settingsExtra.translating_progress', { completed: parsed.processed || 0, total: parsed.total || 0 }),
+        st('settingsExtra.translated_failed', { translated: parsed.translated || 0, failed: parsed.failed || 0 }),
+        st('settingsExtra.remaining_line', { remaining: parsed.remaining ?? '—' }),
       ];
       if (parsed.batch_items || parsed.workers) {
-        lines.push(`Batch: ${parsed.batch_items || '—'}, workers: ${parsed.workers || '—'}`);
+        lines.push(st('settingsExtra.batch_workers', { batch: parsed.batch_items || '—', workers: parsed.workers || '—' }));
       }
       return lines.join('<br>');
     }
@@ -327,16 +336,16 @@ export function wireSettingsHandlers() {
       const totalItems = fetchResults.reduce((sum, r) => sum + (r.items || 0), 0);
       const parts = [];
       if (parsed.phase === 'fetching') {
-        parts.push(`Fetching ${escapeHtml(parsed.current_source || '')} (${parsed.current_index || doneSources}/${totalSources || '?'})`);
+        parts.push(st('settingsExtra.fetching_source', { source: escapeHtml(parsed.current_source || ''), completed: parsed.current_index || doneSources, total: totalSources || '?' }));
       } else if (parsed.phase === 'enriching') {
-        parts.push(`Fetch complete: ${doneSources}/${totalSources || doneSources} sources, ${totalItems} items. Enriching…`);
+        parts.push(st('settingsExtra.fetch_complete_enriching', { sources: doneSources, total_sources: totalSources || doneSources, items: totalItems }));
       } else {
-        parts.push(`Sources: ${doneSources}/${totalSources || doneSources}, items: ${totalItems}`);
+        parts.push(st('settingsExtra.sources_items', { sources: doneSources, total_sources: totalSources || doneSources, items: totalItems }));
       }
       const details = formatSourceResults(fetchResults);
       if (details) parts.push(`<span class="job-mini-result-list">${details}</span>`);
       if (parsed.enrich) {
-        parts.push(`Enriched: ${parsed.enrich.enriched || 0}/${parsed.enrich.total || 0}`);
+        parts.push(st('settingsExtra.enriched_line', { count: parsed.enrich.enriched || 0, total: parsed.enrich.total || 0 }));
       }
       return parts.join('<br>');
     }
@@ -380,7 +389,7 @@ export function wireSettingsHandlers() {
           return true;
         }
         // still queued
-        showStream(op, `⏳ Queued ${shortJobId(jobId)}…`);
+        showStream(op, `⏳ ${st('settingsExtra.queued', { job_id: shortJobId(jobId) })}`);
         return false;
       } catch (err) {
         showStream(op, `⚠ ${err.message}`, true);
@@ -403,7 +412,7 @@ export function wireSettingsHandlers() {
         res = await fetch('/api/sync', { method: 'POST' });
       } else if (op === 'enrich') {
         const batch = Number($('enrichBatch')?.value);
-        if (!Number.isInteger(batch) || batch < 1 || batch > 100) throw new Error(getLanguage() === 'zh' ? '批量必须为 1–100 的整数' : 'Batch must be an integer from 1 to 100');
+        if (!Number.isInteger(batch) || batch < 1 || batch > 100) throw new Error(st('settingsExtra.batch_validation'));
         const query = new URLSearchParams({ batch: String(batch), background: 'true' });
         if ($('enrichRetryExhausted')?.checked) query.set('reset_attempts', 'true');
         res = await fetch(`/api/enrich?${query}`, { method: 'POST' });
@@ -412,11 +421,11 @@ export function wireSettingsHandlers() {
       } else if (op === 'pipeline') {
         res = await fetch('/api/pipeline', { method: 'POST' });
       } else {
-        throw new Error('unknown op');
+        throw new Error(st('settingsExtra.unknown_op'));
       }
-      if (!res) throw new Error('no response');
+      if (!res) throw new Error(st('settingsExtra.no_response'));
       const data = await readJSONOnce(res);
-      if (!res.ok) throw new Error(data.message || data.error || `${op} failed`);
+      if (!res.ok) throw new Error(data.message || data.error || st('settingsExtra.op_launch_failed', { op }));
       const jobId = data.job_id;
       if (jobId) {
         opJobMap[op] = jobId;
@@ -456,26 +465,34 @@ export function wireSettingsHandlers() {
       const data = await res.json();
       const jobs = data.jobs || [];
       if (jobs.length === 0) {
-        opJobsBody.innerHTML = `<p class="empty-state">${getLanguage() === 'zh' ? '暂无任务' : 'No jobs yet'}</p>`;
+        opJobsBody.innerHTML = `<p class="empty-state">${st('settingsExtra.no_jobs')}</p>`;
         return;
       }
       opJobsBody.innerHTML = jobs.map(j => {
         const jobType = (j.job_type || '').replace(/-/g, ' ').toUpperCase();
         const status = (j.status || '').toLowerCase();
+        const statusLabels = {
+          pending: st('settingsExtra.status_pending'),
+          running: st('settingsExtra.status_running'),
+          completed: st('settingsExtra.status_completed'),
+          failed: st('settingsExtra.status_failed'),
+          cancelled: st('settingsExtra.status_cancelled'),
+          queued: st('settingsExtra.status_queued'),
+        };
         const statusClass = status === 'completed' ? 'job-done' : status === 'failed' ? 'job-failed' : status === 'cancelled' ? 'job-cancelled' : status === 'running' ? 'job-running' : 'job-queued';
         const startedAt = j.started_at || j.created_at || '';
         const result = j.result ? formatJobResult(j) : '';
         const error = j.error || '';
         return `<div class="job-row">
           <span class="job-type">${escapeHtml(jobType)}</span>
-          <span class="job-status ${statusClass}">${escapeHtml(j.status || '')}</span>
+          <span class="job-status ${statusClass}">${escapeHtml(statusLabels[status] || j.status || '')}</span>
           <span class="job-time">${escapeHtml(startedAt)}</span>
           ${result ? `<span class="job-result">${result}</span>` : ''}
           ${error ? `<span class="job-error">${escapeHtml(error.slice(0, 80))}</span>` : ''}
         </div>`;
       }).join('');
     } catch (err) {
-      opJobsBody.innerHTML = `<p class="empty-state">⚠ ${err.message}</p>`;
+      opJobsBody.innerHTML = `<p class="empty-state">${err.message}</p>`;
     }
   }
 
@@ -512,7 +529,7 @@ export function wireSettingsHandlers() {
         body: JSON.stringify({ users }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'save failed');
+      if (!res.ok) throw new Error(data.message || st('settingsExtra.save_failed'));
       if (xConfigResult) xConfigResult.textContent = t('xconfig.saved', { n: data.saved });
     } catch (err) {
       if (xConfigResult) xConfigResult.textContent = '✗ ' + err.message;
@@ -529,7 +546,7 @@ export function wireSettingsHandlers() {
         body: JSON.stringify({ blocked_users: blocked }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'save failed');
+      if (!res.ok) throw new Error(data.message || st('settingsExtra.save_failed'));
       if (xBlocklistResult) xBlocklistResult.textContent = t('xconfig.blocklist_saved', { n: data.blocked_saved ?? 0 });
     } catch (err) {
       if (xBlocklistResult) xBlocklistResult.textContent = '✗ ' + err.message;
@@ -540,7 +557,7 @@ export function wireSettingsHandlers() {
     try {
       const res = await fetch('/api/settings/x-following/cleanup', { method: 'POST' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'cleanup failed');
+      if (!res.ok) throw new Error(data.message || st('settingsExtra.cleanup_failed'));
       if (xBlocklistResult) xBlocklistResult.textContent = t('xconfig.cleanup_done', { n: data.purged ?? 0 });
     } catch (err) {
       if (xBlocklistResult) xBlocklistResult.textContent = '✗ ' + err.message;

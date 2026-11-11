@@ -7,7 +7,7 @@
 
 import { $, escapeAttr, escapeHtml } from '../utils.js';
 import { KnowledgeGraph } from '../graph-viz.js';
-import { getLanguage, t } from '../i18n.js';
+import { formatNumber, getLanguage, t } from '../i18n.js';
 import { API_BASE, fetchJSON, renderItemMiniCard, showError, showLoader, tagHref } from './shared.js';
 
 
@@ -15,7 +15,9 @@ import { API_BASE, fetchJSON, renderItemMiniCard, showError, showLoader, tagHref
 
 export async function renderTags(_params) {
   const container = $('#pageContent');
-  showLoader(container, 'Loading tags...');
+  const zh = getLanguage() === 'zh';
+  const tagLabel = tag => zh ? (tag.name_zh || tag.name || tag.slug || '') : (tag.name || tag.name_zh || tag.slug || '');
+  showLoader(container, zh ? '正在加载标签…' : 'Loading tags...');
 
   try {
     const data = await fetchJSON(`${API_BASE}/tags`);
@@ -27,14 +29,14 @@ export async function renderTags(_params) {
     const cloudHtml = cloudTags.map(tag => {
       const size = 11 + Math.round((tag.item_count || 0) / maxCount * 14);
       const opacity = 0.4 + 0.6 * ((tag.item_count || 0) / maxCount);
-      return `<a href="${escapeAttr(tagHref(tag))}" style="display:inline-block;margin:3px 6px;font-size:${size}px;color:var(--accent);opacity:${opacity};text-decoration:none;font-weight:${size > 18 ? 700 : 400}" title="${tag.item_count || 0} items">${escapeHtml(tag.name || tag.name_zh)}</a>`;
+    return `<a href="${escapeAttr(tagHref(tag))}" style="display:inline-block;margin:3px 6px;font-size:${size}px;color:var(--accent);opacity:${opacity};text-decoration:none;font-weight:${size > 18 ? 700 : 400}" title="${formatNumber(tag.item_count || 0)} ${zh ? '条' : 'items'}">${escapeHtml(tagLabel(tag))}</a>`;
     }).join(' ');
 
     const html = `
       <section class="page-section tags-layout">
         <div class="page-header">
-          <h2 class="page-title">🏷️ ${t('nav.tags') || 'Tags'}</h2>
-          <p class="page-description">LLM-auto-generated Chinese tags aggregating feed items</p>
+          <h2 class="page-title">${t('nav.tags') || 'Tags'}</h2>
+          <p class="page-description">${zh ? '由 LLM 自动生成的中文标签，聚合信息源条目。' : 'LLM-auto-generated Chinese tags aggregating feed items.'}</p>
         </div>
 
         <div class="metrics-block" style="margin-bottom:24px">
@@ -52,7 +54,7 @@ export async function renderTags(_params) {
             top15.map(tag => {
               const pct = Math.round(((tag.item_count || 0) / maxItems) * 100);
               return '<div class="metrics-bar-row">' +
-                '<span class="metrics-bar-label"><a href="' + escapeAttr(tagHref(tag)) + '" style="color:inherit;text-decoration:none">' + escapeHtml(tag.name || tag.name_zh) + '</a></span>' +
+                '<span class="metrics-bar-label"><a href="' + escapeAttr(tagHref(tag)) + '" style="color:inherit;text-decoration:none">' + escapeHtml(tagLabel(tag)) + '</a></span>' +
                 '<div class="metrics-bar"><div class="metrics-bar-fill" style="width:' + pct + '%"></div></div>' +
                 '<span class="metrics-bar-pct">' + (tag.item_count || 0) + '</span></div>';
             }).join('') +
@@ -63,8 +65,8 @@ export async function renderTags(_params) {
         <div class="tags-grid">
           ${tags.map(tag => `
             <a href="${escapeAttr(tagHref(tag))}" class="tag-card">
-              <span class="tag-card-name">${escapeHtml(tag.name || tag.name_zh)}</span>
-              <span class="tag-card-count">${tag.item_count || 0} items</span>
+              <span class="tag-card-name">${escapeHtml(tagLabel(tag))}</span>
+              <span class="tag-card-count">${formatNumber(tag.item_count || 0)} ${zh ? '条' : 'items'}</span>
             </a>
           `).join('')}
         </div>
@@ -79,7 +81,9 @@ export async function renderTags(_params) {
 export async function renderTagDetail(params) {
   const container = $('#pageContent');
   const slug = decodeURIComponent(params?.slug || '');
-  showLoader(container, `${t('common.loading')} ${slug}...`);
+  const zh = getLanguage() === 'zh';
+  const nodeLabel = node => zh ? (node.label_zh || node.label || node.slug || '') : (node.label || node.label_zh || node.slug || '');
+  showLoader(container, zh ? `正在加载标签 ${slug}…` : `Loading tag ${slug}...`);
 
   try {
     const data = await fetchJSON(`${API_BASE}/tags/${encodeURIComponent(slug)}`);
@@ -88,18 +92,18 @@ export async function renderTagDetail(params) {
     const graph = data.graph || {};
     const parents = graph.parents || [];
     const related = graph.related || [];
-    const tagName = tag.name || tag.name_zh || slug;
+    const tagName = zh ? (tag.name_zh || tag.name || slug) : (tag.name || tag.name_zh || slug);
 
     const graphNodes = [
       ...parents.map((parent, index) => ({
         id: `parent:${parent.id || index}`,
-        label: parent.label_zh || parent.slug || '',
+        label: nodeLabel(parent),
         type: parent.kind || 'concept',
       })),
       { id: `tag:${tag.id}`, label: tagName, type: 'tag' },
       ...related.slice(0, 8).map((rel, index) => ({
         id: `related:${rel.slug || index}`,
-        label: rel.label_zh || rel.slug || '',
+        label: nodeLabel(rel),
         type: 'related',
       })),
     ];
@@ -121,18 +125,18 @@ export async function renderTagDetail(params) {
     const html = `
       <section class="page-section tag-detail-page">
         <div class="page-header">
-          <h2 class="page-title">🏷️ ${escapeHtml(tagName)}</h2>
+          <h2 class="page-title">${escapeHtml(tagName)}</h2>
           <a href="/tags" class="nav-link">← ${escapeHtml(t('nav.tags') || 'Tags')}</a>
           <a href="/topics" class="nav-link" style="margin-left:12px;">${getLanguage() === 'zh' ? '专题' : 'Topics'}</a>
         </div>
         <div class="topic-full-detail">
           <div class="topic-info">
-            <p class="topic-description">${escapeHtml(getLanguage() === 'zh' ? '由 LLM 从 feed 和论文中抽取的中文知识原子。' : 'LLM-extracted knowledge atom from feeds and papers.')}</p>
+            <p class="topic-description">${escapeHtml(zh ? '由 LLM 从 feed 和论文中抽取的中文知识原子。' : 'LLM-extracted knowledge atom from feeds and papers.')}</p>
             <div class="topic-meta-grid">
-              <div class="meta-item"><label>Items</label><span>${tag.item_count || 0}</span></div>
-              <div class="meta-item"><label>Parents</label><span>${parents.length}</span></div>
-              <div class="meta-item"><label>Related</label><span>${related.length}</span></div>
-              <div class="meta-item"><label>Type</label><span>${escapeHtml(tag.type || 'tag')}</span></div>
+              <div class="meta-item"><label>${zh ? '条目' : 'Items'}</label><span>${formatNumber(tag.item_count || 0)}</span></div>
+              <div class="meta-item"><label>${zh ? '上位概念' : 'Parents'}</label><span>${parents.length}</span></div>
+              <div class="meta-item"><label>${zh ? '关联' : 'Related'}</label><span>${related.length}</span></div>
+              <div class="meta-item"><label>${zh ? '类型' : 'Type'}</label><span>${escapeHtml(tag.type || 'tag')}</span></div>
             </div>
           </div>
 
@@ -143,13 +147,13 @@ export async function renderTagDetail(params) {
               <div>
                 <h4>${getLanguage() === 'zh' ? '上位概念' : 'Parents'}</h4>
                 ${parents.length ? parents.map(parent => `
-                  <span class="tag-chip tag-parent-chip">${escapeHtml(parent.label_zh || parent.slug || '')}</span>
+                  <span class="tag-chip tag-parent-chip">${escapeHtml(nodeLabel(parent))}</span>
                 `).join('') : `<span class="subtle">${getLanguage() === 'zh' ? '暂无上位概念' : 'No parent concepts yet'}</span>`}
               </div>
               <div>
                 <h4>${getLanguage() === 'zh' ? '共现标签' : 'Related tags'}</h4>
                 ${related.length ? related.map(rel => `
-                  <a href="${escapeAttr(tagHref({ slug: rel.slug, name: rel.label_zh }))}" class="tag-chip">#${escapeHtml(rel.label_zh || rel.slug || '')} · ${rel.shared_items}</a>
+                  <a href="${escapeAttr(tagHref({ slug: rel.slug, name: zh ? (rel.label_zh || rel.label || rel.slug) : (rel.label || rel.label_zh || rel.slug) }))}" class="tag-chip">#${escapeHtml(nodeLabel(rel))} · ${formatNumber(rel.shared_items)}</a>
                 `).join('') : `<span class="subtle">${getLanguage() === 'zh' ? '暂无共现标签' : 'No related tags yet'}</span>`}
               </div>
             </div>

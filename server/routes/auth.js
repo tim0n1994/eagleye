@@ -7,6 +7,7 @@
  */
 
 const auth = require('../services/auth');
+const billing = require('../services/billing');
 const { getDB } = require('../db/connection');
 const { resetAuthAttempts } = require('../services/rate-limit');
 const { sendJSON, sendError, readBody, authThrottled } = require('./_shared');
@@ -30,10 +31,12 @@ function register(routes) {
       const existing = auth.getUserByEmail(email);
       if (existing) return sendJSON(res, 409, {error: existing.email_verified ? 'Email already registered. Please sign in.' : 'Registration is pending. Please resend the verification code.', pending_verification: !existing.email_verified && existing.status === 'active', email});
 
+      if (!Object.hasOwn(billing.PLANS, body.plan)) return sendError(res,400,'Choose a monthly plan');
       const hash = await auth.hashPassword(password);
       const user = auth.createUser(email, hash);
+      billing.selectPlan(user.id,body.plan);
       try {
-        const delivery = await auth.requestVerificationEmail(email);
+        const delivery = await auth.requestVerificationEmail(email, 'register', /^zh(?:-|,|;|$)/i.test(req.headers['accept-language'] || '') ? 'zh' : 'en');
         sendJSON(res, 200, { status:'ok', message:'Verification email accepted for sending', email, isFirstUser:user.isFirstUser, ...delivery });
       } catch (error) {
         res.setHeader('Retry-After',String(error.retryAfter || 60));
@@ -54,7 +57,7 @@ function register(routes) {
       if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return sendError(res, 400, 'Valid email required');
       const user = auth.getUserByEmail(email);
       if (user && !user.email_verified && user.status === 'active') {
-        await auth.requestVerificationEmail(email);
+        await auth.requestVerificationEmail(email, 'register', /^zh(?:-|,|;|$)/i.test(req.headers['accept-language'] || '') ? 'zh' : 'en');
       }
       return sendJSON(res, 200, { status: 'ok', message: 'If registration is pending, a verification email has been accepted for sending.', retry_after:60 });
     } catch (error) {
@@ -145,7 +148,7 @@ function register(routes) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>254) return sendError(res,400,'Valid email required');
       const user = auth.getUserByEmail(email);
       if (user?.status === 'active' && user.email_verified) {
-        try { await auth.requestVerificationEmail(email,'reset'); }
+        try { await auth.requestVerificationEmail(email,'reset', /^zh(?:-|,|;|$)/i.test(req.headers['accept-language'] || '') ? 'zh' : 'en'); }
         catch (error) {
           // The mail helper records provider failures. Cooldown and delivery
           // outcomes must not change the public account-existence response.
@@ -166,6 +169,7 @@ function register(routes) {
       const password = body?.password;
       if (!email || !/^\d{6}$/.test(code)) return sendError(res,400,'Email and a 6-digit reset code are required');
       if (typeof password !== 'string' || password.length<6 || Buffer.byteLength(password,'utf8')>72) return sendError(res,400,'Password must be at least 6 characters and at most 72 UTF-8 bytes');
+      if (!Object.hasOwn(billing.PLANS, body.plan)) return sendError(res,400,'Choose a monthly plan');
       const hash = await auth.hashPassword(password);
       getDB().transaction(() => {
         const user = auth.getUserByEmail(email);
@@ -201,7 +205,7 @@ function register(routes) {
   routes['/api/auth/me'] = (req, res, _parsed) => {
     const user = auth.getSessionUser(req);
     if (!user) return sendJSON(res, 200, { user: null });
-    sendJSON(res, 200, { user });
+    sendJSON(res, 200, { user: {...user, billing:billing.status(user)} });
   };
 
   // ─── Admin Routes ─────────────────────────────────────────────────────

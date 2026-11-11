@@ -1,0 +1,22 @@
+/* Hallmark v2 | theme: Eagleye locked system | shape: plan comparison | scope: app | signature: two explicit reading depths */
+/* Critique: prices and paid-access terms lead; no invented proof or decorative metrics. */
+.billing-shell { max-width: 960px; margin: 0 auto; padding: var(--space-xl) var(--space-lg); color: var(--fg); }
+.billing-intro { margin-bottom: var(--space-xl); }
+.billing-intro h1 { font-size: clamp(28px, 4vw, 44px); text-wrap: balance; line-height: 1.15; overflow-wrap: break-word; min-width: 0; }
+.billing-intro p, .billing-terms, .billing-plan > p { color: var(--fg-mute); line-height: 1.7; }
+.billing-plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-lg); }
+.billing-plan { display: flex; flex-direction: column; align-items: stretch; border-top: 2px solid var(--accent); border-bottom: 1px solid var(--rule); padding: var(--space-lg) 0; }
+.billing-plan h2 { text-wrap: balance; font-size: 24px; margin: 0; }
+.billing-plan .billing-price { color: var(--fg); font-size: 48px; font-variant-numeric: tabular-nums; font-weight: 600; margin: var(--space-md) 0; }
+.billing-price span { display: block; font-size: 14px; font-weight: 400; color: var(--fg-mute); }
+.billing-plan ul { padding-left: var(--space-lg); margin: var(--space-md) 0 var(--space-lg); line-height: 1.8; flex: 1; }
+.billing-link { display: block; text-align: center; text-decoration: none; }
+.billing-notice { padding: var(--space-md) 0; margin-bottom: var(--space-lg); border-bottom: 1px solid var(--rule); line-height: 1.7; }
+.billing-terms { font-size: 14px; margin: var(--space-lg) 0; max-width: 72ch; }
+.billing-footer { display: flex; align-items: center; gap: var(--space-lg); margin-top: var(--space-xl); }
+.billing-shell :is(a,button,select):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.billing-shell button:disabled { opacity: .55; cursor: not-allowed; }
+.billing-shell button:hover:not(:disabled) { filter: brightness(1.08); }
+.billing-shell button:active:not(:disabled) { transform: translateY(1px); }
+@media (max-width: 640px) { .billing-plans { grid-template-columns: minmax(0, 1fr); } .billing-shell { padding: var(--space-lg) var(--space-md); } }
+@media (prefers-reduced-motion: reduce) { .billing-shell * { transition: none; animation: none; } }

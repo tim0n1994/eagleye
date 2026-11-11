@@ -6,9 +6,9 @@
  */
 
 import { $, escapeAttr, escapeHtml, localDateStr, normalizeDateStr } from '../utils.js';
-import { getLanguage, t } from '../i18n.js';
+import { formatDate, formatNumber, getLanguage, t } from '../i18n.js';
 import { router } from '../router.js';
-import { API_BASE, fetchJSON, pickZh, showError, showLoader, trustBadge } from './shared.js';
+import { API_BASE, fetchJSON, getItemDisplayTitle, pickZh, showError, showLoader, trustBadge } from './shared.js';
 
 const SIGNAL_LIMIT = 2000;
 const scoreValue = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -43,7 +43,7 @@ async function loadSignalTypes() {
 export async function renderSignals(_params) {
   const container = $('#pageContent');
   const isCurrent = beginSignalPage();
-  showLoader(container, 'LOADING SIGNALS...');
+  showLoader(container, getLanguage() === 'zh' ? '正在加载信号…' : 'Loading signals...');
 
   try {
     const typesData = await loadSignalTypes();
@@ -94,7 +94,7 @@ export async function renderSignals(_params) {
             const y = H - PAD - (v / maxV) * (H - PAD * 2);
             path += (i === 0 ? 'M' : 'L') + ' ' + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
           });
-          return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:120px;height:24px;display:inline-block;vertical-align:middle;margin-left:8px" title="Velocity trend"><path d="' + path + '" fill="none" stroke="var(--accent)" stroke-width="1.5"/></svg>';
+          return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:120px;height:24px;display:inline-block;vertical-align:middle;margin-left:8px" title="' + (zh ? '速度趋势' : 'Velocity trend') + '"><path d="' + path + '" fill="none" stroke="var(--accent)" stroke-width="1.5"/></svg>';
         })()
       : '';
     // Quality trend: compare today's avg alpha to the window avg.
@@ -102,7 +102,7 @@ export async function renderSignals(_params) {
     const todayScores = signals.filter(s => normalizeDateStr(s.digest_date) === todayKey).map(cardScore).filter(value => value !== null);
     const todayAvgAlpha = todayScores.length ? todayScores.reduce((sum, value) => sum + value, 0) / todayScores.length : null;
     const trendArrow = todayAvgAlpha === null ? '—' : todayAvgAlpha > avgAlpha + 0.02 ? '▲▲' : todayAvgAlpha >= avgAlpha - 0.02 ? '●' : '▼';
-    const trendColor = trendArrow === '▲▲' ? '#34d399' : trendArrow === '▼' ? '#f87171' : 'var(--fg-mute)';
+    const trendColor = trendArrow === '▲▲' ? 'var(--color-success)' : trendArrow === '▼' ? 'var(--color-error)' : 'var(--fg-mute)';
     const trendText = todayAvgAlpha === null ? (zh ? '今日暂无可评分样本' : 'No scored sample today') : trendArrow === '▲▲' ? (zh ? '今日上升' : 'Rising today') : trendArrow === '●' ? (zh ? '平稳' : 'Stable') : (zh ? '今日下降' : 'Declining today');
 
     // Rising entities (Phase 2): the entity currently accelerating fastest.
@@ -115,12 +115,12 @@ export async function renderSignals(_params) {
       <div class="range-tabs">
         ${[['1', '24h'], ['7', '7d'], ['30', '30d'], ['9999', 'All']].map(([val, label]) => {
           const active = selectedRange === val;
-          return `<a href="${escapeAttr(filterHref({ range: val }))}" class="range-tab ${active ? 'active' : ''}">${label}</a>`;
+          return `<a href="${escapeAttr(filterHref({ range: val }))}" class="range-tab ${active ? 'active' : ''}">${label === 'All' && zh ? '全部' : label}</a>`;
         }).join('')}
       </div>`;
     const audienceTabs = `
       <div class="audience-tabs">
-        <a href="${escapeAttr(filterHref({ audience: '' }))}" class="audience-tab ${selectedAudience === '' ? 'active' : ''}">All</a>
+        <a href="${escapeAttr(filterHref({ audience: '' }))}" class="audience-tab ${selectedAudience === '' ? 'active' : ''}">${zh ? '全部' : 'All'}</a>
         ${audiences.map(a => `
           <a href="${escapeAttr(filterHref({ audience: a.key }))}"
              class="audience-tab ${selectedAudience === a.key ? 'active' : ''}"
@@ -145,12 +145,12 @@ export async function renderSignals(_params) {
     }
     const maxB = Math.max(1, ...alphaBuckets);
     const alphaLabels = ['<50', '50-70', '70-85', '85+'];
-    const alphaColors = ['var(--fg-mute)', '#38bdf8', '#facc15', 'var(--accent)'];
-    const alphaHistHtml = '<div style="display:flex;align-items:flex-end;gap:8px;height:40px;margin:4px 0 12px" title="Alpha distribution">' +
+    const alphaColors = ['var(--fg-mute)', 'var(--sea)', 'var(--color-warning)', 'var(--accent)'];
+    const alphaHistHtml = '<div style="display:flex;align-items:flex-end;gap:8px;height:40px;margin:4px 0 12px" title="' + (zh ? 'Alpha 分布' : 'Alpha distribution') + '">' +
       alphaBuckets.map((b, i) => {
         const h = Math.max(2, (b / maxB) * 36);
         return '<div style="display:flex;flex-direction:column;align-items:center;gap:2px">' +
-          '<div style="width:40px;height:' + h + 'px;background:' + alphaColors[i] + ';border-radius:2px;opacity:0.8" title="' + b + ' signals at ' + alphaLabels[i] + '"></div>' +
+          '<div style="width:40px;height:' + h + 'px;background:' + alphaColors[i] + ';border-radius:2px;opacity:0.8" title="' + b + (zh ? ' 个信号 ' : ' signals at ') + alphaLabels[i] + '"></div>' +
           '<span style="font-size:8px;color:var(--fg-mute);font-family:var(--font-mono)">' + alphaLabels[i] + '</span>' +
           '</div>';
       }).join('') + '</div>';
@@ -158,7 +158,7 @@ export async function renderSignals(_params) {
     // Signal type mini-donut chart (computed before template to avoid nesting).
     let typeDonutHtml = '';
     if (topTypes.length >= 2) {
-      const donutColors = ['#f97316', '#38bdf8', '#34d399', '#a78bfa', '#facc15'];
+      const donutColors = ['var(--accent)', 'var(--sea)', 'var(--color-success)', 'var(--chart-violet)', 'var(--color-warning)'];
       const donutTotal = topTypes.reduce((s, [, c]) => s + c, 0);
       let dAngle = -90;
       const dcx = 40, dcy = 40, dr = 28, drInner = 16;
@@ -187,8 +187,8 @@ export async function renderSignals(_params) {
     const html = `
       <section class="page-section signals-layout">
         ${audienceTabs}
-        <a href="${API_BASE}/signals?${escapeAttr(exportParams.toString())}" download="signals.json" class="action-link" style="font-size:11px;margin:4px 0;display:inline-block">⬇ Export JSON</a>
-        <p class="subtle signal-sample-note">${zh ? `已加载 ${signals.length} 条（最多 ${SIGNAL_LIMIT} 条）；统计及导出基于当前筛选样本。` : `Loaded ${signals.length} signals (limit ${SIGNAL_LIMIT}); statistics and export use the current filtered sample.`}${signals.length >= SIGNAL_LIMIT ? (zh ? ' 已达到上限，可能还有更多结果。' : ' Limit reached; more results may exist.') : ''} ${zh ? `可评分 ${scores.length} 条，缺分 ${signals.length - scores.length} 条。` : `${scores.length} scored, ${signals.length - scores.length} missing scores.`}</p>
+        <a href="${API_BASE}/signals?${escapeAttr(exportParams.toString())}" download="signals.json" class="action-link" style="font-size:11px;margin:4px 0;display:inline-block">${zh ? '导出 JSON' : 'Export JSON'}</a>
+        <p class="subtle signal-sample-note">${zh ? `已加载 ${formatNumber(signals.length)} 条（最多 ${formatNumber(SIGNAL_LIMIT)} 条）；统计及导出基于当前筛选样本。` : `Loaded ${formatNumber(signals.length)} signals (limit ${formatNumber(SIGNAL_LIMIT)}); statistics and export use the current filtered sample.`}${signals.length >= SIGNAL_LIMIT ? (zh ? ' 已达到上限，可能还有更多结果。' : ' Limit reached; more results may exist.') : ''} ${zh ? `可评分 ${formatNumber(scores.length)} 条，缺分 ${formatNumber(signals.length - scores.length)} 条。` : `${formatNumber(scores.length)} scored, ${formatNumber(signals.length - scores.length)} missing scores.`}</p>
         ${alphaHistHtml}
         ${signals.length > 0 ? `<div style="display:flex;gap:16px;flex-wrap:wrap;margin:4px 0 12px;font-size:11px;font-family:var(--font-mono);color:var(--fg-mute)">
           <span>${zh ? '已加载' : 'Loaded'}: <strong style="color:var(--fg)">${signals.length}</strong></span>
@@ -200,16 +200,15 @@ export async function renderSignals(_params) {
         ${typeDonutHtml}
         <div class="signals-left">
           <div class="signals-type-filter">
-            <h3 class="signals-filter-title">SIGNAL TYPES</h3>
+            <h3 class="signals-filter-title">${zh ? '信号类型' : 'Signal types'}</h3>
             <p class="subtle">${zh ? '计数：当前加载样本' : 'Counts: current loaded sample'}</p>
             <a href="${escapeAttr(filterHref({ type: 'all' }))}" class="signal-type-item ${selectedType === 'all' ? 'active' : ''}">
-              <span class="st-icon">🔄</span>
-              <span class="st-name">All Signals</span>
+              <span class="st-name">${zh ? '全部信号' : 'All signals'}</span>
               <span class="st-count">${signals.length}</span>
             </a>
             ${typesData.map(t => `
               <a href="${escapeAttr(filterHref({ type: t.slug }))}" class="signal-type-item ${selectedType === t.slug ? 'active' : ''}">
-                <span class="st-icon">${escapeHtml(t.icon || '📡')}</span>
+                <span class="st-icon">${escapeHtml(t.icon || '')}</span>
                 <span class="st-name">${escapeHtml(pickZh(t.name, t.name_zh))}</span>
                 <span class="st-count">${selectedType !== 'all' && selectedType !== t.slug ? '—' : typeCounts[t.slug] || 0}</span>
               </a>
@@ -222,8 +221,8 @@ export async function renderSignals(_params) {
             ${rising.map((e, i) => `
               <div class="rising-row">
                 <span class="rising-rank">${i + 1}</span>
-                <span class="rising-name"><a href="/trajectory/${escapeAttr(e.slug)}" class="momentum-link">${escapeHtml(e.name)}</a>${e.acceleration > 0 ? ` <span class="rising-up">▲${e.acceleration.toFixed(1)}</span>` : ''}${e.burst_score > 0 ? ` <span class="entity-burst">💥${e.burst_score.toFixed(1)}</span>` : ''}${e.growth_rate > 0 ? ` <span class="entity-growth">📈${(e.growth_rate * 100).toFixed(0)}%</span>` : ''}</span>
-                <a class="rising-sub" href="/api/entities/${encodeURIComponent(e.slug)}/feed.xml" target="_blank" rel="noopener" title="Subscribe to ${escapeAttr(e.name)} (Atom feed)">RSS</a>
+                <span class="rising-name"><a href="/trajectory/${escapeAttr(e.slug)}" class="momentum-link">${escapeHtml(e.name)}</a>${e.acceleration > 0 ? ` <span class="rising-up">▲${e.acceleration.toFixed(1)}</span>` : ''}${e.burst_score > 0 ? ` <span class="entity-burst">${e.burst_score.toFixed(1)}</span>` : ''}${e.growth_rate > 0 ? ` <span class="entity-growth">+${(e.growth_rate * 100).toFixed(0)}%</span>` : ''}</span>
+                <a class="rising-sub" href="/api/entities/${encodeURIComponent(e.slug)}/feed.xml" target="_blank" rel="noopener" title="${escapeAttr(zh ? `订阅 ${e.name}（Atom 源）` : `Subscribe to ${e.name} (Atom feed)`)}">RSS</a>
               </div>
             `).join('')}
           </div>
@@ -236,24 +235,24 @@ export async function renderSignals(_params) {
             return `
               <article class="signal-card" data-signal-id="${escapeAttr(s.item_id)}">
                 <div class="signal-card-top">
-                  <span class="signal-type-badge" data-type="${escapeAttr(s.signal_type)}">${escapeHtml(st.icon || '📡')} ${escapeHtml(pickZh(st.name, st.name_zh) || s.signal_type)}</span>
-                  <span class="signal-alpha" title="${selectedAudience ? `Audience score (base ${scorePercent(s.alpha_score)})` : 'Alpha Score'}">${scorePercent(score)}</span>
+                  <span class="signal-type-badge" data-type="${escapeAttr(s.signal_type)}">${escapeHtml(st.icon || '')} ${escapeHtml(pickZh(st.name, st.name_zh) || s.signal_type)}</span>
+                  <span class="signal-alpha" title="${selectedAudience ? (zh ? `受众评分（基准 ${scorePercent(s.alpha_score)}）` : `Audience score (base ${scorePercent(s.alpha_score)})`) : (zh ? 'Alpha 分' : 'Alpha Score')}">${scorePercent(score)}</span>
                 </div>
                 <h4 class="signal-card-title">
-                  <a href="${escapeAttr(s.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(s.ai_title || s.title || '')}</a>
+                  <a href="${escapeAttr(s.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(getItemDisplayTitle(s))}</a>
                 </h4>
-                ${s.one_liner || s.short_summary ? `<p class="signal-card-oneliner">${escapeHtml(s.one_liner || s.short_summary || '')}</p>` : ''}
+                ${(s.one_liner || s.short_summary || s.one_liner_zh || s.short_summary_zh) ? `<p class="signal-card-oneliner">${escapeHtml(pickZh(s.one_liner || s.short_summary || '', s.one_liner_zh || s.short_summary_zh || ''))}</p>` : ''}
                 <div class="signal-card-meta">
-                  <span class="signal-source">${escapeHtml(s.source_label || '')}${trustBadge(s.source_type, s.noise_rate)}</span>
+                  <span class="signal-source">${escapeHtml(pickZh(s.source_label || '', s.source_label_zh || ''))}${trustBadge(s.source_type, s.noise_rate)}</span>
                   <span class="signal-scores">
                     N:${scorePercent(s.novelty_score)} V:${scorePercent(s.velocity_score)} CS:${scorePercent(s.cross_source_score)} SQ:${scorePercent(s.source_quality_score)}
                   </span>
                 </div>
-                <div class="signal-alpha-bar" title="Alpha score ${scorePercent(score)}">
-                  <div class="signal-alpha-fill" style="width:${scoreWidth(score)}%;background:${score >= 0.85 ? 'var(--accent)' : score >= 0.7 ? '#facc15' : 'var(--fg-mute)'}"></div>
+                <div class="signal-alpha-bar" title="${zh ? `Alpha 分 ${scorePercent(score)}` : `Alpha score ${scorePercent(score)}`}">
+                  <div class="signal-alpha-fill" style="width:${scoreWidth(score)}%;background:${score >= 0.85 ? 'var(--accent)' : score >= 0.7 ? 'var(--color-warning)' : 'var(--fg-mute)'}"></div>
                 </div>
                 <div class="signal-card-actions">
-                  <button class="signal-pin-btn" data-item-id="${escapeAttr(s.item_id)}" title="${getLanguage() === 'zh' ? '收藏' : 'Save'}">🔖</button>
+                  <button class="signal-pin-btn" data-item-id="${escapeAttr(s.item_id)}" title="${getLanguage() === 'zh' ? '收藏本条信号' : 'Save this signal'}">${getLanguage() === 'zh' ? '收藏' : 'Save'}</button>
                   <a href="/signals/${escapeAttr(s.item_id)}" class="signal-detail-link">${getLanguage() === 'zh' ? '详情' : 'Detail'} →</a>
                 </div>
               </article>`;
@@ -261,8 +260,8 @@ export async function renderSignals(_params) {
         </div>
         <div class="signals-right" id="signalsDetail">
           <div class="signals-detail-placeholder">
-            <h3>Signal Detail</h3>
-            <p>Click a signal card to view evidence chain and actions</p>
+            <h3>${zh ? '信号详情' : 'Signal Detail'}</h3>
+            <p>${zh ? '点击信号卡片查看证据链与操作。' : 'Click a signal card to view evidence chain and actions.'}</p>
           </div>
         </div>
       </section>
@@ -290,7 +289,7 @@ export async function renderSignals(_params) {
           if (!isCurrent() || request !== detailRequest || !detail.isConnected) return;
           renderSignalDetailPane(detail, data.signal || data, typesData);
         } catch (err) {
-          if (isCurrent() && request === detailRequest && detail.isConnected) detail.innerHTML = `<p class="error">Error: ${escapeHtml(err.message)}</p>`;
+          if (isCurrent() && request === detailRequest && detail.isConnected) detail.innerHTML = `<p class="error">${zh ? '错误：' : 'Error: '}${escapeHtml(err.message)}</p>`;
         }
       });
     });
@@ -305,7 +304,7 @@ export async function renderSignals(_params) {
         try {
           const res = await fetch(`${API_BASE}/items/${encodeURIComponent(id)}/save`, { method: 'GET' });
           const data = await res.json();
-          if (window.__toast) window.__toast(data.saved ? 'Saved!' : 'Removed', data.saved ? 'success' : 'info');
+          if (window.__toast) window.__toast(data.saved ? (zh ? '已收藏' : 'Saved') : (zh ? '已取消收藏' : 'Removed'), data.saved ? 'success' : 'info');
           btn.style.color = data.saved ? 'var(--accent)' : 'var(--fg-mute)';
         } catch (err) { console.warn('Pin failed:', err.message); }
       });
@@ -331,56 +330,57 @@ function renderSignalDetailPane(container, signal, typesData) {
   const st = typesData?.find(t => t.slug === signal.signal_type) || {};
   const entities = signal.entities || [];
   const topics = signal.topics || [];
+  const paneZh = getLanguage() === 'zh';
 
   container.innerHTML = `
     <div class="signal-detail-inner">
       <div class="signal-detail-header">
-        <span class="signal-type-badge large" data-type="${escapeAttr(signal.signal_type)}">${escapeHtml(st.icon || '📡')} ${escapeHtml(pickZh(st.name, st.name_zh) || signal.signal_type)}</span>
-        <span class="signal-alpha large">Base Alpha: ${scorePercent(signal.alpha_score)}</span>
+        <span class="signal-type-badge large" data-type="${escapeAttr(signal.signal_type)}">${escapeHtml(st.icon || '')} ${escapeHtml(pickZh(st.name, st.name_zh) || signal.signal_type)}</span>
+        <span class="signal-alpha large">${paneZh ? '基准 Alpha：' : 'Base Alpha: '}${scorePercent(signal.alpha_score)}</span>
       </div>
       <h3 class="signal-detail-title">
-        <a href="${escapeAttr(signal.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(signal.ai_title || signal.title || '')}</a>
+        <a href="${escapeAttr(signal.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(getItemDisplayTitle(signal))}</a>
       </h3>
-      ${signal.short_summary || signal.one_liner ? `<p class="signal-detail-summary">${escapeHtml(signal.short_summary || signal.one_liner)}</p>` : ''}
+      ${(signal.short_summary || signal.one_liner || signal.short_summary_zh || signal.one_liner_zh) ? `<p class="signal-detail-summary">${escapeHtml(pickZh(signal.short_summary || signal.one_liner || '', signal.short_summary_zh || signal.one_liner_zh || ''))}</p>` : ''}
 
       <div class="signal-score-breakdown">
-        <h4>Score Breakdown</h4>
+        <h4>${paneZh ? '评分拆解' : 'Score Breakdown'}</h4>
         <div class="score-bars">
-          ${[['Novelty', 'novelty_score'], ['Velocity', 'velocity_score'], ['Cross-Source', 'cross_source_score'], ['Source Quality', 'source_quality_score'], ['Thesis Match', 'thesis_match_score'], ['Consensus Penalty', 'consensus_penalty']].map(([label, key]) => {
+          ${[['Novelty', '新颖性', 'novelty_score'], ['Velocity', '传播速度', 'velocity_score'], ['Cross-Source', '跨源一致', 'cross_source_score'], ['Source Quality', '来源质量', 'source_quality_score'], ['Thesis Match', '论点匹配', 'thesis_match_score'], ['Consensus Penalty', '共识惩罚', 'consensus_penalty']].map(([label, labelZh, key]) => {
             const penalty = key === 'consensus_penalty';
-            return `<div class="score-row ${penalty ? 'penalty' : ''}"><span>${label}</span><span class="score-bar-wrap"><span class="score-bar ${penalty ? 'penalty' : key === 'thesis_match_score' ? 'thesis' : ''}" style="width:${scoreWidth(signal[key])}%"></span></span><span>${penalty && scoreValue(signal[key]) !== null ? '-' : ''}${scorePercent(signal[key])}</span></div>`;
+            return `<div class="score-row ${penalty ? 'penalty' : ''}"><span>${paneZh ? labelZh : label}</span><span class="score-bar-wrap"><span class="score-bar ${penalty ? 'penalty' : key === 'thesis_match_score' ? 'thesis' : ''}" style="width:${scoreWidth(signal[key])}%"></span></span><span>${penalty && scoreValue(signal[key]) !== null ? '-' : ''}${scorePercent(signal[key])}</span></div>`;
           }).join('')}
         </div>
       </div>
 
-      ${signal.evidence_summary ? `<div class="signal-evidence"><h4>Why</h4><p>${escapeHtml(signal.evidence_summary)}</p></div>` : ''}
+      ${signal.evidence_summary ? `<div class="signal-evidence"><h4>${paneZh ? '依据' : 'Why'}</h4><p>${escapeHtml(signal.evidence_summary)}</p></div>` : ''}
 
       ${entities.length > 0 ? `
-        <div class="signal-entities"><h4>Entities</h4>
+        <div class="signal-entities"><h4>${paneZh ? '实体' : 'Entities'}</h4>
           ${entities.map(e => {
             const surge = e.zscore != null && e.zscore > 1.5;
-            const mom = e.zscore != null ? ` <small class="${surge ? 'entity-surge' : 'entity-mom'}" title="${t('signals.velocity_zscore')}: ${e.zscore}">${surge ? '🔥' : '↑'}${e.zscore.toFixed(1)}</small>` : '';
-            const accelChip = e.acceleration != null && e.acceleration > 0 ? ` <small class="entity-accel" title="acceleration">⚡${e.acceleration.toFixed(1)}</small>` : '';
-            const burstChip = e.burst_score != null && e.burst_score > 0 ? ` <small class="entity-burst" title="burst score">💥${e.burst_score.toFixed(1)}</small>` : '';
+            const mom = e.zscore != null ? ` <small class="${surge ? 'entity-surge' : 'entity-mom'}" title="${t('signals.velocity_zscore')}：${e.zscore}">↑${e.zscore.toFixed(1)}</small>` : '';
+            const accelChip = e.acceleration != null && e.acceleration > 0 ? ` <small class="entity-accel" title="${paneZh ? `加速度：${e.acceleration.toFixed(1)}` : `acceleration: ${e.acceleration.toFixed(1)}`}">${e.acceleration.toFixed(1)}</small>` : '';
+            const burstChip = e.burst_score != null && e.burst_score > 0 ? ` <small class="entity-burst" title="${paneZh ? `爆发分：${e.burst_score.toFixed(1)}` : `burst score: ${e.burst_score.toFixed(1)}`}">${e.burst_score.toFixed(1)}</small>` : '';
             const link = e.slug ? `<a href="/trajectory/${escapeAttr(e.slug)}" class="entity-chip-link">${escapeHtml(e.name)}</a>` : escapeHtml(e.name);
             return `<span class="entity-chip">${link} <small>${escapeHtml(e.type)}</small>${mom}${accelChip}${burstChip}</span>`;
           }).join(' ')}
         </div>` : ''}
 
       ${topics.length > 0 ? `
-        <div class="signal-topics"><h4>Topics</h4>
-          ${topics.map(t => `<a href="/topics/${escapeAttr(t.slug)}" class="topic-chip">${escapeHtml(t.name)}</a>`).join(' ')}
+        <div class="signal-topics"><h4>${paneZh ? '专题' : 'Topics'}</h4>
+          ${topics.map(t => `<a href="/topics/${escapeAttr(t.slug)}" class="topic-chip">${escapeHtml(pickZh(t.name, t.name_zh))}</a>`).join(' ')}
         </div>` : ''}
 
       ${(() => {
         // SVG radar chart for the 6 score dimensions.
         const dims = [
-          { label: 'Novelty', val: scoreValue(signal.novelty_score) },
-          { label: 'Velocity', val: scoreValue(signal.velocity_score) },
-          { label: 'Cross-Src', val: scoreValue(signal.cross_source_score) },
-          { label: 'Source-Q', val: scoreValue(signal.source_quality_score) },
-          { label: 'Thesis', val: scoreValue(signal.thesis_match_score) },
-          { label: 'Action', val: scoreValue(signal.actionability_score) },
+          { label: paneZh ? '新颖性' : 'Novelty', val: scoreValue(signal.novelty_score) },
+          { label: paneZh ? '传播速度' : 'Velocity', val: scoreValue(signal.velocity_score) },
+          { label: paneZh ? '跨源' : 'Cross-Src', val: scoreValue(signal.cross_source_score) },
+          { label: paneZh ? '来源质量' : 'Source-Q', val: scoreValue(signal.source_quality_score) },
+          { label: paneZh ? '论点' : 'Thesis', val: scoreValue(signal.thesis_match_score) },
+          { label: paneZh ? '可操作性' : 'Action', val: scoreValue(signal.actionability_score) },
         ];
         const cx = 80, cy = 80, r = 55;
         const angleStep = (Math.PI * 2) / dims.length;
@@ -418,9 +418,9 @@ function renderSignalDetailPane(container, signal, typesData) {
       })()}
 
       <div class="signal-meta-footer">
-        <span>Source: ${escapeHtml(signal.source_label || '')}${trustBadge(signal.source_type, signal.noise_rate)}</span>
-        <span>Published: ${new Date(signal.published_at).toLocaleDateString()}</span>
-        <span>Score: ${signal.score || 0}</span>
+        <span>${paneZh ? '来源：' : 'Source: '}${escapeHtml(pickZh(signal.source_label || '', signal.source_label_zh || ''))}${trustBadge(signal.source_type, signal.noise_rate)}</span>
+        <span>${paneZh ? '发布：' : 'Published: '}${signal.published_at ? formatDate(signal.published_at, { dateStyle: 'short' }) : '—'}</span>
+        <span>${paneZh ? '评分：' : 'Score: '}${signal.score || 0}</span>
         <span style="display:inline-flex;align-items:center;gap:4px">
           ${(() => {
             // Freshness ring: compact SVG showing hours since publication.
@@ -428,14 +428,14 @@ function renderSignalDetailPane(container, signal, typesData) {
             const freshPct = Math.max(0, Math.min(100, 100 - ageH * 2));
             const circ = 2 * Math.PI * 14;
             const dashOff = circ * (1 - freshPct / 100);
-            const ringColor = ageH < 6 ? '#34d399' : ageH < 24 ? '#facc15' : '#f87171';
+            const ringColor = ageH < 6 ? 'var(--color-success)' : ageH < 24 ? 'var(--color-warning)' : 'var(--color-error)';
             return '<svg viewBox="0 0 36 36" style="width:28px;height:28px">' +
               '<circle cx="18" cy="18" r="14" fill="none" stroke="var(--bg-side)" stroke-width="3"/>' +
               '<circle cx="18" cy="18" r="14" fill="none" stroke="' + ringColor + '" stroke-width="3" ' +
               'stroke-dasharray="' + circ.toFixed(1) + '" stroke-dashoffset="' + dashOff.toFixed(1) + '" ' +
               'transform="rotate(-90 18 18)" style="transition:stroke-dashoffset 0.5s"/>' +
               '<text x="18" y="18" text-anchor="middle" dy="0.35em" style="font-size:7px;fill:var(--fg-mute);font-family:var(--font-mono)">' +
-              (ageH < 1 ? 'now' : ageH < 24 ? Math.round(ageH) + 'h' : Math.round(ageH / 24) + 'd') +
+              (ageH < 1 ? (paneZh ? '刚刚' : 'now') : ageH < 24 ? Math.round(ageH) + (paneZh ? ' 小时' : 'h') : Math.round(ageH / 24) + (paneZh ? ' 天' : 'd')) +
               '</text></svg>';
           })()}
         </span>
@@ -449,7 +449,7 @@ export async function renderSignalDetail(params) {
   const isCurrent = beginSignalPage();
   const itemId = params?.id || params?.slug || '';
 
-  showLoader(container, `LOADING SIGNAL ${itemId}...`);
+  showLoader(container, getLanguage() === 'zh' ? `正在加载信号 ${itemId}…` : `Loading signal ${itemId}...`);
 
   try {
     const data = await fetchJSON(`${API_BASE}/signals/${encodeURIComponent(itemId)}`);
@@ -461,8 +461,8 @@ export async function renderSignalDetail(params) {
     const html = `
       <section class="page-section signal-detail-page">
         <div class="page-header">
-          <h2 class="page-title">Signal / ${escapeHtml(pickZh(st.name, st.name_zh) || signal.signal_type || '')}</h2>
-          <a href="/signals" class="nav-link">← Signals</a>
+          <h2 class="page-title">${getLanguage() === 'zh' ? '信号 / ' : 'Signal / '}${escapeHtml(pickZh(st.name, st.name_zh) || signal.signal_type || '')}</h2>
+          <a href="/signals" class="nav-link">← ${getLanguage() === 'zh' ? '信号列表' : 'Signals'}</a>
         </div>
         <div id="signalDetailFull" class="signal-detail-full"></div>
       </section>
@@ -488,7 +488,7 @@ export async function renderSignalDetail(params) {
           `<ul class="story-members">` +
           related.map(r => `<li class="story-member">` +
             `<span class="story-member-src">α${scoreValue(r.alpha_score) === null ? '—' : r.alpha_score.toFixed(2)}</span>` +
-            `<a href="/signals/${escapeAttr(r.item_id)}">${escapeHtml((r.ai_title || r.title || '').slice(0, 80))}</a>` +
+            `<a href="/signals/${escapeAttr(r.item_id)}">${escapeHtml(getItemDisplayTitle(r).slice(0, 80))}</a>` +
             `</li>`).join('') +
           `</ul>`;
         detailEl?.appendChild(relDiv);

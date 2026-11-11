@@ -6,15 +6,16 @@
  */
 
 import { $, escapeAttr, escapeHtml } from '../utils.js';
-import { getLanguage, t } from '../i18n.js';
-import { API_BASE, fetchJSON, pickZh, renderItemCard, showError, showLoader } from './shared.js';
+import { formatNumber, t } from '../i18n.js';
+import { API_BASE, fetchJSON, getItemDisplayTitle, pickZh, renderItemCard, showError, showLoader } from './shared.js';
+import { readerError, xt } from '../i18n/reader-extra.js';
 
 
 // ─── Saved Items (Watchlist / bookmarks) ─────────────────
 
 export async function renderSaved(_params) {
   const container = $('#pageContent');
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING SAVED...' : t('common.loading'));
+  showLoader(container, xt('reader.loading_saved'));
 
   try {
     const data = await fetchJSON(`${API_BASE}/saved`);
@@ -40,9 +41,9 @@ export async function renderSaved(_params) {
         <div class="page-header">
           <h2 class="page-title">${t('saved.title')}</h2>
           <p class="page-description">${t('saved.subtitle')}</p>
-          <span class="page-description subtle">${t('saved.count', { n: items.length })}</span>
+          <span class="page-description subtle">${t('saved.count', { n: formatNumber(items.length) })}</span>
           <div style="margin-top:8px;display:flex;gap:8px">
-            <button class="action-btn" id="exportSavedBtn">⬇ ${getLanguage() === 'zh' ? '导出 JSON' : 'Export JSON'}</button>
+            <button class="action-btn" id="exportSavedBtn">${xt('reader.export_json')}</button>
           </div>
         </div>
         <div class="signals-grid" id="savedGrid">
@@ -82,7 +83,7 @@ export async function renderSaved(_params) {
       });
     });
   } catch (err) {
-    showError(container, err.message);
+    showError(container, readerError(err.message));
   }
 }
 
@@ -90,7 +91,7 @@ export async function renderSaved(_params) {
 
 export async function renderStories(_params) {
   const container = $('#pageContent');
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING STORIES...' : t('common.loading'));
+  showLoader(container, xt('reader.loading_stories'));
 
   try {
     // Default to a 7-day window so the page surfaces recent multi-source events.
@@ -116,15 +117,15 @@ export async function renderStories(_params) {
       const repTitle = pickZh(rep.title, rep.title_zh) || rep.title || '';
       const srcChips = (st.sources || []).map(s => `<span class="story-src">${escapeHtml(s)}</span>`).join('');
       const crossBadge = st.cross_source ? `<span class="story-cross">★ ${t('stories.cross_source')}</span>` : '';
-      const alphaStr = st.best_alpha ? (st.best_alpha * 100).toFixed(0) : '—';
+      const alphaStr = st.best_alpha ? formatNumber(Math.round(st.best_alpha * 100)) : '—';
       // List the member items collapsed (source + title), rep first.
       const members = (st.items || [])
         .slice()
         .sort((a, b) => (b.alpha_score || 0) - (a.alpha_score || 0))
         .slice(0, 6)
         .map(it => {
-          const ttl = escapeHtml((it.title || '').slice(0, 90));
-          const src = escapeHtml(it.source_label || '');
+          const ttl = escapeHtml(getItemDisplayTitle(it).slice(0, 90));
+          const src = escapeHtml(pickZh(it.source_label, it.source_label_zh) || '');
           const href = escapeAttr(it.canonical_url || '#');
           return `<li class="story-member"><span class="story-member-src">${src}</span><a href="${href}" target="_blank" rel="noopener">${ttl}</a></li>`;
         })
@@ -149,7 +150,7 @@ export async function renderStories(_params) {
           <h2 class="page-title">${t('stories.title')}</h2>
           <p class="page-description">${t('stories.subtitle')}</p>
           <span class="page-description subtle">
-            ${data.total} ${t('stories.total_label')} · ${data.cross_source_count} ${t('stories.cross_label')} · ${sinceDays}d
+            ${formatNumber(data.total)} ${t('stories.total_label')} · ${formatNumber(data.cross_source_count)} ${t('stories.cross_label')} · ${xt('reader.window_' + sinceDays + 'd')}
           </span>
         </div>
         <div class="stories-grid">
@@ -158,7 +159,7 @@ export async function renderStories(_params) {
       </section>
     `;
   } catch (err) {
-    showError(container, err.message);
+      showError(container, readerError(err.message));
   }
 }
 

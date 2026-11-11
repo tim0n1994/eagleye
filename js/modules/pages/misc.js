@@ -8,6 +8,7 @@
 import { $, escapeHtml } from '../utils.js';
 import { getLanguage } from '../i18n.js';
 import { API } from '../api.js';
+import { readerError, xt } from '../i18n/reader-extra.js';
 
 
 // ─── Help / FAQ / Keyboard Shortcuts ────────────────────
@@ -30,14 +31,17 @@ export async function renderHelp(_params) {
   ];
   const faqs = getLanguage() === 'zh' ? [
     { q: 'Eagleye 是什么？', a: '一个面向 AI、开发者、创业者的个人信息过滤引擎。从 19 个信息源抓取，用 LLM 生成中文知识卡片，多维 alpha 评分，跨源故事聚合，个性化过滤。' },
-    { q: '如何个性化我的信息流？', a: '收藏条目（🔖）、订阅实体（🔔 在轨迹页）、设置信号类型权重（/lens）。系统会从你的行为派生兴趣画像，For-You 页面据此重排。' },
+    { q: '如何个性化我的信息流？', a: '收藏条目、订阅实体（在轨迹页）、设置信号类型权重（/lens）。系统会从你的行为派生兴趣画像，For-You 页面据此重排。' },
     { q: 'alpha 分数是什么？', a: '多维信号评分：0.25×论题匹配 + 0.20×新颖度 + 0.15×可行动性 + 0.15×跨源 + 0.10×源质量 + 0.10×速度。≥0.85 是顶层 standout。' },
     { q: '数据存在哪里？', a: '全部在本地 SQLite（eagleye.db）。不上传你的阅读/收藏行为到任何服务器。LLM 调用走你配置的端点。' },
     { q: '如何自动同步？', a: '在 设置 → 定时调度 开启，每天定时跑 FULL_PIPELINE（抓取→富集→评分→图谱→简报）。' },
     { q: '如何搜索？', a: '按 / 键或访问 /search。FTS5 全文搜索覆盖标题+摘要，中英文都支持。' },
+    { q: 'Discover 页面是什么？', a: '/discover 可按类型浏览全部跟踪实体（公司、模型、仓库等），并按加速度、增长、突发度或 z-score 排序。' },
+    { q: '实体趋势如何工作？', a: '访问 /trajectory/:slug 查看任意实体近 30 天提及趋势和突发日；使用 /compare-entities 可叠加对比多个实体。' },
+    { q: '可以导出数据吗？', a: '可以：简报导出 Markdown，论文导出 BibTeX，轨迹导出 CSV，信号导出 JSON，收藏导出 JSON。还可以通过 /email/digest 生成适合邮件的 HTML 模板。' },
   ] : [
     { q: 'What is Eagleye?', a: 'A personal information filtering engine for AI, developers, and founders. It scrapes 19 sources, generates Chinese knowledge cards via LLM, multi-dimensional alpha scoring, cross-source story clustering, and personalization.' },
-    { q: 'How do I personalize my feed?', a: 'Save items (🔖), subscribe to entities (🔔 on trajectory pages), set signal-type weights (/lens). The system derives an interest profile from your behavior and re-ranks For-You accordingly.' },
+    { q: 'How do I personalize my feed?', a: 'Save items, subscribe to entities (on trajectory pages), set signal-type weights (/lens). The system derives an interest profile from your behavior and re-ranks For-You accordingly.' },
     { q: 'What is the alpha score?', a: 'A multi-dimensional signal score: 0.25×thesis + 0.20×novelty + 0.15×actionability + 0.15×cross-source + 0.10×source-quality + 0.10×velocity. ≥0.85 is a top-tier standout.' },
     { q: 'Where is data stored?', a: 'Everything is local SQLite (eagleye.db). Your reading/saving behavior never leaves your machine. LLM calls go to your configured endpoint.' },
     { q: 'How do I auto-sync?', a: 'Enable it in Settings → Scheduler to run FULL_PIPELINE daily (fetch→enrich→score→graph→digest).' },
@@ -55,7 +59,7 @@ export async function renderHelp(_params) {
     `<table class="metrics-table"><tbody>` +
     shortcuts.map(s => `<tr><td class="compare-feature"><kbd class="kbd">${escapeHtml(s.key)}</kbd></td><td>${escapeHtml(s.desc)}</td></tr>`).join('') +
     `</tbody></table></div>` +
-    `<div class="metrics-block"><h3 class="metrics-block-title">FAQ</h3>` +
+    `<div class="metrics-block"><h3 class="metrics-block-title">${getLanguage() === 'zh' ? '常见问题' : 'FAQ'}</h3>` +
     faqs.map(f => `<details class="faq-item"><summary>${escapeHtml(f.q)}</summary><p>${escapeHtml(f.a)}</p></details>`).join('') +
     `</div></section>`;
 }
@@ -69,13 +73,14 @@ export async function renderLogin(_params) {
   container.innerHTML = `
     <div class="auth-page">
       <div class="auth-card">
-        <div class="auth-logo">🦅</div>
-        <h2 class="auth-title">Eagleye</h2>
+        <h2 class="auth-title">${xt('reader.sign_in')}</h2>
         <p class="auth-subtitle">${zh ? '登录到你的账户' : 'Sign in to your account'}</p>
         <form id="loginForm" class="auth-form">
-          <input type="email" id="loginEmail" class="auth-input" placeholder="${zh ? '邮箱' : 'Email'}" required autocomplete="email" />
-          <input type="password" id="loginPassword" class="auth-input" placeholder="${zh ? '密码' : 'Password'}" required autocomplete="current-password" />
-          <button type="submit" class="auth-btn">${zh ? '登录' : 'Sign In'}</button>
+          <label class="auth-label" for="loginEmail">${xt('reader.email')}</label>
+          <input type="email" id="loginEmail" class="auth-input" placeholder="${xt('reader.email')}" required autocomplete="email" />
+          <label class="auth-label" for="loginPassword">${xt('reader.password')}</label>
+          <input type="password" id="loginPassword" class="auth-input" placeholder="${xt('reader.password')}" required autocomplete="current-password" />
+          <button type="submit" class="auth-btn">${xt('reader.sign_in')}</button>
         </form>
         <p class="auth-switch"><a href="/forgot-password" class="auth-link">${zh ? '忘记密码？' : 'Forgot password?'}</a></p>
         <p class="auth-switch">${zh ? '没有账户？' : 'No account?'} <a href="/register" class="auth-link">${zh ? '注册' : 'Register'}</a></p>
@@ -86,16 +91,22 @@ export async function renderLogin(_params) {
 
   const form = $('#loginForm');
   const errEl = $('#authError');
+  const submitButton = form.querySelector('[type="submit"]');
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errEl.textContent = '';
     const email = $('#loginEmail').value.trim();
     const password = $('#loginPassword').value;
     try {
+      submitButton.disabled = true;
+      submitButton.textContent = xt('reader.signing_in');
       await API.login(email, password);
       window.location.href = '/';
     } catch (err) {
-      errEl.textContent = err.message;
+      errEl.textContent = readerError(err.message);
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = xt('reader.sign_in');
     }
   });
 }
@@ -107,20 +118,30 @@ export async function renderRegister(_params) {
   container.innerHTML = `
     <div class="auth-page">
       <div class="auth-card">
-        <div class="auth-logo">🦅</div>
-        <h2 class="auth-title">Eagleye</h2>
+        <h2 class="auth-title">${zh ? '创建账户' : 'Create an account'}</h2>
         <p class="auth-subtitle">${zh ? '创建新账户' : 'Create a new account'}</p>
         <form id="registerForm" class="auth-form">
-          <input type="email" id="regEmail" class="auth-input" placeholder="${zh ? '邮箱' : 'Email'}" required autocomplete="email" />
-          <input type="password" id="regPassword" class="auth-input" placeholder="${zh ? '密码（至少6位）' : 'Password (min 6 chars)'}" required autocomplete="new-password" />
-          <button type="submit" class="auth-btn">${zh ? '注册' : 'Register'}</button>
+          <label class="auth-label" for="regPlan">${zh ? '订阅套餐' : 'Monthly plan'}</label>
+          <select id="regPlan" class="auth-input" required>
+            <option value="">${zh ? '请选择套餐' : 'Choose a plan'}</option>
+            <option value="reader">Reader — $20 / ${zh ? '月' : 'month'}</option>
+            <option value="analyst">Analyst — $79 / ${zh ? '月' : 'month'}</option>
+          </select>
+          <p class="auth-info">${zh ? '验证邮箱后付款开通，无免费版。' : 'Verify your email, then pay to activate. No free tier.'} <a href="/pricing">${zh ? '比较套餐' : 'Compare plans'}</a></p>
+          <label class="auth-label" for="regEmail">${xt('reader.email')}</label>
+          <input type="email" id="regEmail" class="auth-input" placeholder="${xt('reader.email')}" required autocomplete="email" />
+          <label class="auth-label" for="regPassword">${xt('reader.password_min_6')}</label>
+          <input type="password" id="regPassword" class="auth-input" placeholder="${xt('reader.password_min_6')}" required autocomplete="new-password" />
+          <button type="submit" class="auth-btn">${xt('reader.register')}</button>
         </form>
-        <button type="button" id="regResend" class="action-btn">${zh ? '重发验证码' : 'Resend verification code'}</button>
+        <button type="button" id="regResend" class="action-btn">${xt('reader.resend_code')}</button>
         <p id="regDeliveryStatus" class="auth-info" role="status" aria-live="polite"></p>
         <div id="verifySection" style="display:none">
           <p class="auth-info">${zh ? '请检查邮箱并输入收到的 6 位验证码。未收到时可重发。' : 'Check your inbox and enter the 6-digit verification code. You can resend it if needed.'}</p>
           <form id="verifyForm" class="auth-form">
+            <label class="auth-label" for="verifyCode">${zh ? '6 位验证码' : '6-digit code'}</label>
             <input type="text" id="verifyCode" class="auth-input" placeholder="${zh ? '6 位验证码' : '6-digit code'}" maxlength="6" pattern="[0-9]{6}" required />
+            <label class="auth-label" for="verifyPassword">${zh ? '账户密码' : 'Account password'}</label>
             <input type="password" id="verifyPassword" class="auth-input" placeholder="${zh ? '设置账户密码（至少6位）' : 'Choose account password (min 6 chars)'}" minlength="6" maxlength="72" autocomplete="new-password" required />
             <button type="submit" class="auth-btn">${zh ? '验证并注册' : 'Verify & create account'}</button>
           </form>
@@ -133,6 +154,8 @@ export async function renderRegister(_params) {
 
   const errEl = $('#authError');
   const registerForm = $('#registerForm');
+  const selectedPlan = new URLSearchParams(window.location.search).get('plan');
+  if (['reader','analyst'].includes(selectedPlan)) $('#regPlan').value=selectedPlan;
   const resendButton = $('#regResend');
   const registerButton = registerForm.querySelector('[type="submit"]');
   const emailInput = $('#regEmail');
@@ -158,6 +181,7 @@ export async function renderRegister(_params) {
     pending = value;
     resendButton.disabled = value || Date.now() < cooldownUntil;
     registerButton.disabled = value;
+    registerButton.textContent = value ? xt('reader.creating_account') : xt('reader.register');
   };
   const showVerification = email => {
     if (!registerForm.isConnected) return;
@@ -168,6 +192,12 @@ export async function renderRegister(_params) {
     window.__regEmail = email;
   };
 
+  if (window.__regEmail) {
+    registerForm.style.display = 'none';
+    container.querySelector('#verifySection').style.display = 'block';
+    container.querySelector('#verifyCode').focus();
+  }
+
   registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (pending) return;
@@ -177,14 +207,14 @@ export async function renderRegister(_params) {
     const password = $('#regPassword').value;
     setPending(true);
     try {
-      const res = await API.register(email, password);
+      const res = await API.register(email, password, $('#regPlan').value);
       if (res.error) throw new Error(res.error);
       showVerification(res.email || email);
       cooldown(res.retry_after || 60);
     } catch (err) {
       if (err.pendingVerification) showVerification(err.email || email);
       if (err.retryAfter) cooldown(err.retryAfter);
-      errEl.textContent = err.message;
+      errEl.textContent = readerError(err.message);
     } finally { setPending(false); }
   });
 
@@ -194,7 +224,7 @@ export async function renderRegister(_params) {
     deliveryStatus.textContent = '';
     const email = (emailInput.value.trim() || window.__regEmail || '').toLowerCase();
     if (!email || (emailInput.value.trim() && !emailInput.checkValidity())) {
-      errEl.textContent = zh ? '请输入有效邮箱。' : 'Enter a valid email address.';
+      errEl.textContent = readerError('Valid email required');
       emailInput.focus();
       return;
     }
@@ -202,7 +232,7 @@ export async function renderRegister(_params) {
     try {
       const response = await fetch('/api/auth/resend', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept-Language': getLanguage() },
         body: JSON.stringify({ email }),
       });
       const data = await response.json().catch(() => ({}));
@@ -211,7 +241,7 @@ export async function renderRegister(_params) {
       showVerification(email);
       deliveryStatus.textContent = zh ? '若该邮箱有待验证的注册，验证码已重新发送。请检查收件箱。' : 'If registration is pending for this email, a verification code has been resent. Check your inbox.';
     } catch (err) {
-      errEl.textContent = err.message;
+      errEl.textContent = readerError(err.message);
     } finally { setPending(false); }
   });
 
@@ -222,11 +252,17 @@ export async function renderRegister(_params) {
     if (button.disabled) return;
     button.disabled = true;
     const code = $('#verifyCode').value.trim();
+    const verifyButton = $('#verifyForm').querySelector('[type="submit"]');
     try {
+      verifyButton.disabled = true;
+      verifyButton.textContent = xt('reader.verifying');
       await API.verify(window.__regEmail, code, $('#verifyPassword').value);
       window.location.href = '/';
     } catch (err) {
-      errEl.textContent = err.message;
-    } finally { button.disabled = false; }
+      errEl.textContent = readerError(err.message);
+    } finally {
+      verifyButton.disabled = false;
+      verifyButton.textContent = xt('reader.verify');
+    }
   });
 }

@@ -6,18 +6,18 @@
  */
 
 import { escapeAttr, escapeHtml, timeAgo } from '../utils.js';
-import { getLanguage, t } from '../i18n.js';
+import { getLanguage, t, getLocale, formatDate, formatNumber } from '../i18n.js';
 import { renderMarkdown } from '../markdown.js';
 
 
 // ─── Utility ────────────────────────────────────────────
 
-export function showLoader(container, msg = 'LOADING...') {
-  container.innerHTML = `<div class="page-loading"><div class="spinner"></div><span>${msg}</span></div>`;
+export function showLoader(container, msg = t('common.loading')) {
+  container.innerHTML = `<div class="page-loading" role="status" aria-live="polite"><div class="spinner"></div><span>${escapeHtml(msg)}</span></div>`;
 }
 
 export function showError(container, msg) {
-  container.innerHTML = `<div class="page-error">⚠ ${escapeHtml(msg)}</div>`;
+  container.innerHTML = `<div class="page-error" role="alert"><strong>${t('common.error')}</strong><p>${escapeHtml(msg)}</p><a href="${escapeAttr(window.location.pathname + window.location.search)}" onclick="window.location.reload();return false">${t('common.retry')}</a></div>`;
 }
 
 export const API_BASE = '/api';
@@ -33,11 +33,7 @@ export function renderMarkdownLite(md) {
 }
 
 export function localizedDate(d, opts) {
-  try {
-    return d.toLocaleDateString(getLanguage() === 'zh' ? 'zh-CN' : 'en-US', opts);
-  } catch {
-    return d.toLocaleDateString('en-US', opts);
-  }
+  return formatDate(d, opts);
 }
 
 export function tagHref(tag) {
@@ -68,12 +64,11 @@ export async function getSourcesCached() {
 }
 
 const SOURCE_ICON = {
-  'x-following': '𝕏',
-  'hacker-news': '🟧', 'github-trending': '🐙', 'product-hunt': '🚀', 'hugging-face': '🤗',
-  'techmeme': '📰', 'solidot': '🪨', 'startup-archive': '📦',
-  'app-store-rank': '📱', 'app-store-trend': '📱',
-  'physical-ai-arxiv': '📄', 'physical-ai-humanoid': '🤖',
-  'physical-ai-cn-photonics': '🔬', 'v2ex': '💬', 'lobsters': '🦞',
+  'x-following': '𝕏', 'hacker-news': 'Y', 'github-trending': 'GH',
+  'product-hunt': 'P', 'hugging-face': 'HF', 'techmeme': 'T', 'solidot': 'S',
+  'startup-archive': 'SA', 'app-store-rank': 'A', 'app-store-trend': 'A',
+  'physical-ai-arxiv': 'a', 'physical-ai-humanoid': 'R',
+  'physical-ai-cn-photonics': 'P', 'v2ex': 'V', 'lobsters': 'L',
 };
 
 const SOURCE_ORDER_PRIORITY = new Map([
@@ -90,10 +85,11 @@ const SOURCE_ORDER_PRIORITY = new Map([
  * Use this for any content field that has a translated counterpart.
  */
 export function pickZh(enVal, zhVal) {
-  if (getLanguage() === 'zh' && zhVal && typeof zhVal === 'string' && zhVal.trim()) {
+  if (getLanguage() === 'zh' && ((typeof zhVal === 'string' && zhVal.trim()) || (Array.isArray(zhVal) && zhVal.length))) {
     return zhVal;
   }
-  return enVal;
+  const hasOriginal = typeof enVal === 'string' ? Boolean(enVal.trim()) : Array.isArray(enVal) ? enVal.length > 0 : enVal !== undefined && enVal !== null;
+  return hasOriginal ? enVal : zhVal;
 }
 
 function firstText(...values) {
@@ -121,14 +117,14 @@ function buildFallbackTitle(item) {
     .replace(/^@\w+[:：-]\s*/u, '')
     .replace(/^Quote\s+/i, '')
     .trim();
-  if (!cleaned) return firstText(item?.title, item?.canonical_url, 'Untitled');
+  if (!cleaned) return firstText(item?.title, item?.canonical_url, t('common.untitled'));
   const snippet = cleaned.length > 42 ? `${cleaned.slice(0, 41)}…` : cleaned;
   if (sourceSlug === 'x-following' && author) return `${author}：${snippet}`;
   return snippet;
 }
 
 export function getItemDisplayTitle(item) {
-  const summary = item?.ai_summary || {};
+  const summary = item?.ai_summary || item || {};
   const zhTitle = firstText(summary.ai_title_zh, item?.title_zh, summary.title_zh);
   const enTitle = firstText(summary.ai_title, item?.title);
   const localized = firstText(pickZh(enTitle, zhTitle), zhTitle, enTitle);
@@ -141,7 +137,7 @@ export function orderedSourceEntries(bySourceMap, sources) {
     const aPriority = SOURCE_ORDER_PRIORITY.get(a.slug) ?? 99;
     const bPriority = SOURCE_ORDER_PRIORITY.get(b.slug) ?? 99;
     if (aPriority !== bPriority) return aPriority - bPriority;
-    return String(a.label || a.slug || '').localeCompare(String(b.label || b.slug || ''), 'zh-Hans-CN');
+    return String(a.label || a.slug || '').localeCompare(String(b.label || b.slug || ''), getLocale());
   });
   const usedKeys = new Set();
   const entries = [];
@@ -162,10 +158,10 @@ export function orderedSourceEntries(bySourceMap, sources) {
 }
 
 export function sourceIcon(slug, fallback) {
-  if (fallback) return fallback;
-  if (!slug) return '📡';
+  if (fallback && !/\p{Extended_Pictographic}/u.test(fallback)) return escapeHtml(fallback);
+  if (!slug) return '◈';
   const key = String(slug).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return SOURCE_ICON[key] || '📡';
+  return SOURCE_ICON[key] || '◈';
 }
 
 function sourceNavState() {
@@ -202,7 +198,7 @@ export function renderSourceNav(currentSlug) {
         </button>
         <div class="sources-tab-nav-list" id="sourcesTabNavList" role="tablist">
           <a href="/sources" class="sources-tab-pill ${!currentSlug ? 'active' : ''}" role="tab" aria-selected="${!currentSlug}">
-            <span class="sources-tab-pill-icon">📚</span>
+            <span class="sources-tab-pill-icon" aria-hidden="true">▤</span>
             <span>${allLabel}</span>
           </a>
           ${/* source pills are rendered by hydrateSourceNavPills() to keep this synchronous */
@@ -280,8 +276,8 @@ export function renderItemCard(item) {
 
   const stars = popularity.stars ? `<span class="meta-chip">★ ${popularity.stars}</span>` : '';
   const points = popularity.points ? `<span class="meta-chip">▲ ${popularity.points}</span>` : '';
-  const comments = popularity.comments ? `<span class="meta-chip">💬 ${popularity.comments}</span>` : '';
-  const upvotes = popularity.upvotes ? `<span class="meta-chip">👍 ${popularity.upvotes}</span>` : '';
+  const comments = popularity.comments ? `<span class="meta-chip">${t('item.comments', { n: formatNumber(popularity.comments) })}</span>` : '';
+  const upvotes = popularity.upvotes ? `<span class="meta-chip">${t('item.votes', { n: formatNumber(popularity.upvotes) })}</span>` : '';
   const forks = popularity.forks ? `<span class="meta-chip">⑂ ${popularity.forks}</span>` : '';
   const language = payload.language ? `<span class="meta-chip lang-chip">${payload.language}</span>` : '';
 
@@ -314,7 +310,7 @@ export function renderItemCard(item) {
   return `
     <article class="info-card">
       <div class="card-header">
-        <span class="card-source">${escapeHtml(item.source_label || '')}</span>
+        <span class="card-source">${escapeHtml(pickZh(item.source_label, item.source_label_zh) || '')}</span>
         <div class="card-meta-right">
           ${language}${stars}${points}${comments}${upvotes}${forks}
         </div>
@@ -324,7 +320,7 @@ export function renderItemCard(item) {
           ${escapeHtml(title)}
         </a>
       </h4>
-      ${item.story_cluster ? `<div class="card-dedup" title="${escapeAttr(t('dedup.tip'))}">📚 ${t('dedup.count', { n: item.story_cluster.count })} · ${item.story_cluster.sources.map(s => escapeHtml(s)).join(', ')}</div>` : ''}
+      ${item.story_cluster ? `<div class="card-dedup" title="${escapeAttr(t('dedup.tip'))}">${t('dedup.count', { n: item.story_cluster.count })} · ${item.story_cluster.sources.map(s => escapeHtml(s)).join(', ')}</div>` : ''}
       ${oneLiner ? `<p class="card-one-liner">${escapeHtml(oneLiner)}</p>` : ''}
       ${shortSummary ? `<p class="card-summary">${escapeHtml(shortSummary)}</p>` : ''}
       ${keyPointsArr.length > 0
@@ -333,11 +329,11 @@ export function renderItemCard(item) {
       <div class="card-topics">${topics}</div>
       ${tagChips ? `<div class="card-tags">${tagChips}</div>` : ''}
       <div class="card-actions">
-        ${showDeploy ? `<button class="action-btn deploy-btn" data-item-id="${escapeAttr(item.id)}">🚀 ${escapeHtml(deployLabel)}</button>` : ''}
+        ${showDeploy ? `<button class="action-btn deploy-btn" data-item-id="${escapeAttr(item.id)}">${escapeHtml(deployLabel)}</button>` : ''}
         <a href="${escapeAttr(item.canonical_url || '#')}" target="_blank" rel="noopener" class="action-link">
-          ${escapeHtml(originalLabel)} ↗
+          ${escapeHtml(originalLabel)}
         </a>
-        ${item.saved || item.saved_at ? `<button class="action-btn saved-toggle" data-item-id="${escapeAttr(item.id)}" title="${escapeAttr(t('saved.removed'))}">🔖</button>` : ''}
+        ${item.saved || item.saved_at ? `<button class="action-btn saved-toggle" data-item-id="${escapeAttr(item.id)}" title="${escapeAttr(t('saved.removed'))}">${t('footer.saved')}</button>` : ''}
         <span class="card-time">${item.published_at ? timeAgo(item.published_at) : timeAgo(item.created_at)}</span>
       </div>
       ${summary.confidence ? `<div class="card-confidence">${escapeHtml(confidenceLabel)}: ${(summary.confidence * 100).toFixed(0)}%</div>` : ''}
@@ -360,10 +356,10 @@ export function renderItemMiniCard(item) {
     : popularity.stars
     ? `<span class="mini-rank">★ ${popularity.stars}</span>`
     : popularity.upvotes
-    ? `<span class="mini-rank">👍 ${popularity.upvotes}</span>`
+    ? `<span class="mini-rank">${t('item.votes', { n: formatNumber(popularity.upvotes) })}</span>`
     : '';
 
-  const commentChip = popularity.comments ? `<span class="mini-meta">💬 ${popularity.comments}</span>` : '';
+  const commentChip = popularity.comments ? `<span class="mini-meta">${t('item.comments', { n: formatNumber(popularity.comments) })}</span>` : '';
   const timeChip = `<span class="mini-time">${item.published_at ? timeAgo(item.published_at) : timeAgo(item.created_at)}</span>`;
 
   const title = getItemDisplayTitle(item);
@@ -391,22 +387,22 @@ export function renderItemMiniCard(item) {
         ${oneLiner}
       </div>
       <div class="mini-card-mid">
-        <span class="mini-source">${escapeHtml(item.source_label || '')}</span>
+        <span class="mini-source">${escapeHtml(pickZh(item.source_label, item.source_label_zh) || '')}</span>
         ${lang}
         ${rankChip}
         ${commentChip}
         ${timeChip}
         ${(() => {
           // Reading time estimate: ~200 words/min, based on summary length.
-          const text = (summary.short_summary_zh || summary.short_summary || summary.one_liner_zh || summary.one_liner || item.original_summary || '').toString();
+          const text = (pickZh(summary.short_summary || summary.one_liner, summary.short_summary_zh || summary.one_liner_zh) || item.original_summary || '').toString();
           const words = text.length / 3; // rough CJK word equivalent
           const mins = Math.max(1, Math.round(words / 200));
-          return mins > 1 ? `<span class="mini-meta" title="est. reading time">⏱ ${mins}m</span>` : '';
+          return mins > 1 ? `<span class="mini-meta" title="${escapeAttr(t('item.reading_time'))}">${t('item.read_minutes', { n: mins })}</span>` : '';
         })()}
       </div>
       ${topics ? `<div class="mini-card-bottom">${topics}</div>` : ''}
       <div class="mini-card-actions">
-        <a class="mini-action mini-action-link" href="${escapeAttr(item.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(originalLabel)} ↗</a>
+        <a class="mini-action mini-action-link" href="${escapeAttr(item.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(originalLabel)}</a>
       </div>
     </article>
   `;
@@ -418,16 +414,16 @@ export function renderItemMiniCard(item) {
 export function trustBadge(sourceType, noiseRate) {
   const type = sourceType || 'amplifier';
   const labels = {
-    early_signal: { label: 'EARLY', cls: 'trust-early' },
-    originator: { label: 'ORIGIN', cls: 'trust-origin' },
-    amplifier: { label: 'AMP', cls: 'trust-amp' },
-    noisy: { label: 'NOISY', cls: 'trust-noisy' },
+    early_signal: { label: t('trust.early_signal'), cls: 'trust-early' },
+    originator: { label: t('trust.originator'), cls: 'trust-origin' },
+    amplifier: { label: t('trust.amplifier'), cls: 'trust-amp' },
+    noisy: { label: t('trust.noisy'), cls: 'trust-noisy' },
   };
   const info = labels[type] || labels.amplifier;
   const noiseTag = type === 'noisy' && typeof noiseRate === 'number'
     ? ` ${(noiseRate * 100).toFixed(0)}%`
     : '';
-  return ` <span class="source-trust ${info.cls}" title="Source quality: ${type}${noiseRate != null ? ` (noise ${(noiseRate * 100).toFixed(0)}%)` : ''}">${info.label}${noiseTag}</span>`;
+  return ` <span class="source-trust ${info.cls}" title="${escapeAttr(t('trust.quality', { type: info.label }))}${noiseRate != null ? ` (${escapeAttr(t('trust.noise', { n: formatNumber(noiseRate, { style: 'percent' }) }))})` : ''}">${info.label}${noiseTag}</span>`;
 }
 
 // ─── For You (personal feed: alpha × relevance, unseen-first) ───

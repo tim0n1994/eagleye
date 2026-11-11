@@ -147,8 +147,8 @@ function register(routes) {
     try {
       const items = db.prepare(`
         SELECT i.id, i.title, i.title_zh, i.canonical_url, i.digest_date, i.published_at,
-               s.label AS source_label, s.slug AS source_slug,
-               a.one_liner_zh, a.short_summary_zh,
+               s.label AS source_label, s.label_zh AS source_label_zh, s.slug AS source_slug,
+               a.one_liner, a.one_liner_zh, a.short_summary, a.short_summary_zh,
                ss.alpha_score, ss.signal_type,
                rank AS fts_rank
         FROM items_fts f
@@ -167,8 +167,8 @@ function register(routes) {
       const like = `%${q.replace(/[%_]/g, c => '\\' + c)}%`;
       const items = db.prepare(`
         SELECT i.id, i.title, i.title_zh, i.canonical_url, i.digest_date, i.published_at,
-               s.label AS source_label, s.slug AS source_slug,
-               a.one_liner_zh, a.short_summary_zh, ss.alpha_score, ss.signal_type, 0 AS fts_rank
+               s.label AS source_label, s.label_zh AS source_label_zh, s.slug AS source_slug,
+               a.one_liner, a.one_liner_zh, a.short_summary, a.short_summary_zh, ss.alpha_score, ss.signal_type, 0 AS fts_rank
         FROM information_items i
         JOIN sources s ON i.source_id = s.id
         LEFT JOIN ai_summaries a ON a.item_id = i.id

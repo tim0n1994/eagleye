@@ -94,8 +94,8 @@ function ftsSearch(db, q, limit) {
   try {
     const items = db.prepare(`
       SELECT i.id AS item_id, i.canonical_url AS url, i.title, i.title_zh,
-             s.label AS source_label, s.slug AS source_slug,
-             a.short_summary_zh, a.one_liner, a.ai_title,
+             s.label AS source_label, s.label_zh AS source_label_zh, s.slug AS source_slug,
+             a.short_summary, a.short_summary_zh, a.one_liner, a.one_liner_zh, a.ai_title, a.ai_title_zh,
              i.language, i.author, i.published_at, i.score,
              ss.alpha_score AS sig_alpha, ss.novelty_score AS sig_novelty,
              rank AS _score, NULL AS highlight
@@ -112,8 +112,8 @@ function ftsSearch(db, q, limit) {
     const like = `%${q.replace(/[%_]/g, c => '\\' + c)}%`;
     const items = db.prepare(`
       SELECT i.id AS item_id, i.canonical_url AS url, i.title, i.title_zh,
-             s.label AS source_label, s.slug AS source_slug,
-             a.short_summary_zh, a.one_liner, a.ai_title,
+             s.label AS source_label, s.label_zh AS source_label_zh, s.slug AS source_slug,
+             a.short_summary, a.short_summary_zh, a.one_liner, a.one_liner_zh, a.ai_title, a.ai_title_zh,
              i.language, i.author, i.published_at, i.score,
              ss.alpha_score AS sig_alpha, ss.novelty_score AS sig_novelty,
              0 AS _score, NULL AS highlight

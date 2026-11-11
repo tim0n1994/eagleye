@@ -14,6 +14,7 @@
  * - Size-coded by importance (growth_score, edge count)
  */
 
+import { t, getLanguage } from './i18n.js';
 import { LIBS } from './lazy-lib.js';
 
 export class KnowledgeGraph {
@@ -59,7 +60,7 @@ export class KnowledgeGraph {
         ...node,
         // Ensure consistent fields
         id: node.id || node.label,
-        label: node.label || node.name || node.id || '',
+        label: (getLanguage() === 'zh' ? node.label_zh || node.name_zh : '') || node.label || node.name || node.id || '',
         type: node.type || 'unknown',
         weight: node.weight || node.growth_score || node.item_count || 1,
         radius: this._nodeRadius(node),
@@ -86,6 +87,8 @@ export class KnowledgeGraph {
     const d3 = KnowledgeGraph._d3;
     this.svg = d3.select(container)
       .append('svg')
+      .attr('role', 'img')
+      .attr('aria-label', t('header.graph_attr'))
       .attr('width', this.width)
       .attr('height', this.height)
       .attr('viewBox', [0, 0, this.width, this.height])
@@ -93,6 +96,7 @@ export class KnowledgeGraph {
 
     // Zoom behavior
     const g = this.svg.append('g');
+    this._content = g;
     const d3zoom = KnowledgeGraph._d3;
     const zoom = d3zoom.zoom()
       .scaleExtent([0.1, 4])
@@ -155,11 +159,12 @@ export class KnowledgeGraph {
     // Small type badges for non-topic nodes
     node.filter(d => d.type !== 'topic')
       .append('text')
-      .text(d => d.type === 'entity' ? 'ENT' : d.type === 'tag' ? 'TAG' : 'ITM')
+      .attr('class', 'graph-type-label')
+      .text(d => d.type === 'entity' ? t('graph.entity') : d.type === 'tag' ? t('graph.tag') : t('graph.item'))
       .attr('x', 0)
       .attr('y', 2)
       .attr('text-anchor', 'middle')
-      .attr('fill', '#fff')
+      .attr('fill', 'var(--color-accent-ink)')
       .attr('font-size', '6px')
       .attr('font-family', 'var(--font-mono)')
       .attr('font-weight', '700')
@@ -272,35 +277,36 @@ export class KnowledgeGraph {
 
   _nodeColor(node) {
     switch (node.type) {
-      case 'topic': return '#ff6600';
-      case 'entity': return '#4fc3f7';
-      case 'tag': return '#81c784';
-      case 'item': return '#ba68c8';
-      default: return '#999999';
+      case 'topic': return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+      case 'entity': return getComputedStyle(document.documentElement).getPropertyValue('--sea').trim();
+      case 'tag': return getComputedStyle(document.documentElement).getPropertyValue('--color-success').trim();
+      case 'item': return getComputedStyle(document.documentElement).getPropertyValue('--chart-violet').trim();
+      default: return getComputedStyle(document.documentElement).getPropertyValue('--fg-mute').trim();
     }
   }
 
   _edgeColor(edge) {
     switch (edge.type || edge.edge_type) {
-      case 'item_mentions_entity': return '#4fc3f7';
-      case 'item_belongs_topic': return '#ff6600';
-      case 'entity_related_entity': return '#81c784';
-      case 'topic_related_topic': return '#ffa726';
-      default: return '#555555';
+      case 'item_mentions_entity': return getComputedStyle(document.documentElement).getPropertyValue('--sea').trim();
+      case 'item_belongs_topic': return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+      case 'entity_related_entity': return getComputedStyle(document.documentElement).getPropertyValue('--color-success').trim();
+      case 'topic_related_topic': return getComputedStyle(document.documentElement).getPropertyValue('--color-warning').trim();
+      default: return getComputedStyle(document.documentElement).getPropertyValue('--rule-light').trim();
     }
   }
 
   _addLegend(g) {
     const legend = g.append('g')
+      .attr('class', 'graph-legend')
       .attr('transform', `translate(${this.width - 130}, 20)`)
       .attr('font-family', 'var(--font-mono)')
       .attr('font-size', '9px');
 
     const items = [
-      { label: 'Topics', color: '#ff6600' },
-      { label: 'Entities', color: '#4fc3f7' },
-      { label: 'Tags', color: '#81c784' },
-      { label: 'Items', color: '#ba68c8' },
+      { label: t('nav.topics'), color: 'var(--accent)' },
+      { label: t('graph.entities'), color: 'var(--sea)' },
+      { label: t('nav.tags'), color: 'var(--color-success)' },
+      { label: t('graph.items'), color: 'var(--chart-violet)' },
     ];
 
     items.forEach((item, i) => {
@@ -317,6 +323,15 @@ export class KnowledgeGraph {
         .attr('fill', 'var(--fg-dim)')
         .text(item.label);
     });
+  }
+
+  refreshLanguage() {
+    if (!this.svg || !this._content) return;
+    this.svg.attr('aria-label', t('header.graph_attr'));
+    this.svg.selectAll('.graph-type-label')
+      .text(d => d.type === 'entity' ? t('graph.entity') : d.type === 'tag' ? t('graph.tag') : t('graph.item'));
+    this._content.selectAll('.graph-legend').remove();
+    this._addLegend(this._content);
   }
 
   _drag(simulation) {

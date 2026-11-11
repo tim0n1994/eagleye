@@ -1,4 +1,5 @@
 import { sleep } from './utils.js';
+import { getLanguage } from './i18n.js';
 
 const API_BASE = '/api';
 
@@ -51,7 +52,7 @@ export const API = {
   syncSet: async (data) => {
     return await fetch(`${API_BASE}/sync/set`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': getLanguage() },
       body: JSON.stringify(data)
     });
   },
@@ -70,11 +71,11 @@ export const API = {
     return res.user || null;
   },
 
-  register: async (email, password) => {
+  register: async (email, password, plan) => {
     const res = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': getLanguage() },
+      body: JSON.stringify({ email, password, plan }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { pendingVerification:data.pending_verification === true, email:data.email, retryAfter:Number(data.retry_after || res.headers.get('Retry-After')) || 0 });
@@ -84,7 +85,7 @@ export const API = {
   verify: async (email, code, password) => {
     const res = await fetch(`${API_BASE}/auth/verify`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': getLanguage() },
       body: JSON.stringify({ email, code, password }),
     });
     const data = await res.json().catch(() => ({}));
@@ -95,7 +96,7 @@ export const API = {
   login: async (email, password) => {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': getLanguage() },
       body: JSON.stringify({ email, password }),
     });
     const data = await res.json().catch(() => ({}));
@@ -116,7 +117,7 @@ export const API = {
   adminSetRole: async (userId, role) => {
     const res = await fetch(`${API_BASE}/admin/users/${userId}/role`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': getLanguage() },
       body: JSON.stringify({ role }),
     });
     if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);

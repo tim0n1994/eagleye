@@ -4,6 +4,7 @@ import { getLanguage } from '../i18n.js';
 const POOL_API = '/api/settings/llm/pool';
 const TASKS = ['enrich', 'classify', 'translate', 'digest', 'research', 'graph', 'general'];
 const words = (zh, en) => getLanguage() === 'zh' ? zh : en;
+const taskLabel = task => ({ enrich: words('内容富集', 'Enrichment'), classify: words('分类', 'Classification'), translate: words('翻译', 'Translation'), digest: words('简报', 'Digest'), research: words('研究', 'Research'), graph: words('图谱', 'Graph'), general: words('通用', 'General') })[task] || task;
 const known = value => value === null || value === undefined ? '—' : String(value);
 
 function displayUrl(value) {
@@ -93,10 +94,10 @@ export async function renderLLMPoolPanel(container) {
         const state = Array.isArray(states) ? states.find(row => row.id === endpoint.id || row.endpoint_id === endpoint.id) || {} : states[endpoint.id] || {};
         const samples = (metrics.by_endpoint || []).find(row => row.endpoint_id === endpoint.id) || {};
         return `<tr data-pool-index="${index}">
-          <td class="llm-pool-toggle"><span class="llm-pool-cell-label" aria-hidden="true">${words('启用', 'Enabled')}</span><input type="checkbox" data-field="enabled" aria-label="${escapeAttr(endpoint.label || endpoint.id)} ${words('启用', 'enabled')}" ${endpoint.enabled ? 'checked' : ''}></td>
+          <td class="llm-pool-toggle"><span class="llm-pool-cell-label" aria-hidden="true">${words('启用', 'Enabled')}</span><input type="checkbox" id="llmPool-${encodeURIComponent(endpoint.id)}-enabled" data-field="enabled" aria-label="${escapeAttr(endpoint.label || endpoint.id)} ${words('启用', 'enabled')}" ${endpoint.enabled ? 'checked' : ''}></td>
           <td class="llm-pool-endpoint"><span class="llm-pool-cell-label" aria-hidden="true">${words('端点 / 协议 / 地址 / 模型', 'Endpoint / protocol / URL / model')}</span>${endpointSummary(endpoint)}</td>
-          <td class="llm-pool-concurrency"><span class="llm-pool-cell-label" aria-hidden="true">${words('并发', 'Concurrency')}</span><input class="form-input" type="number" min="1" step="1" data-field="concurrency" aria-label="${escapeAttr(endpoint.id)} concurrency" value="${escapeAttr(endpoint.concurrency ?? 1)}"></td>
-          <td class="llm-pool-tasks"><span class="llm-pool-cell-label" aria-hidden="true">${words('任务范围', 'Tasks')}</span><div class="llm-pool-task-options">${TASKS.map(task => `<label><input type="checkbox" data-task="${task}" ${(endpoint.tasks || []).includes(task) ? 'checked' : ''}> ${task}</label>`).join('')}</div></td>
+          <td class="llm-pool-concurrency"><span class="llm-pool-cell-label" aria-hidden="true">${words('并发', 'Concurrency')}</span><input class="form-input" type="number" min="1" step="1" id="llmPool-${encodeURIComponent(endpoint.id)}-concurrency" data-field="concurrency" aria-label="${escapeAttr(endpoint.id)} ${words('并发', 'concurrency')}" value="${escapeAttr(endpoint.concurrency ?? 1)}"></td>
+          <td class="llm-pool-tasks"><span class="llm-pool-cell-label" aria-hidden="true">${words('任务范围', 'Tasks')}</span><div class="llm-pool-task-options">${TASKS.map(task => `<label><input type="checkbox" id="llmPool-${encodeURIComponent(endpoint.id)}-${task}" data-task="${task}" ${(endpoint.tasks || []).includes(task) ? 'checked' : ''}> ${taskLabel(task)}</label>`).join('')}</div></td>
           <td class="llm-pool-state"><span class="llm-pool-cell-label" aria-hidden="true">${words('状态与探活', 'State and probe')}</span><div class="llm-pool-state-metrics"><p>${words('运行 / 等待', 'Running / queued')}: ${escapeHtml(known(state.active ?? state.running))} / ${escapeHtml(known(state.queued))}</p>
             <p>${words('状态', 'State')}: ${escapeHtml(state.state || words('未知', 'Unknown'))}</p>
             <p>${words('最近成功', 'Last success')}: ${escapeHtml(known(state.last_success_at))}</p>

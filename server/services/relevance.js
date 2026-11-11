@@ -196,8 +196,8 @@ function getForYou({ sinceDays = 3, limit = 60, userId } = {}) {
   const params = entitySlugs.length > 0 ? [...entitySlugs, since, poolSize] : [since, poolSize];
 
   const rows = db.prepare(`
-    SELECT i.id, i.title, i.canonical_url, i.published_at, i.digest_date,
-           s.label as source_label, s.slug as source_slug,
+    SELECT i.id, i.title, i.title_zh, i.canonical_url, i.published_at, i.digest_date,
+           s.label as source_label, s.label_zh as source_label_zh, s.slug as source_slug,
            ss.alpha_score, ss.signal_type,
            COALESCE(seen.item_id IS NOT NULL, 0) AS seen,
            ${entityMatchExpr} AS entity_hit
@@ -233,9 +233,9 @@ function getForYou({ sinceDays = 3, limit = 60, userId } = {}) {
   scored.sort((a, b) => b.relevance - a.relevance);
 
   const items = scored.slice(0, limit).map(r => ({
-    id: r.id, title: r.title, canonical_url: r.canonical_url,
+    id: r.id, title: r.title, title_zh: r.title_zh, canonical_url: r.canonical_url,
     published_at: r.published_at, digest_date: r.digest_date,
-    source_label: r.source_label, source_slug: r.source_slug,
+    source_label: r.source_label, source_label_zh: r.source_label_zh, source_slug: r.source_slug,
     alpha_score: r.alpha_score, signal_type: r.signal_type,
     relevance: Math.round(r.relevance * 1000) / 1000,
     seen: !!r.seen,

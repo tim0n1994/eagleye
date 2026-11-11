@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 /**
  * Progressive Load — Virtual scroll / pagination helper for feed pages.
  *
@@ -20,6 +21,8 @@ function progressiveLoad({ container, fetchMore, batchSize = 30, renderItem }) {
 
   const sentinel = document.createElement('div');
   sentinel.className = 'load-sentinel';
+  sentinel.setAttribute('role', 'status');
+  sentinel.setAttribute('aria-label', t('common.loading'));
   sentinel.innerHTML = '<div class="loader-dots"><span></span><span></span><span></span></div>';
   container.appendChild(sentinel);
 
@@ -57,7 +60,7 @@ function progressiveLoad({ container, fetchMore, batchSize = 30, renderItem }) {
     } catch (err) {
       console.warn('Progressive load failed:', err.message);
       hasMore = false;
-      sentinel.innerHTML = '';
+      sentinel.textContent = t('progress.failed');
       observer.disconnect();
     } finally {
       loading = false;

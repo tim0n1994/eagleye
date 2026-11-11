@@ -6,16 +6,16 @@
  */
 
 import { $, escapeAttr, escapeHtml, localDateStr, normalizeDateStr } from '../utils.js';
-import { getLanguage, t } from '../i18n.js';
+import { getLanguage, t, getLocale, formatDate, formatNumber } from '../i18n.js';
 import { router } from '../router.js';
-import { API_BASE, fetchJSON, orderedSourceEntries, pickZh, renderItemMiniCard, showError, showLoader , setSourcesCache } from './shared.js';
+import { API_BASE, fetchJSON, getItemDisplayTitle, orderedSourceEntries, pickZh, renderItemMiniCard, showError, showLoader , setSourcesCache } from './shared.js';
 
 
 // ─── Home / News ─────────────────────────────────────────
 
 export async function renderHome(params) {
   const container = $('#pageContent');
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING SIGNALS...' : t('common.loading'));
+  showLoader(container);
 
 try {
       const queryDate = params?.date || new URLSearchParams(window.location.search).get('date');
@@ -48,14 +48,12 @@ try {
      const zh = getLanguage() === 'zh';
      let loadedCount = (data.items || []).length;
      const dailyTotal = Number.isFinite(data.total) ? data.total : null;
-     const loadedLabel = () => zh
-       ? `已加载 ${loadedCount} 条 · 该日总计 ${dailyTotal ?? '未知'}`
-       : `${loadedCount} LOADED · ${dailyTotal ?? 'UNKNOWN'} TOTAL FOR DATE`;
+     const loadedLabel = () => t('home.loaded_count', { loaded: formatNumber(loadedCount), total: dailyTotal === null ? t('common.unknown') : formatNumber(dailyTotal) });
      const freshnessNotice = !loadedCount
        ? (!sysData ? (zh ? '该日无条目；最新数据状态未知（状态接口不可用）。' : 'No items for this date; latest data status unknown (status unavailable).')
          : sysData.stats?.total_items === 0 ? (zh ? '暂无存储数据。' : 'No stored data.')
          : (zh ? '该日无条目。' : 'No items for this date.'))
-       : !dateIsToday ? (zh ? `历史数据 · ${displayDate}。这些条目不是今日信号。` : `ARCHIVE · ${displayDate}. These are historical items.`)
+       : !dateIsToday ? (zh ? `历史数据 / ${displayDate}。这些条目不是今日信号。` : `Archive / ${displayDate}. These are historical items.`)
          : !sysData ? (zh ? '最新数据状态未知（状态接口不可用）。' : 'Latest data status unknown (status unavailable).') : '';
 
      // Build by_source map from items (items come with source_label)
@@ -86,35 +84,35 @@ try {
        <section class="page-section">
          <div class="issue-header">
           <div class="issue-meta">
-            <span class="issue-number">ISSUE #${displayDate}</span>
-            <span class="issue-date">${new Date(normalizeDateStr(displayDate)).toLocaleDateString(getLanguage() === 'zh' ? 'zh-CN' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}${dateIsToday ? ` (${t('home.today')})` : ''}</span>
+            <span class="issue-number">${t('home.issue', { date: displayDate })}</span>
+            <span class="issue-date">${formatDate(normalizeDateStr(displayDate), { year: 'numeric', month: 'long', day: 'numeric' })}${dateIsToday ? ` (${t('home.today')})` : ''}</span>
           </div>
           <div class="issue-nav">
-            <button class="nav-btn" onclick="window.__changeDate(-1)">← PREV</button>
-            <button class="nav-btn" onclick="window.__changeDate(1)">NEXT →</button>
+            <button class="nav-btn" onclick="window.__changeDate(-1)">${t('home.prev')}</button>
+            <button class="nav-btn" onclick="window.__changeDate(1)">${t('home.next')}</button>
           </div>
         </div>
 
          ${freshnessNotice ? `<p class="empty-state" role="status" id="homeFreshnessNotice">${escapeHtml(freshnessNotice)}</p>` : ''}
          <div class="hero-banner">
            <div class="hero-content">
-             <h2 class="hero-title">EAGLEYE</h2>
-             <p class="hero-subtitle">${t('brand.tagline')} Radar</p>
+             <h2 class="hero-title">${t('home.title')}</h2>
+             <p class="hero-subtitle">${t('home.subtitle', { n: allSources.length })}</p>
              <div class="hero-stats" id="heroStats">
-               <span class="hero-stat">${Object.keys(bySourceMap).length} ${getLanguage() === 'zh' ? '信息源' : 'SOURCES'}</span>
+               <span class="hero-stat">${t('home.sources_count', { n: formatNumber(Object.keys(bySourceMap).length) })}</span>
                <span class="hero-stat" id="homeLoadedCount">${loadedLabel()}</span>
-               <span class="hero-stat">⏱ ${(() => {
+               <span class="hero-stat">${(() => {
                  // Estimate total reading time: sum all item summaries' word counts.
                  let totalWords = 0;
                  for (const items of Object.values(bySourceMap)) {
                    for (const item of items) {
-                     const text = (item.ai_summary?.short_summary_zh || item.ai_summary?.short_summary || item.original_summary || item.title || '').toString();
+                     const text = (pickZh(item.ai_summary?.short_summary, item.ai_summary?.short_summary_zh) || item.original_summary || item.title || '').toString();
                      totalWords += text.length / 3;
                    }
                  }
                  const mins = Math.round(totalWords / 200);
                  return mins > 60 ? Math.round(mins / 60) + 'h' : mins + 'm';
-               })()} ${getLanguage() === 'zh' ? '首批阅读估计' : 'INITIAL SAMPLE READ'}</span>
+               })()} ${getLanguage() === 'zh' ? '首批阅读估计' : 'initial sample read'}</span>
                <span class="hero-stat" id="heroStatExtra"></span>
              </div>
            </div>
@@ -123,7 +121,7 @@ try {
         <div id="homeDigest" class="home-digest-loading"><span class="spinner"></span> ${t('home.loading_digest')}</div>
 
         <div class="search-wrap search-wrap-full">
-          <input type="text" class="search-input-hero" id="heroSearchInput" placeholder="${escapeAttr(t('common.search_ph'))}" autocomplete="off">
+          <input type="text" class="search-input-hero" id="heroSearchInput" aria-label="${escapeAttr(t('common.search_ph'))}" placeholder="${escapeAttr(t('common.search_ph'))}" autocomplete="off">
         </div>
 
          <div class="section-anchor-nav" id="sectionNav">
@@ -143,7 +141,7 @@ try {
              <section id="section-${escapeAttr(source)}" class="source-section">
                <div class="source-section-header">
                  <h3 class="source-section-title">${escapeHtml(displayName)}</h3>
-                 <span class="source-section-count">${items.length} ${zh ? '已加载' : 'LOADED'}</span>
+                 <span class="source-section-count">${items.length} ${zh ? '已加载' : 'loaded'}</span>
                </div>
                <div class="feed-list">
                  ${items.map(item => renderItemMiniCard(item)).join('')}
@@ -153,7 +151,7 @@ try {
          </div>
 
         <details style="margin-top:24px;border-top:1px solid var(--rule);padding-top:16px">
-          <summary style="cursor:pointer;font-size:11px;text-transform:uppercase;letter-spacing:0.16em;color:var(--fg-mute)">${getLanguage() === 'zh' ? '📄 文本视图（可复制）' : '📄 Text View (copyable)'}</summary>
+          <summary style="cursor:pointer;font-size:11px;color:var(--fg-mute)">${getLanguage() === 'zh' ? '文本视图（可复制）' : 'Text view (copyable)'}</summary>
           <div id="textDigestView" style="margin-top:12px;font-family:var(--font-mono);font-size:12px;line-height:1.8;color:var(--fg-dim);white-space:pre-wrap">${(() => {
             // Build a plain-text digest of all items grouped by source (§7.2 SSR text view).
             let txt = `${getLanguage() === 'zh' ? ' Eagleye 每日信息流' : ' Eagleye Daily Feed'} — ${displayDate}\n${'='.repeat(60)}\n\n`;
@@ -162,7 +160,7 @@ try {
               const displayName = sourceObj ? pickZh(sourceObj.label, sourceObj.label_zh) : src;
               txt += `\n## ${displayName} (${srcItems.length})\n\n`;
               for (const item of srcItems.slice(0, 30)) {
-                const title = item.ai_summary?.ai_title_zh || item.title_zh || item.title || '';
+                const title = getItemDisplayTitle(item);
                 txt += `  • ${title}\n    ${item.canonical_url || ''}\n`;
               }
             }
@@ -173,7 +171,7 @@ try {
         <div class="metrics-block" style="margin-top:24px">
           <h3 class="metrics-block-title">${getLanguage() === 'zh' ? '近 7 天活动' : 'Last 7 Days Activity'}</h3>
           <div id="insightStrip" style="display:flex;gap:8px;overflow-x:auto;padding:4px 0">
-            <span class="subtle">Loading...</span>
+            <span class="subtle">${t('common.loading')}</span>
           </div>
         </div>
       </section>
@@ -191,15 +189,15 @@ try {
         const d = new Date();
         d.setDate(d.getDate() - i);
         const ds = localDateStr(d);
-        days.push({ date: ds, count: coverage[normalizeDateStr(ds)] || 0, label: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) });
+        days.push({ date: ds, count: coverage[normalizeDateStr(ds)] || 0, label: d.toLocaleDateString(getLocale(), { weekday: 'short', month: 'short', day: 'numeric' }) });
       }
       const maxC = Math.max(1, ...days.map(d => d.count));
       strip.innerHTML = days.map(d => {
         const h = Math.max(4, (d.count / maxC) * 40);
         const opacity = d.count > 0 ? 0.4 + 0.6 * (d.count / maxC) : 0.1;
         return `<a href="/digest/${d.date}" style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:60px;text-decoration:none">` +
-          `<div style="width:40px;height:${h}px;background:var(--accent);opacity:${opacity};border-radius:3px" title="${d.count} items"></div>` +
-          `<span style="font-size:9px;color:var(--fg-mute);font-family:var(--font-mono)">${d.label.split(' ')[0]}</span>` +
+          `<div style="width:40px;height:${h}px;background:var(--accent);opacity:${opacity};border-radius:3px" title="${t('home.items_count', { n: formatNumber(d.count) })}"></div>` +
+          `<span style="font-size:9px;color:var(--fg-mute);font-family:var(--font-mono)">${d.label}</span>` +
           `<span style="font-size:10px;color:${d.count > 0 ? 'var(--accent)' : 'var(--fg-mute)'};font-weight:600">${d.count}</span>` +
           `</a>`;
       }).join('');
@@ -210,7 +208,7 @@ try {
       const el = document.getElementById('heroStatExtra');
       if (!el || !sysData?.stats) return;
       const s = sysData.stats;
-      el.textContent = `${(s.entities || 0).toLocaleString()} ${getLanguage() === 'zh' ? '实体' : 'ENTITIES'} · ${(s.scored || 0).toLocaleString()} ${getLanguage() === 'zh' ? '已评分' : 'SCORED'}`;
+      el.textContent = t('home.entities_scored', { entities: formatNumber(s.entities || 0), scored: formatNumber(s.scored || 0) });
     }).catch(() => { const el = document.getElementById('heroStatExtra'); if (el) el.style.display = 'none'; });
 
     // Fetch and render the AI Daily Digest for this date (§7.2: homepage must
@@ -230,11 +228,12 @@ try {
       ).join('');
       el.className = 'home-digest';
       el.innerHTML =
-        `<div class="digest-head"><h3>🤖 ${t('home.ai_digest')}</h3><span class="digest-date">${escapeHtml(digest.digest_date || displayDate)}</span></div>` +
+        `<div class="digest-head"><h3>${t('home.ai_digest')}</h3><span class="digest-date">${escapeHtml(digest.digest_date || displayDate)}</span></div>` +
+        `<p class="content-language-note">${t('content.original')}</p>` +
         `<h4 class="digest-headline">${escapeHtml(digest.headline)}</h4>` +
         (digest.executive_summary ? `<p class="digest-summary">${escapeHtml(digest.executive_summary)}</p>` : '') +
         (signals ? `<ul class="digest-signals">${signals}</ul>` : '') +
-        `<a href="/digest/${escapeAttr(digest.digest_date || displayDate)}" class="digest-link">${t('home.full_digest')} →</a>`;
+        `<a href="/digest/${escapeAttr(digest.digest_date || displayDate)}" class="digest-link">${t('home.full_digest')}</a>`;
     }).catch(() => { const el = document.getElementById('homeDigest'); if (el) el.style.display = 'none'; });
 
     // Wire search input on homepage
@@ -242,31 +241,31 @@ try {
     if (heroSearchInput) {
       heroSearchInput.addEventListener('input', () => {
         const q = heroSearchInput.value.trim().toLowerCase();
-        const cards = container.querySelectorAll('.info-card');
+        const cards = container.querySelectorAll('.info-card, .mini-card');
         cards.forEach(card => {
-          const title = card.querySelector('.card-title')?.textContent?.toLowerCase() || '';
-          const summary = card.querySelector('.card-summary')?.textContent?.toLowerCase() || '';
-          const src = card.querySelector('.card-source')?.textContent?.toLowerCase() || '';
+          const title = card.querySelector('.card-title, .mini-title')?.textContent?.toLowerCase() || '';
+          const summary = card.querySelector('.card-summary, .mini-oneliner')?.textContent?.toLowerCase() || '';
+          const src = card.querySelector('.card-source, .mini-source')?.textContent?.toLowerCase() || '';
           const oneLiner = card.querySelector('.card-one-liner')?.textContent?.toLowerCase() || '';
           const visible = !q || title.includes(q) || summary.includes(q) || src.includes(q) || oneLiner.includes(q);
           card.style.display = visible ? '' : 'none';
           // Highlight matching text
-          const titleEl = card.querySelector('.card-title a') || card.querySelector('.card-title');
+          const titleEl = card.querySelector('.card-title a, .mini-title a') || card.querySelector('.card-title, .mini-title');
           if (visible && q && titleEl) {
             if (titleEl.dataset.original === undefined) titleEl.dataset.original = titleEl.innerHTML;
             const originalHtml = titleEl.dataset.original;
             const r = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-            titleEl.innerHTML = originalHtml.replace(r, '<mark style="background:var(--accent); color:#000; padding:0 2px;">$1</mark>');
+            titleEl.innerHTML = originalHtml.replace(r, '<mark style="background:var(--accent); color:var(--color-accent-ink); padding:0 2px;">$1</mark>');
           } else if (titleEl && titleEl.dataset.original !== undefined) {
             titleEl.innerHTML = titleEl.dataset.original;
           }
         });
         // Update visible counts for source sections
         container.querySelectorAll('.source-section').forEach(section => {
-          const cards = section.querySelectorAll('.info-card');
+          const cards = section.querySelectorAll('.info-card, .mini-card');
           const visible = Array.from(cards).filter(c => c.style.display !== 'none').length;
           const countEl = section.querySelector('.source-section-count');
-          if (countEl) countEl.textContent = `${visible} ITEMS`;
+          if (countEl) countEl.textContent = t('home.items_count', { n: formatNumber(visible) });
         });
       }, { passive: true });
     }
@@ -325,7 +324,7 @@ try {
               const wrapper = document.createElement('section');
               wrapper.id = `section-${src}`;
               wrapper.className = 'source-section';
-              wrapper.innerHTML = `<div class="source-section-header"><h3 class="source-section-title">${escapeHtml(src)}</h3><span class="source-section-count">0 ${zh ? '已加载' : 'LOADED'}</span></div><div class="feed-list"></div>`;
+              wrapper.innerHTML = `<div class="source-section-header"><h3 class="source-section-title">${escapeHtml(src)}</h3><span class="source-section-count">0 ${zh ? '已加载' : 'loaded'}</span></div><div class="feed-list"></div>`;
               feedContainer.insertBefore(wrapper, sentinel);
               section = wrapper;
             }
@@ -334,7 +333,7 @@ try {
               const count = section.querySelector('.source-section-count');
               list.insertAdjacentHTML('beforeend', renderItemMiniCard(item));
               const currentCount = list.children.length;
-              if (count) count.textContent = `${currentCount} ${zh ? '已加载' : 'LOADED'}`;
+              if (count) count.textContent = `${currentCount} ${zh ? '已加载' : 'loaded'}`;
             }
           }
           loadedCount += (next.items || []).length;

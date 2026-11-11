@@ -6,13 +6,13 @@
  */
 
 import { $, escapeAttr, escapeHtml } from '../utils.js';
-import { getLanguage, t } from '../i18n.js';
+import { formatNumber, getLanguage, t } from '../i18n.js';
 import { progressiveSourceFeed } from '../progressive.js';
 import { API_BASE, fetchJSON, hydrateSourceNavPills, pickZh, renderItemMiniCard, renderSourceNav, showError, showLoader, sourceIcon, trustBadge , setSourcesCache } from './shared.js';
 
 
 // ─── D4 stale-source detection (R1.1 field fix) ──────────
-// A source is "stale" (🔴) when it is enabled but its last successful fetch
+// A source is "stale" when it is enabled but its last successful fetch
 // round is older than 48 hours.
 //
 // R1.1 field selection: the badge keys off sources.last_success_at — the
@@ -62,7 +62,8 @@ export function formatFetchDuration(ms) {
 
 export async function renderSources(_params) {
   const container = $('#pageContent');
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING SOURCES...' : t('common.loading'));
+  const zh = getLanguage() === 'zh';
+  showLoader(container, zh ? '正在加载信息源…' : 'Loading sources...');
 
   try {
     const data = await fetchJSON(`${API_BASE}/sources?include_disabled=1`);
@@ -82,7 +83,7 @@ export async function renderSources(_params) {
         <div class="page-header">
           <h2 class="page-title">${t('sources.title')}</h2>
           <p class="page-description">${t('sources.subtitle')}
-            <a href="/opml.xml" download="eagleye-sources.opml" class="action-link" style="font-size:11px;margin-left:8px">⬇ OPML (import to RSS reader)</a>
+            <a href="/opml.xml" download="eagleye-sources.opml" class="action-link" style="font-size:11px;margin-left:8px">${zh ? 'OPML（导入 RSS 阅读器）' : 'OPML (import to RSS reader)'}</a>
           </p>
         </div>
         <div class="source-architecture-overview">${zh ? '信息采集 → 原文与去重 → 专题筛选 → 发现 / 行业简报' : 'Collection → Evidence and deduplication → Topic filtering → Discovery / Briefings'}<br><small>${zh ? '页面只读取已入库数据；来源启用不代表采集健康。' : 'Pages read stored data; enabled does not mean healthy.'}</small></div>
@@ -99,11 +100,11 @@ export async function renderSources(_params) {
             // Content volume is separate from connector health.
             const freshness = '';
             if (src.today_items > 0) {
-              statsParts.push(`<span class="source-stat">${freshness} ${src.today_items} ${getLanguage() === 'zh' ? '今日' : 'today'}</span>`);
+              statsParts.push(`<span class="source-stat">${freshness} ${formatNumber(src.today_items)} ${zh ? '今日' : 'today'}</span>`);
             } else {
-              statsParts.push(`<span class="source-stat">${freshness} 0 ${getLanguage() === 'zh' ? '今日' : 'today'}</span>`);
+              statsParts.push(`<span class="source-stat">${freshness} 0 ${zh ? '今日' : 'today'}</span>`);
             }
-            statsParts.push(`<span class="source-stat">📊 ${src.total_items || 0}</span>`);
+            statsParts.push(`<span class="source-stat">${zh ? `累计 ${formatNumber(src.total_items || 0)}` : `${formatNumber(src.total_items || 0)} total`}</span>`);
             // Round 2 ⑤: latest fetch round duration. sources.last_fetch_duration_ms
             // (043) is stamped on every round — success, empty, and failure alike —
             // and holds the most recent round only. NULL / missing (rows predating
@@ -111,18 +112,20 @@ export async function renderSources(_params) {
             const durationRaw = src.last_fetch_duration_ms;
             const durationMs = durationRaw == null ? null : Number(durationRaw);
             const durationBadge = durationMs != null && Number.isFinite(durationMs) && durationMs >= 0
-              ? `<span class="source-stat" title="${getLanguage() === 'zh' ? '最近一轮抓取耗时（含失败轮）' : 'Latest fetch round duration (failures included)'}">⏱ ${formatFetchDuration(durationMs)}</span>`
+              ? `<span class="source-stat" title="${zh ? '最近一轮抓取耗时（含失败轮）' : 'Latest fetch round duration (failures included)'}">${formatFetchDuration(durationMs)}</span>`
               : '';
             // D4: enabled but no successful fetch in over 48h → red stale badge.
             const stale = Boolean(src.last_attempt_at) && isStaleSource(src);
             const staleBadge = stale
-              ? `<span class="source-stat stale-badge" title="${getLanguage() === 'zh' ? '启用中但超过 48 小时无成功抓取' : 'Enabled but no successful fetch in over 48h'}">🔴 ${getLanguage() === 'zh' ? '停摆' : 'stale'}</span>`
+              ? `<span class="source-stat stale-badge" title="${zh ? '启用中但超过 48 小时无成功抓取' : 'Enabled but no successful fetch in over 48h'}"><span aria-hidden="true" style="color:var(--color-error)">●</span> ${zh ? '停摆' : 'stale'}</span>`
               : '';
             // Source quality badge from source_profiles (noise_rate)
             let qualityBadge = '';
             if (src.noise_rate != null) {
               const pct = Math.round(src.noise_rate * 100);
-              const dot = pct < 10 ? '🟢' : pct < 30 ? '🟡' : '🔴';
+              const dot = pct < 10
+                ? '<span aria-hidden="true" style="color:var(--color-success)">●</span>'
+                : pct < 30 ? '<span aria-hidden="true" style="color:var(--color-warning)">●</span>' : '<span aria-hidden="true" style="color:var(--color-error)">●</span>';
               const label = src.source_type === 'noisy' ? t('signals.noisy') :
                             src.source_type === 'early_signal' ? t('signals.early_signal') :
                             src.source_type === 'originator' ? t('signals.originator') :
@@ -149,14 +152,14 @@ export async function renderSources(_params) {
               ${src.is_active ? `<p class="source-last-success">${zh ? '下次采集' : 'Next collection'}: ${escapeHtml(new Date(src.collection.next_due_at).toLocaleString(zh ? 'zh-CN' : 'en-US'))}</p>` : ''}` : ''}
               ${(src.trend && src.trend.length > 0) ? (() => {
                 const maxC = Math.max(1, ...src.trend.map(t => t.count));
-                return `<div class="source-trend-bars" title="7-day item trend">` +
-                  src.trend.map(t => `<span class="trend-bar" style="height:${Math.max(2, (t.count / maxC) * 24)}px" title="${t.date}: ${t.count}"></span>`).join('') +
+                return `<div class="source-trend-bars" title="${zh ? '近 7 天条目趋势' : '7-day item trend'}">` +
+                  src.trend.map(t => `<span class="trend-bar" style="height:${Math.max(2, (t.count / maxC) * 24)}px" title="${t.date}: ${formatNumber(t.count)}"></span>`).join('') +
                   `</div>`;
               })() : ''}
               ${(src.feed_url || src.homepage_url) ? `
               <div class="source-links">
-                ${src.homepage_url ? `<span class="source-link-label">🌐</span><span class="source-link-url">${escapeHtml(src.homepage_url)}</span>` : ''}
-                ${src.feed_url ? `<span class="source-link-label">📡</span><span class="source-link-url">${escapeHtml(src.feed_url)}</span>` : ''}
+                ${src.homepage_url ? `<span class="source-link-label">${zh ? '主页' : 'Web'}</span><span class="source-link-url">${escapeHtml(src.homepage_url)}</span>` : ''}
+                ${src.feed_url ? `<span class="source-link-label">${zh ? '订阅源' : 'Feed'}</span><span class="source-link-url">${escapeHtml(src.feed_url)}</span>` : ''}
               </div>` : ''}
             </a>
           `;}).join('')}
@@ -192,7 +195,7 @@ export async function renderSourceDetail(params) {
           const pct = Math.round((s.count / maxSig) * 100);
           return `<div class="metrics-bar-row"><span class="metrics-bar-label">${escapeHtml(s.signal_type.replace(/_/g, ' '))}</span>` +
             `<div class="metrics-bar"><div class="metrics-bar-fill" style="width:${pct}%"></div></div>` +
-            `<span class="metrics-bar-pct">${s.count}</span></div>`;
+            `<span class="metrics-bar-pct">${formatNumber(s.count)}</span></div>`;
         }).join('') + `</ul></div>`
       : '';
 
@@ -215,7 +218,7 @@ export async function renderSourceDetail(params) {
           ${desc}
           <span class="source-detail-actions">${homepageLink}${feedLink}</span>
         </div>
-        ${src.source_type ? `<div class="source-trust-bar">${trustBadge(src.source_type, src.noise_rate)}${src.early_signal_rate != null ? ` <span class="source-stat">early signal: ${(src.early_signal_rate * 100).toFixed(0)}%</span>` : ''}${src.originality_rate != null ? ` <span class="source-stat">originality: ${(src.originality_rate * 100).toFixed(0)}%</span>` : ''}${src.last_30d_alpha_hits != null ? ` <span class="source-stat">30d α-hits: ${src.last_30d_alpha_hits}</span>` : ''}</div>` : ''}
+        ${src.source_type ? `<div class="source-trust-bar">${trustBadge(src.source_type, src.noise_rate)}${src.early_signal_rate != null ? ` <span class="source-stat">${getLanguage() === 'zh' ? '早期信号' : 'early signal'}: ${(src.early_signal_rate * 100).toFixed(0)}%</span>` : ''}${src.originality_rate != null ? ` <span class="source-stat">${getLanguage() === 'zh' ? '原创性' : 'originality'}: ${(src.originality_rate * 100).toFixed(0)}%</span>` : ''}${src.last_30d_alpha_hits != null ? ` <span class="source-stat">${getLanguage() === 'zh' ? '30 天 α 命中' : '30d α-hits'}: ${src.last_30d_alpha_hits}</span>` : ''}</div>` : ''}
         ${distHtml}
         <div class="source-items-grid" id="sourceItemsGrid">
           ${items.map(item => renderItemMiniCard(item)).join('')}
@@ -238,7 +241,7 @@ export async function renderSourceDetail(params) {
           const countEl = document.getElementById('sourceItemCount');
           if (countEl) {
             const current = grid.querySelectorAll('.mini-card').length + 1;
-            countEl.textContent = `${current} ITEMS`;
+          countEl.textContent = getLanguage() === 'zh' ? `${formatNumber(current)} 条` : `${formatNumber(current)} items`;
           }
           return `<div>${renderItemMiniCard(item)}</div>`;
         },

@@ -117,7 +117,7 @@ function register(routes) {
       // Filter before LIMIT so a large historical run of placeholders cannot
       // hide real stories. Invalid JSON is kept rather than hiding evidence.
       const archiveSql = `
-        SELECT i.*, s.label as source_label
+        SELECT i.*, s.label as source_label, s.label_zh as source_label_zh
         FROM information_items i
         JOIN sources s ON i.source_id = s.id
         WHERE s.slug = ? ${date ? 'AND i.digest_date = ?' : ''}
@@ -129,18 +129,18 @@ function register(routes) {
       items = date ? db.prepare(archiveSql).all(slug, date) : db.prepare(archiveSql).all(slug);
     } else if (date) {
       items = db.prepare(`
-        SELECT i.*, s.label as source_label 
-        FROM information_items i 
-        JOIN sources s ON i.source_id = s.id 
+        SELECT i.*, s.label as source_label, s.label_zh as source_label_zh
+        FROM information_items i
+        JOIN sources s ON i.source_id = s.id
         WHERE s.slug = ? AND i.digest_date = ?
         ORDER BY i.score DESC
         LIMIT 50
       `).all(slug, date);
     } else {
       items = db.prepare(`
-        SELECT i.*, s.label as source_label 
-        FROM information_items i 
-        JOIN sources s ON i.source_id = s.id 
+        SELECT i.*, s.label as source_label, s.label_zh as source_label_zh
+        FROM information_items i
+        JOIN sources s ON i.source_id = s.id
         WHERE s.slug = ?
         ORDER BY i.published_at DESC
         LIMIT 50
@@ -186,7 +186,7 @@ function register(routes) {
     const limit = parseInt(parsed.query.limit || '20', 10);
 
     const items = db.prepare(`
-      SELECT i.*, s.label as source_label
+      SELECT i.*, s.label as source_label, s.label_zh as source_label_zh
       FROM information_items i
       JOIN sources s ON i.source_id = s.id
       WHERE s.slug = ?

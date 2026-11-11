@@ -6,16 +6,17 @@
  */
 
 import { $, escapeAttr, escapeHtml } from '../utils.js';
-import { getLanguage, t } from '../i18n.js';
+import { formatNumber, getLanguage, t } from '../i18n.js';
 import { router } from '../router.js';
-import { API_BASE, fetchJSON, markItemSeen, showError, showLoader } from './shared.js';
+import { API_BASE, fetchJSON, getItemDisplayTitle, markItemSeen, pickZh, showError, showLoader } from './shared.js';
+import { readerError, signalLabel, xt } from '../i18n/reader-extra.js';
 
 
 // ─── Personal Alpha Lens (PRD-5: tune signal-type weights) ───
 
 export async function renderLens(_params) {
   const container = $('#pageContent');
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING LENS...' : t('common.loading'));
+  showLoader(container, xt('reader.loading_lens'));
 
   try {
     const [typesData, lensData] = await Promise.all([
@@ -38,7 +39,7 @@ export async function renderLens(_params) {
         const w = current[ty.slug] != null ? current[ty.slug] : 1.0;
         return (
           `<li class="lens-row">` +
-          `<span class="lens-label">${escapeHtml(ty.slug)}</span>` +
+          `<span class="lens-label">${escapeHtml(signalLabel(ty.slug))}</span>` +
           `<input type="range" min="0.5" max="1.5" step="0.1" value="${w}" class="lens-slider" data-slug="${escapeAttr(ty.slug)}"/>` +
           `<span class="lens-val" data-val-for="${escapeAttr(ty.slug)}">${w.toFixed(1)}×</span>` +
           `</li>`
@@ -46,8 +47,8 @@ export async function renderLens(_params) {
       }).join('') +
       `</ul>` +
       `<div class="lens-actions">` +
-      `<button class="action-btn" id="lensSave">💾 ${t('lens.save')}</button>` +
-      `<button class="action-btn" id="lensReset">↺ ${t('lens.reset')}</button>` +
+      `<button class="action-btn" id="lensSave">${t('lens.save')}</button>` +
+      `<button class="action-btn" id="lensReset">${t('lens.reset')}</button>` +
       ` <a href="/signals?lens=mine" class="action-link">${t('lens.view_radar')} →</a>` +
       `</div>` +
       `</div>` +
@@ -75,17 +76,19 @@ export async function renderLens(_params) {
     if (saveBtn) {
       saveBtn.addEventListener('click', async () => {
         saveBtn.disabled = true;
+        saveBtn.textContent = xt('reader.saving');
         try {
           await fetch(`${API_BASE}/lens`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ types: collectLens() }),
           });
-          saveBtn.textContent = '✓ ' + t('lens.saved');
+          saveBtn.textContent = xt('reader.saved');
         } catch (err) {
           console.warn('Lens save failed:', err.message);
         } finally {
           saveBtn.disabled = false;
+          saveBtn.textContent = t('lens.save');
         }
       });
     }
@@ -102,13 +105,13 @@ export async function renderLens(_params) {
       });
     }
   } catch (err) {
-    showError(container, err.message);
+    showError(container, readerError(err.message));
   }
 }
 
 export async function renderForYou(_params) {
   const container = $('#pageContent');
-  showLoader(container, t('common.loading') === 'LOADING...' ? 'LOADING FOR YOU...' : t('common.loading'));
+  showLoader(container, xt('reader.loading_for_you'));
 
   try {
     const urlDays = new URLSearchParams(window.location.search).get('days') || '3';
@@ -123,26 +126,26 @@ export async function renderForYou(_params) {
 
     // Profile summary chip: shows whether personalisation is active.
     const profileChip = profile.has_signal
-      ? `<span class="fy-profile-on">🎯 ${t('foryou.personalized')} · ${profile.type_count} ${t('foryou.types')} · ${profile.entity_count} ${t('foryou.entities')}</span>`
+      ? `<span class="fy-profile-on">${t('foryou.personalized')} · ${formatNumber(profile.type_count || 0)} ${t('foryou.types')} · ${formatNumber(profile.entity_count || 0)} ${t('foryou.entities')}</span>`
       : `<span class="fy-profile-off">${t('foryou.generic_hint')}</span>`;
 
     // Personalization weight visualization: show type affinity bars.
     const typeEntries = Object.entries(fullProfile.types || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
     const profileViz = typeEntries.length > 0
-      ? `<details class="metrics-block" style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;text-transform:uppercase;letter-spacing:0.16em;color:var(--fg-mute)">${getLanguage() === 'zh' ? '你的兴趣画像' : 'Your Interest Profile'}</summary>` +
+      ? `<details class="metrics-block" style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:var(--fg-mute)">${getLanguage() === 'zh' ? '你的兴趣画像' : 'Your Interest Profile'}</summary>` +
         `<ul class="metrics-bars" style="margin-top:8px">` +
         typeEntries.map(([type, weight]) => {
           const pct = Math.round(weight * 100);
-          return `<div class="metrics-bar-row"><span class="metrics-bar-label">${escapeHtml(type.replace(/_/g, ' '))}</span>` +
+          return `<div class="metrics-bar-row"><span class="metrics-bar-label">${escapeHtml(signalLabel(type))}</span>` +
             `<div class="metrics-bar"><div class="metrics-bar-fill" style="width:${pct}%"></div></div>` +
-            `<span class="metrics-bar-pct">${pct}%</span></div>`;
+            `<span class="metrics-bar-pct">${formatNumber(pct)}%</span></div>`;
         }).join('') + `</ul>` +
         (fullProfile.entities && fullProfile.entities.length > 0
-          ? `<p class="subtle" style="margin-top:8px">📌 ${getLanguage() === 'zh' ? '关注实体' : 'Watched entities'}: ${fullProfile.entities.slice(0, 8).map(e => escapeHtml(e)).join(', ')}</p>`
+          ? `<p class="subtle" style="margin-top:8px">${getLanguage() === 'zh' ? '关注实体' : 'Watched entities'}: ${fullProfile.entities.slice(0, 8).map(e => escapeHtml(e)).join(', ')}</p>`
           : '') +
         `<div style="margin-top:10px;display:flex;gap:12px">` +
-        `<a href="/lens" class="action-link" style="font-size:11px">🎛 ${getLanguage() === 'zh' ? '编辑信号类型权重' : 'Edit signal-type weights'}</a>` +
-        `<a href="/watchlist" class="action-link" style="font-size:11px">🔔 ${getLanguage() === 'zh' ? '管理订阅' : 'Manage subscriptions'}</a>` +
+        `<a href="/lens" class="action-link" style="font-size:11px">${getLanguage() === 'zh' ? '编辑信号类型权重' : 'Edit signal-type weights'}</a>` +
+        `<a href="/watchlist" class="action-link" style="font-size:11px">${getLanguage() === 'zh' ? '管理订阅' : 'Manage subscriptions'}</a>` +
         `</div>` +
         `</details>`
       : '';
@@ -182,7 +185,7 @@ export async function renderForYou(_params) {
     const freshOld = items.length - freshToday - freshWeek;
     const stat = (label, val) => `<div class="metric-stat"><div class="metric-stat-value">${val}</div><div class="metric-stat-label">${escapeHtml(label)}</div></div>`;
     const readPct = items.length > 0 ? Math.round((items.length - unseen) / items.length * 100) : 0;
-    const readColor = readPct >= 75 ? '#34d399' : readPct >= 50 ? '#facc15' : 'var(--accent)';
+    const readColor = readPct >= 75 ? 'var(--color-success)' : readPct >= 50 ? 'var(--color-warning)' : 'var(--accent)';
     const circumference = 2 * Math.PI * 28;
     const dashOffset = circumference * (1 - readPct / 100);
     const progressRing = `<svg viewBox="0 0 70 70" style="width:56px;height:56px">` +
@@ -190,26 +193,26 @@ export async function renderForYou(_params) {
       `<circle cx="35" cy="35" r="28" fill="none" stroke="${readColor}" stroke-width="6" ` +
       `stroke-dasharray="${circumference.toFixed(1)}" stroke-dashoffset="${dashOffset.toFixed(1)}" ` +
       `transform="rotate(-90 35 35)" style="transition:stroke-dashoffset 0.5s"/>` +
-      `<text x="35" y="35" text-anchor="middle" dy="0.35em" style="font-size:13px;font-weight:700;fill:${readColor};font-family:var(--font-mono)">${readPct}%</text>` +
+      `<text x="35" y="35" text-anchor="middle" dy="0.35em" style="font-size:13px;font-weight:700;fill:${readColor};font-family:var(--font-mono)">${formatNumber(readPct)}%</text>` +
       `</svg>`;
 
     const statsHtml =
       `<div style="display:flex;gap:16px;align-items:center;margin-bottom:16px">` +
       `<div style="display:flex;align-items:center;gap:8px">${progressRing}<div><div style="font-size:11px;color:var(--fg-mute)">${getLanguage() === 'zh' ? '已读' : 'Read'}</div><div style="font-size:13px;font-weight:600">${items.length - unseen}/${items.length}</div></div></div>` +
       `<div class="metrics-stat-grid" style="flex:1;margin-bottom:0">` +
-      stat(t('foryou.unread'), unseen) +
-      stat(t('foryou.total'), items.length) +
-      stat(t('foryou.sources'), sources) +
-      stat(getLanguage() === 'zh' ? '多样熵' : 'Entropy', entropyPct + '%') +
-      stat(getLanguage() === 'zh' ? '平均α' : 'Avg α', avgAlpha.toFixed(2)) +
-      stat(getLanguage() === 'zh' ? '高 Alpha 占比（≥ 0.70）' : 'High-Alpha share (≥ 0.70)', highAlphaPct + '%') +
-      (topType ? stat(t('foryou.top_type'), topType[0].replace(/_/g, ' ')) : '') +
+      stat(t('foryou.unread'), formatNumber(unseen)) +
+      stat(t('foryou.total'), formatNumber(items.length)) +
+      stat(t('foryou.sources'), formatNumber(sources)) +
+      stat(getLanguage() === 'zh' ? '多样熵' : 'Entropy', formatNumber(entropyPct) + '%') +
+      stat(getLanguage() === 'zh' ? '平均α' : 'Avg α', formatNumber(avgAlpha, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) +
+      stat(getLanguage() === 'zh' ? '高 Alpha 占比（≥ 0.70）' : 'High-Alpha share (≥ 0.70)', formatNumber(highAlphaPct) + '%') +
+      (topType ? stat(t('foryou.top_type'), signalLabel(topType[0])) : '') +
       `</div></div>`;
 
     // Signal type distribution mini-pie chart.
     const pieEntries = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 6);
     const typeTotal = pieEntries.reduce((s, [, c]) => s + c, 0);
-    const pieColors = ['#f97316', '#38bdf8', '#34d399', '#a78bfa', '#facc15', '#94a3b8'];
+    const pieColors = ['var(--accent)', 'var(--sea)', 'var(--color-success)', 'var(--chart-violet)', 'var(--color-warning)', 'var(--fg-mute)'];
     let pieHtml = '';
     if (pieEntries.length >= 2 && typeTotal > 0) {
       let angle = -90;
@@ -225,7 +228,7 @@ export async function renderForYou(_params) {
         const y2 = cy + r * Math.sin(endAngle * Math.PI / 180);
         const large = pct > 0.5 ? 1 : 0;
         slices += `<path d="M ${cx} ${cy} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z" fill="${pieColors[i % pieColors.length]}" opacity="0.8"/>`;
-        pieLegend += `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px;font-size:10px;color:var(--fg-mute)"><span style="width:8px;height:8px;background:${pieColors[i % pieColors.length]};border-radius:1px;display:inline-block"></span>${escapeHtml(type.replace(/_/g, ' '))} (${count})</span>`;
+        pieLegend += `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px;font-size:10px;color:var(--fg-mute)"><span style="width:8px;height:8px;background:${pieColors[i % pieColors.length]};border-radius:1px;display:inline-block"></span>${escapeHtml(signalLabel(type))} (${formatNumber(count)})</span>`;
         angle = endAngle;
       });
       pieHtml = `<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">` +
@@ -242,13 +245,13 @@ export async function renderForYou(_params) {
           const oPct = 100 - tPct - wPct;
           return '<div class="metrics-block" style="margin-bottom:16px"><h3 class="metrics-block-title">' + (zh ? '新鲜度分布' : 'Freshness Distribution') + '</h3>' +
             '<div style="display:flex;height:12px;border-radius:3px;overflow:hidden;margin-bottom:6px">' +
-            '<div style="width:' + tPct + '%;background:#34d399;opacity:0.8" title="' + (zh ? '今日' : 'Today') + ': ' + freshToday + '"></div>' +
-            '<div style="width:' + wPct + '%;background:#facc15;opacity:0.8" title="' + (zh ? '1-3天' : '1-3d') + ': ' + freshWeek + '"></div>' +
-            '<div style="width:' + oPct + '%;background:#f87171;opacity:0.6" title="' + (zh ? '3天+' : '3d+') + ': ' + freshOld + '"></div>' +
+            '<div style="width:' + tPct + '%;background:var(--color-success);opacity:0.8" title="' + xt('reader.today') + ': ' + formatNumber(freshToday) + '"></div>' +
+            '<div style="width:' + wPct + '%;background:var(--color-warning);opacity:0.8" title="' + xt('reader.days_1_3') + ': ' + formatNumber(freshWeek) + '"></div>' +
+            '<div style="width:' + oPct + '%;background:var(--color-error);opacity:0.6" title="' + xt('reader.days_3_plus') + ': ' + formatNumber(freshOld) + '"></div>' +
             '</div><div style="display:flex;gap:12px;font-size:10px;font-family:var(--font-mono);color:var(--fg-mute)">' +
-            '<span><span style="display:inline-block;width:8px;height:8px;background:#34d399;border-radius:1px"></span> ' + (zh ? '今日' : 'Today') + ' (' + freshToday + ')</span>' +
-            '<span><span style="display:inline-block;width:8px;height:8px;background:#facc15;border-radius:1px"></span> 1-3d (' + freshWeek + ')</span>' +
-            '<span><span style="display:inline-block;width:8px;height:8px;background:#f87171;border-radius:1px"></span> 3d+ (' + freshOld + ')</span>' +
+            '<span><span style="display:inline-block;width:8px;height:8px;background:var(--color-success);border-radius:1px"></span> ' + xt('reader.today') + ' (' + formatNumber(freshToday) + ')</span>' +
+            '<span><span style="display:inline-block;width:8px;height:8px;background:var(--color-warning);border-radius:1px"></span> ' + xt('reader.days_1_3') + ' (' + formatNumber(freshWeek) + ')</span>' +
+            '<span><span style="display:inline-block;width:8px;height:8px;background:var(--color-error);border-radius:1px"></span> ' + xt('reader.days_3_plus') + ' (' + formatNumber(freshOld) + ')</span>' +
             '</div></div>';
         })()
       : '';
@@ -263,23 +266,23 @@ export async function renderForYou(_params) {
     const srcMixHtml = srcEntries.length > 0
       ? (() => {
           const zh = getLanguage() === 'zh';
-          const stackColors = ['#f97316', '#38bdf8', '#34d399', '#a78bfa', '#facc15', '#94a3b8'];
+          const stackColors = ['var(--accent)', 'var(--sea)', 'var(--color-success)', 'var(--chart-violet)', 'var(--color-warning)', 'var(--fg-mute)'];
           const totalSrc = srcEntries.reduce((s, [, c]) => s + c, 0);
           const stackBar = '<div style="display:flex;height:14px;border-radius:3px;overflow:hidden;margin-bottom:8px">' +
             srcEntries.map(([slug, count], i) => {
               const w = totalSrc > 0 ? Math.round((count / totalSrc) * 100) : 0;
-              const label = items.find(it => it.source_slug === slug)?.source_label || slug;
-              return '<div style="width:' + w + '%;background:' + stackColors[i % stackColors.length] + ';opacity:0.8" title="' + escapeHtml(label) + ': ' + count + '"></div>';
+              const label = pickZh(items.find(it => it.source_slug === slug)?.source_label, items.find(it => it.source_slug === slug)?.source_label_zh) || slug;
+              return '<div style="width:' + w + '%;background:' + stackColors[i % stackColors.length] + ';opacity:0.8" title="' + escapeHtml(label) + ': ' + formatNumber(count) + '"></div>';
             }).join('') + '</div>';
           return '<div class="metrics-block" style="margin-bottom:16px"><h3 class="metrics-block-title">' + (zh ? '来源分布' : 'Source Mix') + '</h3>' +
             stackBar +
             '<ul class="metrics-bars">' +
             srcEntries.map(([slug, count]) => {
               const pct = Math.round((count / maxSrc) * 100);
-              const label = items.find(i => i.source_slug === slug)?.source_label || slug;
+              const label = pickZh(items.find(i => i.source_slug === slug)?.source_label, items.find(i => i.source_slug === slug)?.source_label_zh) || slug;
               return '<div class="metrics-bar-row"><span class="metrics-bar-label">' + escapeHtml(label) + '</span>' +
                 '<div class="metrics-bar"><div class="metrics-bar-fill" style="width:' + pct + '%"></div></div>' +
-                '<span class="metrics-bar-pct">' + count + '</span></div>';
+                '<span class="metrics-bar-pct">' + formatNumber(count) + '</span></div>';
             }).join('') + '</ul></div>';
         })()
       : '';
@@ -289,23 +292,24 @@ export async function renderForYou(_params) {
       const relPct = Math.round((it.relevance || 0) * 100);
       const seenCls = it.seen ? ' fy-card-seen' : '';
       const boostChip = (it.personal_boost && Math.abs(it.personal_boost) > 0.01)
-        ? `<span class="fy-boost">${it.personal_boost > 0 ? '+' : ''}${(it.personal_boost * 100).toFixed(0)}</span>`
+        ? `<span class="fy-boost">${it.personal_boost > 0 ? '+' : ''}${formatNumber(Math.round(Math.abs(it.personal_boost) * 100))}</span>`
         : '';
       const seenTag = it.seen ? `<span class="fy-seen-tag">${t('foryou.seen')}</span>` : '';
-      const typeChip = it.signal_type ? `<span class="fy-type">${escapeHtml(it.signal_type.replace(/_/g, ' '))}</span>` : '';
+      const typeChip = it.signal_type ? `<span class="fy-type">${escapeHtml(signalLabel(it.signal_type))}</span>` : '';
       // Freshness dot: green if today, yellow if 1-3d, red if older.
       const ageHours = it.published_at ? (Date.now() - new Date(it.published_at).getTime()) / 3600000 : 999;
-      const freshDot = ageHours < 24 ? '🟢' : ageHours < 72 ? '🟡' : '🔴';
-      const freshChip = `<span class="fy-fresh" title="${ageHours < 24 ? 'Today' : ageHours < 72 ? '1-3 days' : '3+ days'} old">${freshDot}</span>`;
+      const freshLabel = ageHours < 24 ? xt('reader.today') : ageHours < 72 ? xt('reader.days_1_3') : xt('reader.days_3_plus');
+      const freshColor = ageHours < 24 ? 'var(--color-success)' : ageHours < 72 ? 'var(--color-warning)' : 'var(--color-error)';
+      const freshChip = `<span class="fy-fresh" title="${freshLabel}"><span style="width:8px;height:8px;border-radius:1px;background:${freshColor};display:inline-block" aria-hidden="true"></span></span>`;
       return (
         `<article class="fy-card${seenCls}">` +
         `<div class="fy-card-head">` +
-        `<span class="fy-rel" title="${t('foryou.relevance_tip')}">${relPct}</span>` +
+        `<span class="fy-rel" title="${t('foryou.relevance_tip')}">${formatNumber(relPct)}</span>` +
         `${typeChip}${seenTag}${boostChip}${freshChip}` +
         `</div>` +
-        `<h4 class="fy-title"><a href="${escapeAttr(it.canonical_url || '#')}" target="_blank" rel="noopener" data-seen-id="${escapeAttr(it.id)}">${escapeHtml((it.title || '').slice(0, 120))}</a></h4>` +
-        `<div class="fy-meta"><span class="fy-source">${escapeHtml(it.source_label || '')}</span>` +
-        `<span class="fy-alpha">α ${(it.alpha_score || 0).toFixed(2)}</span></div>` +
+        `<h4 class="fy-title"><a href="${escapeAttr(it.canonical_url || '#')}" target="_blank" rel="noopener" data-seen-id="${escapeAttr(it.id)}">${escapeHtml(getItemDisplayTitle(it).slice(0, 120))}</a></h4>` +
+        `<div class="fy-meta"><span class="fy-source">${escapeHtml(pickZh(it.source_label, it.source_label_zh) || '')}</span>` +
+        `<span class="fy-alpha">α ${formatNumber(it.alpha_score || 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>` +
         `</article>`
       );
     };
@@ -316,14 +320,14 @@ export async function renderForYou(_params) {
       `<h2 class="page-title">${t('foryou.title')}</h2>` +
       `<p class="page-description">${t('foryou.subtitle')}</p>` +
       `<div class="range-tabs" style="margin:4px 0">` +
-      `<span class="subtle" style="margin-right:8px">${getLanguage() === 'zh' ? '时间窗口' : 'Window'}:</span>` +
-      [['1','24h'],['3','3d'],['7','7d'],['14','14d']].map(([val,label]) =>
-        `<a href="/for-you?days=${val}" class="range-tab ${sinceDays === val ? 'active' : ''}">${label}</a>`
+      `<span class="subtle" style="margin-right:8px">${xt('reader.window')}:</span>` +
+      [['1','reader.window_1d'],['3','reader.window_3d'],['7','reader.window_7d'],['14','reader.window_14d']].map(([val,label]) =>
+        `<a href="/for-you?days=${val}" class="range-tab ${sinceDays === val ? 'active' : ''}">${xt(label)}</a>`
       ).join('') +
       `</div>` +
       `<div class="fy-profile">${profileChip}` +
-      (unseen > 0 ? ` <button class="action-btn" id="fyMarkAllSeen" style="margin-left:12px">✓ ${getLanguage() === 'zh' ? '全部标记已读' : 'Mark all read'}</button>` : '') +
-      ` <span id="readingTimer" style="font-size:11px;font-family:var(--font-mono);color:var(--fg-mute);margin-left:8px">⏱ 0:00</span>` +
+      (unseen > 0 ? ` <button class="action-btn" id="fyMarkAllSeen" style="margin-left:12px">${getLanguage() === 'zh' ? '全部标记已读' : 'Mark all read'}</button>` : '') +
+      ` <span id="readingTimer" style="font-size:11px;font-family:var(--font-mono);color:var(--fg-mute);margin-left:8px">0:00</span>` +
       `</div>` +
       profileViz +
       `</div>` +
@@ -339,11 +343,11 @@ export async function renderForYou(_params) {
           '<div style="display:flex;gap:1px;height:24px;border-radius:3px;overflow:hidden">' +
           top20.map(it => {
             const a = it.alpha_score || 0;
-            const color = a >= 0.85 ? '#f97316' : a >= 0.7 ? '#facc15' : a >= 0.5 ? '#38bdf8' : '#555';
+            const color = a >= 0.85 ? 'var(--accent)' : a >= 0.7 ? 'var(--color-warning)' : a >= 0.5 ? 'var(--sea)' : 'var(--rule-light)';
             const opacity = 0.3 + 0.7 * Math.max(0, a);
-            return '<div style="flex:1;background:' + color + ';opacity:' + opacity.toFixed(2) + '" title="α' + a.toFixed(2) + ': ' + escapeHtml((it.title || '').slice(0, 40)) + '"></div>';
+            return '<div style="flex:1;background:' + color + ';opacity:' + opacity.toFixed(2) + '" title="α' + formatNumber(a, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ': ' + escapeHtml(getItemDisplayTitle(it).slice(0, 40)) + '"></div>';
           }).join('') +
-          '</div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--fg-mute);font-family:var(--font-mono)"><span>low α</span><span>high α</span></div></div>';
+          '</div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--fg-mute);font-family:var(--font-mono)"><span>' + xt('reader.low_alpha') + '</span><span>' + xt('reader.high_alpha') + '</span></div></div>';
       })()}` +
       `<div id="readingHeatmap" class="metrics-block" style="margin-bottom:16px">` +
       `<h3 class="metrics-block-title">${getLanguage() === 'zh' ? '阅读活动' : 'Reading Activity'}</h3>` +
@@ -359,7 +363,7 @@ export async function renderForYou(_params) {
         const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
         const m = Math.floor(elapsed / 60);
         const s = elapsed % 60;
-        timerEl.textContent = '⏱ ' + m + ':' + String(s).padStart(2, '0');
+        timerEl.textContent = m + ':' + String(s).padStart(2, '0');
       }, 1000);
       // Was a MutationObserver watching the whole body for the element to
       // disappear; the router now hands out teardown directly.
@@ -371,7 +375,7 @@ export async function renderForYou(_params) {
     if (markAllBtn) {
       markAllBtn.addEventListener('click', async () => {
         markAllBtn.disabled = true;
-        markAllBtn.textContent = '⏳ ...';
+        markAllBtn.textContent = xt('reader.marking_read');
         try {
           await fetch(`${API_BASE}/seen/batch`, {
             method: 'POST',
@@ -388,6 +392,6 @@ export async function renderForYou(_params) {
       a.addEventListener('click', () => markItemSeen(a.dataset.seenId));
     });
   } catch (err) {
-    showError(container, err.message);
+    showError(container, readerError(err.message));
   }
 }
