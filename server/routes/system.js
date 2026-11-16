@@ -62,7 +62,7 @@ function register(routes) {
   routes['/api/system/home'] = (_req, res) => {
     const db = getDB();
     if (!db) return sendError(res, 500, 'Database not available');
-    const latest = db.prepare(`SELECT digest_date FROM information_items
+    const latest = db.prepare(`SELECT digest_date FROM information_items INDEXED BY idx_items_digest_date
       WHERE duplicate_of IS NULL AND digest_date > '' ORDER BY digest_date DESC LIMIT 1`).get();
     sendJSON(res, 200, { status: 'ok', stats: {
       server_now: new Date().toISOString(), server_date: todayDigestDate(),
