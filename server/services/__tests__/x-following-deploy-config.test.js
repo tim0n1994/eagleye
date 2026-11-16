@@ -42,7 +42,7 @@ describe('X Following 2h lane 部署一致性', () => {
 
   it('触发脚本：模式守卫跟随 connector 默认（未设=feed），per-user 才交还 pipeline', () => {
     expect(trigger, 'Effective mode 默认 feed（与 connector resolveXMode 默认一致）').toContain("mode = 'feed'");
-    expect(trigger, '守卫元组必须恰好是 feed/hybrid').toContain("if mode not in ('feed', 'hybrid'):");
+    expect(trigger, '守卫元组必须恰好是 feed/hybrid/roster').toContain("if mode not in ('feed', 'hybrid', 'roster'):");
     expect(trigger, '脚本默认 env 文件与 service EnvironmentFile 同路径').toContain("'.config/argus/eagleye-pipeline.env'");
     expect(trigger, 'overlap 守卫检查 pipeline 单例 job 类型').toContain("('full-pipeline','fetch-all')");
     expect(trigger, 'POST 端点与后端路由一致').toContain("'/api/x-following/sync?background=true'");

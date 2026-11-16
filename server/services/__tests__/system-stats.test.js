@@ -10,8 +10,8 @@ const read = () => getSystemStats(db, { now, dbPath: ':memory:' });
 beforeEach(() => {
   db = new Database(':memory:');
   db.exec(`
-    CREATE TABLE information_items (id TEXT PRIMARY KEY, source_id TEXT, enrichment_attempts INTEGER, digest_date TEXT, fetched_at TEXT);
-    CREATE TABLE ai_summaries (item_id TEXT, short_summary TEXT, short_summary_zh TEXT, one_liner TEXT, one_liner_zh TEXT, deep_summary TEXT, translation_status TEXT);
+    CREATE TABLE information_items (id TEXT PRIMARY KEY, source_id TEXT, enrichment_attempts INTEGER, digest_date TEXT, fetched_at TEXT, title_zh TEXT, title_zh_status TEXT);
+    CREATE TABLE ai_summaries (item_id TEXT, short_summary TEXT, short_summary_zh TEXT, one_liner TEXT, one_liner_zh TEXT, deep_summary TEXT, translation_status TEXT, ai_title_zh TEXT);
     CREATE TABLE sources (id TEXT, slug TEXT, label TEXT, is_active INTEGER, last_fetched_at TEXT);
     CREATE TABLE signal_scores (item_id TEXT, signal_type TEXT);
     CREATE TABLE research_reports (status TEXT);
@@ -30,22 +30,35 @@ afterEach(() => db.close());
 
 describe('system stats read model', () => {
   it('partitions 100 current items into 30 successful, 10 retryable, 60 exhausted', () => {
-    const insert = db.prepare(`INSERT INTO information_items (id, source_id, enrichment_attempts, digest_date, fetched_at) VALUES (?, 's', ?, '2026-08-01', '2026-08-01 12:00:00')`);
-    for (let i = 0; i < 100; i++) insert.run(String(i), i < 30 || i >= 40 ? 3 : null);
-    const summary = db.prepare('INSERT INTO ai_summaries (item_id, short_summary, translation_status) VALUES (?, ?, ?)');
-    for (let i = 0; i < 30; i++) summary.run(String(i), 'Useful summary', i < 20 ? 'translated' : null);
-    summary.run('0', 'Duplicate', 'translated');
-    summary.run('0', '', null);
-    summary.run('30', ' \n\t ', null);
-    summary.run(null, 'Orphan', null);
-    summary.run('deleted', 'Deleted item', null);
+    const insert = db.prepare(`INSERT INTO information_items (id, source_id, enrichment_attempts, digest_date, fetched_at, title_zh, title_zh_status) VALUES (?, 's', ?, '2026-08-01', '2026-08-01 12:00:00', ?, ?)`);
+    for (let i = 0; i < 100; i++) insert.run(String(i), i < 30 || i >= 40 ? 3 : null, i < 20 ? 'zh-title' : null, i < 20 ? 'translated' : null);
+    const summary = db.prepare('INSERT INTO ai_summaries (item_id, short_summary, translation_status, ai_title_zh, one_liner_zh, short_summary_zh) VALUES (?, ?, ?, ?, ?, ?)');
+    for (let i = 0; i < 30; i++) {
+      const done = i < 20;
+      summary.run(String(i), 'Useful summary', done ? 'translated' : null, done ? 'zh-title' : null, done ? 'zh-oneliner' : null, done ? 'zh-summary' : null);
+    }
+    summary.run('0', 'Duplicate', 'translated', 'zh-title', 'zh-oneliner', 'zh-summary');
+    summary.run('0', '', null, 'zh-title', 'zh-oneliner', 'zh-summary');
+    summary.run('30', ' \n\t ', null, null, null, null);
+    summary.run(null, 'Orphan', null, null, null, null);
+    summary.run('deleted', 'Deleted item', null, null, null, null);
     const stats = read();
     expect(stats).toMatchObject({ total_items: 100, summaries: 30, summary_rows: 35, enrichment_backlog: 10,
-      poisoned_items: 60, enrichment_success: 30, enrichment_exhausted: 60, enrichment_coverage: 0.3, translation_backlog: 10,
+      poisoned_items: 60, enrichment_success: 30, enrichment_exhausted: 60, enrichment_coverage: 0.3, translation_backlog: 80,
       latest_digest_date: '2026-08-01', latest_item_fetched_at: '2026-08-01T12:00:00.000Z', server_date: '2026-09-08',
       data_freshness: { status: 'stale', age_days: 38 } });
     expect(stats.summaries + stats.enrichment_backlog + stats.poisoned_items).toBe(stats.total_items);
     expect(stats.connectors[0]).toMatchObject({ items_7d: 0, data_freshness: { status: 'stale', age_days: 38 } });
+  });
+
+  it('counts translation backlog with scheduler criteria instead of raw n/a status', () => {
+    db.exec(`INSERT INTO information_items (id, source_id, enrichment_attempts, digest_date, fetched_at, title_zh, title_zh_status) VALUES
+      ('na-done', 's', 3, '20260908', '2026-09-08T09:00:00Z', 'zh-title', 'translated'),
+      ('na-missing', 's', 3, '20260908', '2026-09-08T09:00:00Z', 'zh-title', 'translated');
+      INSERT INTO ai_summaries (item_id, short_summary, translation_status, ai_title_zh, one_liner_zh, short_summary_zh) VALUES
+      ('na-done', 'Summary', 'n/a', 'zh-title', 'zh-oneliner', 'zh-summary'),
+      ('na-missing', 'Summary', 'n/a', 'zh-title', 'zh-oneliner', NULL);`);
+    expect(read().translation_backlog).toBe(1);
   });
 
   it('reports empty and unknown without inventing full coverage', () => {

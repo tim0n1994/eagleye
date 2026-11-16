@@ -182,6 +182,7 @@ async function sendLLMRequest(endpoint, prompt, options = {}) {
   } else if (protocol === 'openai') {
     headers.authorization = `Bearer ${resolveSecret(endpoint.api_key || '')}`;
     payload = { model: endpoint.model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature };
+    if (options.jsonObject) payload.response_format = { type: 'json_object' };
   } else {
     headers['x-goog-api-key'] = resolveSecret(endpoint.api_key || '');
     payload = { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: maxTokens, temperature } };

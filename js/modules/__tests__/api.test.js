@@ -130,7 +130,7 @@ describe('API', () => {
     const result = await API.syncSet(data);
     expect(mockFetch).toHaveBeenCalledWith('/api/sync/set', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': expect.any(String) },
       body: JSON.stringify(data),
     });
     // syncSet returns the raw Response, not parsed JSON

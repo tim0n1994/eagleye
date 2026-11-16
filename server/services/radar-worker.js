@@ -5,15 +5,22 @@ const { readSnapshot, present } = require('./radar-reader');
 const db = new Database(workerData.dbPath, { readonly: true, fileMustExist: true, timeout: 2000 });
 db.pragma('query_only = ON');
 const cache = new Map();
+const qualityCache = new Map();
 parentPort.on('message', ({ id, query }) => {
   try {
+    if (query.view === 'stats') {
+      const data = db.transaction(() => require('./system-stats').getSystemStats(db, { dbPath: workerData.dbPath }))();
+      data.computed_at = new Date().toISOString();
+      parentPort.postMessage({ id, data });
+      return;
+    }
     if (query.view === 'quality') {
       const key = `quality:${query.industry}:${query.days}`;
-      let entry = cache.get(key);
+      let entry = qualityCache.get(key);
       if (!entry || Date.now()-entry.at>60000) {
         entry = {at:Date.now(),data:db.transaction(() => require('./intelligence-index').quality(db,query))()};
-        if (cache.size>=8) cache.delete(cache.keys().next().value);
-        cache.set(key,entry);
+        if (qualityCache.size>=8) qualityCache.delete(qualityCache.keys().next().value);
+        qualityCache.set(key,entry);
       }
       parentPort.postMessage({id,data:entry.data});
       return;

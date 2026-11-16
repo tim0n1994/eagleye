@@ -42,6 +42,7 @@ function compileRoute({ schedulerConfig, schedulerHours }) {
     prepare(sql) {
       if (sql.includes('FROM sources s')) return { all: () => sources };
       if (sql.includes('FROM information_items i JOIN sources s')) return { all: () => [] };
+      if (sql.includes('FROM source_collection_state')) return { get: () => null };
       throw new Error('unexpected query: ' + sql);
     },
   };
@@ -66,6 +67,7 @@ function compileRoute({ schedulerConfig, schedulerHours }) {
     module: subject,
     require: resolveModule,
     console,
+    process,
   }, { filename: moduleFilename });
   const routes = {};
   register(routes);
@@ -73,7 +75,7 @@ function compileRoute({ schedulerConfig, schedulerHours }) {
 }
 
 async function readResponse(handler) {
-  const res = { body: null, writeHead() {} };
+  const res = { body: null, writeHead() {}, setHeader() {} };
   handler({}, res, { query: {} });
   return res.body;
 }

@@ -101,15 +101,15 @@ const BATCH_FEED_CARD_ZH_PROMPT = `/no_think
 7. one_liner_zh 必须只有一句话，直接说明这条 feed 的核心判断。
 8. short_summary_zh 必须 1-2 句话，说明“发生了什么 + 为什么值得关注”，不超过 90 个中文字。
 9. 如果信息不足，用“信息不足，需点开原文确认”之类的克制表达。
-10. 输出严格 JSON 数组，不要 Markdown，不要解释。
-11. 数组中的每个对象都必须带输入 id，且不要漏项。
+10. 输出严格 JSON 对象，将结果数组放在 items 字段中；不要 Markdown，不要解释。
+11. items 数组中的每个对象都必须带输入 id，且不要漏项。
 12. 英文字段只作为兼容和检索兜底，中文字段是 UI 默认展示内容。
 
 输入 items:
 {{items}}
 
-输出 JSON 数组 schema：
-[
+输出 JSON 对象 schema：
+{"items": [
   {
     "id": "输入 item id",
     "title_zh": "信息流卡片中文标题",
@@ -125,7 +125,7 @@ const BATCH_FEED_CARD_ZH_PROMPT = `/no_think
     "why_it_matters": "Why it matters",
     "confidence": 0.0
   }
-]`;
+]}`;
 
 function generateId() {
   return crypto.randomUUID();
@@ -255,7 +255,8 @@ async function generateChineseFeedCard(row, opts = {}) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const { data, metadata } = await callWithMetadata(provider, buildPrompt(row), {
-        task: 'translate', signal: context.signal, temperature: 0.1, maxTokens: 2000, json: true, validate: validCard,
+        task: 'translate', signal: context.signal, temperature: 0.1, maxTokens: 4000,
+        json: true, jsonObject: true, validate: validCard,
       });
       context.check();
       return { ...normalizeFeedCard(data, row), llm_metadata: metadata };
@@ -280,12 +281,13 @@ async function generateChineseFeedCardsBatch(rows, opts = {}, onBatchFailure = n
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const { data, metadata } = await callWithMetadata(provider, buildBatchPrompt(rows), {
-        task: 'translate', signal: context.signal, temperature: 0.1, maxTokens: Math.min(8192, 600 + rows.length * 1000),
-        json: true, validate: output => validateBatch(output, allowedIds, validCard),
+        task: 'translate', signal: context.signal, temperature: 0.1, maxTokens: Math.min(16384, 600 + rows.length * 3000),
+        json: true, jsonObject: true,
+        validate: output => validateBatch(output?.items ?? output, allowedIds, validCard),
       });
       context.check();
       const rowMap = new Map(rows.map(row => [row.id, row]));
-      return data.filter(validCard).map(entry => ({
+      return (data.items ?? (Array.isArray(data) ? data : [])).filter(validCard).map(entry => ({
         id: entry.id, card: { ...normalizeFeedCard(entry, rowMap.get(entry.id)), llm_metadata: metadata },
       }));
     } catch (err) {
@@ -493,7 +495,7 @@ async function translateItems(opts = {}) {
     jobId,
     sourceSlug = '',
     retryBlocked = false,
-    batchItemSize = getEnrichProvider()?.isPool ? 4 : DEFAULT_BATCH_ITEMS,
+    batchItemSize = getEnrichProvider()?.isPool ? 2 : DEFAULT_BATCH_ITEMS,
     batchWorkers = DEFAULT_BATCH_WORKERS,
   } = opts;
   if (!Number.isInteger(batchSize) || batchSize < 1) throw new Error('Invalid translation batchSize');
@@ -518,14 +520,7 @@ async function translateItems(opts = {}) {
   const sourceFilter = sourceSlug ? ' AND src.slug = ? ' : '';
   const whereClause = force
     ? `1=1`
-    : `(
-        i.title_zh IS NULL OR i.title_zh = '' OR i.title_zh_status = 'pending'
-        OR s.item_id IS NULL
-        OR s.ai_title_zh IS NULL OR s.ai_title_zh = ''
-        OR s.one_liner_zh IS NULL OR s.one_liner_zh = ''
-        OR s.short_summary_zh IS NULL OR s.short_summary_zh = ''
-        OR s.translation_status = 'pending'
-      ) ${retryBlocked ? '' : "AND COALESCE(s.translation_status, '') != 'blocked'"}`;
+    : require('./translation-queue').pendingTranslationWhere({ retryBlocked });
 
   const total = db.prepare(`
     SELECT COUNT(DISTINCT i.id) as c
@@ -673,7 +668,7 @@ async function translateItems(opts = {}) {
       failed,
       deferred,
       total: items.length,
-      remaining: Math.max(total - processed, 0),
+      remaining: Math.max(total - translated, 0),
       batch_items: batchItemSize,
       workers: Math.min(batchWorkers, chunks.length),
     });
@@ -703,7 +698,7 @@ async function translateItems(opts = {}) {
       failed,
       deferred,
       total: items.length,
-      remaining: Math.max(total - processed, 0),
+      remaining: Math.max(total - translated, 0),
       cancelled: true,
       prompt_version: PROMPT_VERSION,
       batch_items: batchItemSize,
@@ -711,13 +706,13 @@ async function translateItems(opts = {}) {
     };
   }
 
-  console.log(`  ✅ Chinese feed cards ${translated}/${items.length} (${failed} failed). ${total - items.length} remaining.`);
+  console.log(`  ✅ Chinese feed cards ${translated}/${items.length} (${failed} failed). ${total - translated} remaining.`);
   return {
     translated,
     failed,
     deferred,
     total: items.length,
-    remaining: total - items.length,
+    remaining: Math.max(total - translated, 0),
     prompt_version: PROMPT_VERSION,
     deferred_item_ids: deferredItemIds,
     deferred_error_codes: deferredErrorCodes,

@@ -8,26 +8,27 @@
  * Apptronik, 1X Technologies, Sanctuary AI, Fourier Intelligence, Unitree, etc.
  */
 
-const { BaseConnector } = require('./base');
+const { BaseConnector, classifyFetchError } = require('./base');
 const { fetchURL } = require('../services/utils');
+const userData = require('../db/user-data');
 const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../services/date-contract');
 
 // Known RSS/news sources for humanoid robotics companies
 const HUMAN_NEWS_SOURCES = [
-  { name: 'Tesla Optimus', url: 'https://www.tesla.com/blog', type: 'scrape' },
+  { name: 'Tesla Optimus', url: 'https://www.tesla.cn/blog', type: 'scrape' },
   { name: 'Boston Dynamics', url: 'https://bostondynamics.com/blog', type: 'scrape' },
   { name: 'Figure AI', url: 'https://www.figure.ai/news', type: 'scrape' },
-  { name: '1X Technologies', url: 'https://www.1x.tech/news', type: 'scrape' },
-  { name: 'Agility Robotics', url: 'https://agilityrobotics.com/news', type: 'scrape' },
-  { name: 'Sanctuary AI', url: 'https://www.sanctuary.ai/news', type: 'scrape' },
-  { name: 'Apptronik', url: 'https://apptronik.com/news', type: 'scrape' },
-  { name: 'Fourier Intelligence', url: 'https://www.fourierintelligence.com/en/news', type: 'scrape' },
-  { name: 'Unitree', url: 'https://www.unitree.com/news', type: 'scrape' },
-  { name: 'Engineered Arts', url: 'https://www.engineeredarts.co.uk/news', type: 'scrape' },
+  { name: '1X Technologies', url: 'https://www.1x.tech/discover', type: 'scrape' },
+  { name: 'Agility Robotics', url: 'https://www.agilityrobotics.com/press-releases', articlePath: '/content/', type: 'scrape' },
+  { name: 'Sanctuary AI', url: 'https://sanctuary.ai/news/', type: 'scrape' },
+  { name: 'Apptronik', url: 'https://apptronik.com/company/press-releases', articlePath: '/news-collection/', type: 'scrape' },
+  { name: 'Fourier Intelligence', url: 'https://www.fftai.com/api/user/news/findPageByTypeList?typeList=1,2,3,4&pageNum=1&pageSize=20&enable=1&lang=zh_CN', type: 'json' },
+  { name: 'Unitree', url: 'https://www.unitree.com/news/', type: 'scrape' },
 ];
 
 // Humanoid robotics RSS feeds from industry aggregators
 const HUMAN_FEEDS = [
+  { name: 'Engineered Arts', url: 'https://media.engineeredarts.com/feed/', type: 'rss' },
   { name: 'IEEE Spectrum Robotics', url: 'https://spectrum.ieee.org/feeds/topic/robotics.rss', type: 'rss' },
   { name: 'TechCrunch Robotics', url: 'https://techcrunch.com/category/robotics/feed/', type: 'rss' },
   { name: 'The Robot Report', url: 'https://www.therobotreport.com/feed/', type: 'rss' },
@@ -39,35 +40,99 @@ class HumanoidConnector extends BaseConnector {
     super('physical-ai-humanoid');
   }
 
-  async fetch(date) {
+  async fetch(date, { stats = {}, signal } = {}) {
     const items = [];
+    let succeeded = 0;
+    const endpointState = userData.getValue('humanoid_endpoint_state') || {};
+    const defer = (source, state) => {
+      stats.failed = (stats.failed || 0) + 1;
+      const retryAt = state.next_retry_at;
+      if (!stats.next_retry_at || retryAt < stats.next_retry_at) stats.next_retry_at = retryAt;
+      (stats.partialErrors ||= []).push({ source: source.name, error: state.error, next_retry_at: retryAt });
+    };
+    const coolingDown = source => {
+      const state = endpointState[source.url];
+      if (!state || Date.parse(state.next_retry_at) <= Date.now()) return false;
+      stats.deferred = (stats.deferred || 0) + 1;
+      defer(source, state);
+      return true;
+    };
+    const failed = (source, err) => {
+      signal?.throwIfAborted();
+      const failures = (endpointState[source.url]?.failures || 0) + 1;
+      const blocked = [401, 403, 429].includes(Number(err.upstreamStatus));
+      const hours = Math.min(blocked ? 24 : 6, (blocked ? 6 : 0.5) * 2 ** Math.min(failures - 1, 5));
+      const state = { failures, error: err.message.slice(0, 240), error_class: classifyFetchError(err),
+        next_retry_at: new Date(Date.now() + hours * 3600000).toISOString() };
+      endpointState[source.url] = state;
+      userData.setValue('humanoid_endpoint_state', endpointState);
+      defer(source, state);
+      console.error(`[${this.slug}] ${source.type} failed (${source.name} ${source.url}):`, err.message);
+    };
+    const recovered = source => {
+      if (endpointState[source.url]) {
+        delete endpointState[source.url];
+        userData.setValue('humanoid_endpoint_state', endpointState);
+      }
+    };
     // D2: digest date basis is the requested local digest date (fallback:
     // local today), never the item's own UTC day.
     const dateStr = date || compactDigestDate(todayDigestDate());
 
     // Fetch from RSS feeds
     for (const source of HUMAN_FEEDS) {
+      signal?.throwIfAborted();
+      if (coolingDown(source)) continue;
+      stats.requested = (stats.requested || 0) + 1;
       try {
-        const xml = await fetchURL(source.url);
+        const xml = await fetchURL(source.url, { signal });
         const parsed = this._parseRSS(xml, dateStr, source.name);
         items.push(...parsed);
+        succeeded++;
+        recovered(source);
       } catch (err) {
-        console.error(`[${this.slug}] RSS feed failed (${source.name} ${source.url}):`, err.message);
+        failed(source, err);
       }
     }
 
     // Scrape company news pages
     for (const source of HUMAN_NEWS_SOURCES) {
+      signal?.throwIfAborted();
+      if (coolingDown(source)) continue;
+      stats.requested = (stats.requested || 0) + 1;
       try {
-        const html = await fetchURL(source.url);
-        const parsed = this._scrapePage(html, dateStr, source.name, source.url);
+        const body = await fetchURL(source.url, { signal });
+        const parsed = source.type === 'json'
+          ? this._parseFourier(body, dateStr)
+          : this._scrapePage(body, dateStr, source.name, source.url, source.articlePath);
         items.push(...parsed);
+        succeeded++;
+        recovered(source);
       } catch (err) {
-        console.error(`[${this.slug}] company page scrape failed (${source.name} ${source.url}):`, err.message);
+        failed(source, err);
       }
     }
 
+    if (!succeeded) throw new Error('All humanoid news endpoints failed');
     return items;
+  }
+
+  _parseFourier(body, dateStr) {
+    const response = JSON.parse(body);
+    if (response.success !== true || !Array.isArray(response.data?.content)) {
+      throw new Error('Invalid Fourier newsroom response');
+    }
+    return response.data.content.filter(row => row.id && row.title).map(row => ({
+      ...this.normalize({
+        title: row.title,
+        url: row.contentType === 2 && /^https?:\/\//.test(row.profile || '')
+          ? row.profile : `https://www.fftai.com/fourier/article/${encodeURIComponent(row.id)}`,
+        publishedAt: row.publishDate || row.createTime || null,
+        language: 'zh',
+        sourcePayload: { company: 'Fourier Intelligence', feed_type: 'official-api', category: 'humanoid-robotics' },
+      }),
+      digest_date: dateStr,
+    }));
   }
 
   _parseRSS(xml, dateStr, sourceName) {
@@ -121,7 +186,7 @@ class HumanoidConnector extends BaseConnector {
     return items;
   }
 
-  _scrapePage(html, dateStr, companyName, pageUrl) {
+  _scrapePage(html, dateStr, companyName, pageUrl, articlePath) {
     const items = [];
     const now = new Date();
     // D2: the company-page add-on gate compares against the LOCAL calendar
@@ -154,6 +219,15 @@ class HumanoidConnector extends BaseConnector {
       } else if (!href.startsWith('http')) {
         continue;
       }
+      // Reject navigation links when migrating company listing URLs.
+      let articleUrl;
+      try { articleUrl = new URL(href); } catch { continue; }
+      const listingUrl = new URL(pageUrl);
+      const listingPath = listingUrl.pathname.replace(/\/$/, '');
+      if (articleUrl.origin !== listingUrl.origin ||
+          !articleUrl.pathname.startsWith(articlePath || listingPath + '/') ||
+          articleUrl.pathname.replace(/\/$/, '') === listingPath ||
+          /\/category\//.test(articleUrl.pathname)) continue;
 
       const key = text.slice(0, 50);
       if (seen.has(key)) continue;
@@ -164,7 +238,8 @@ class HumanoidConnector extends BaseConnector {
           title: text,
           url: href,
           description: `${companyName} news: ${text}`,
-          publishedAt: now.toISOString(),
+          // A listing without an article date does not establish publication time.
+          publishedAt: null,
           sourcePayload: {
             company: companyName,
             scraped_from: pageUrl,

@@ -8,7 +8,7 @@
 const { getDB } = require('../db/connection');
 const { getValue, setValue } = require('../db/user-data');
 const { sendJSON, sendError, requireAdmin } = require('./_shared');
-const { getSystemStats } = require('../services/system-stats');
+const { readRadar } = require('../services/radar');
 const { healthDistribution, llmErrorClassSummary } = require('../services/source-health');
 const { getSwitches, setSwitches } = require('../services/runtime-switches');
 const { todayDigestDate } = require('../services/date-contract');
@@ -59,11 +59,26 @@ function register(routes) {
   };
 
   // --- System Stats: enrichment/translation backlog, coverage, DB size ---
-  routes['/api/system/stats'] = (_req, res) => {
+  routes['/api/system/home'] = (_req, res) => {
     const db = getDB();
     if (!db) return sendError(res, 500, 'Database not available');
-    const stats = getSystemStats(db);
-    sendJSON(res, 200, { status: 'ok', stats });
+    const latest = db.prepare(`SELECT digest_date FROM information_items
+      WHERE duplicate_of IS NULL AND digest_date > '' ORDER BY digest_date DESC LIMIT 1`).get();
+    sendJSON(res, 200, { status: 'ok', stats: {
+      server_now: new Date().toISOString(), server_date: todayDigestDate(),
+      latest_digest_date: latest?.digest_date || null,
+      has_items: Boolean(db.prepare('SELECT 1 FROM information_items WHERE duplicate_of IS NULL LIMIT 1').get()),
+    } });
+  };
+
+  routes['/api/system/stats'] = async (_req, res) => {
+    try {
+      const stats = await readRadar({ view: 'stats' });
+      sendJSON(res, 200, { status: 'ok', stats });
+    } catch (error) {
+      console.error('[system-stats]', error.message);
+      sendError(res, 503, 'Statistics temporarily unavailable');
+    }
   };
 
   // --- Degradation visibility (R0-09): source health + model-layer hook ---

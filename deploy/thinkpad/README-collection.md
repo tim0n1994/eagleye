@@ -10,8 +10,10 @@ Default cadence (overridable by sources.expected_interval_hours): news 6h,
 release feeds 12h, papers and Xiaohongshu 24h, Startup Archive 168h. X remains
 owned by its existing independent 2h timer. source_collection_state persists
 next_due_at, last request/parse/commit, outcome and latest counts. Failures retry
-after 30m with exponential backoff capped at the source interval. Manual partial
-samples retry after 5m and do not advance the full-feed commit checkpoint.
+after 30m with exponential backoff capped at the source interval. Partial upstream
+failures use the same backoff, retain available items, and report `partial` rather
+than healthy. Manual bounded samples retry after 5m. Neither kind of partial round
+advances the full-feed commit checkpoint.
 
 Shared connector admission: 4 source rounds, 1 per source, 2 requests per host,
 500ms spacing per host. Tune COLLECTION_CONCURRENCY,
@@ -44,3 +46,16 @@ URL/content deduplication and source quality profiles continue to be used.
 Verification: syntax/lint, production migration/startup, authenticated source
 API and one real feed round. No synthetic tests or load benchmark are required
 for this delivery; content acceptance belongs to the operator.
+
+The read-only monitor in `eagleye-monitor.py` checks source errors/overdue rounds
+and daily digest freshness when independent collection is enabled. The legacy
+36-hour full-pipeline completion rule applies only when that pipeline is scheduled.
+Install it at `~/.local/bin/eagleye-monitor.py` with the existing monitor timer.
+Retire `argus-eagleye-backfill.service` if its historical controller has been
+removed; the independent enrichment, KG and outbox drainers remain enabled.
+
+Humanoid company feeds use the current official endpoints: Tesla's Chinese
+blog mirror, 1X Discover, Agility press releases, Apptronik press releases,
+Fourier's public newsroom API, and Engineered Arts' official WordPress RSS.
+Listing entries without a publication date retain an unknown date. Fourier
+may legitimately return an empty news list; HTTP/schema failures remain visible.

@@ -19,7 +19,7 @@
  *  - Jina needs no auth but is rate-limited and loses exact metrics/dates
  *
  * Config (env or runtime):
- *  X_FOLLOWING_MODE="feed"|"hybrid"|"per-user"            (default feed; per-user is explicit legacy)
+ *  X_FOLLOWING_MODE="feed"|"hybrid"|"roster"|"per-user"   (default feed)
  *  X_FOLLOWING_USERS="elonmusk,sama,DHH,paulg"           (comma-separated, no @)
  *  X_FOLLOWING_CONFIG_PATH="/abs/path/to/users.txt"      (optional override)
  *  X_FOLLOWING_CACHE_TTL_MS=1800000                       (default 30 min, Jina path)
@@ -39,6 +39,9 @@
  * The fallback results do not move the feed cursor; the next healthy feed run
  * re-pulls from the last feed checkpoint and dedup absorbs the overlap. A
  * cooldown-suppressed tick (FEED_COOLDOWN) never triggers the fallback scan.
+ * Roster mode uses the saved handles even if the authenticated account has
+ * no followings. Each tick processes at most 40 accounts sequentially, with
+ * a durable checkpoint after each saved account and no Jina fan-out.
  * X_FOLLOWING_MODE=per-user is the explicit legacy escape hatch and keeps the
  * old path verbatim; it never touches the feed cursor.
  */
@@ -49,6 +52,7 @@ const { readXFollowingConfig } = require('../services/x-following-config');
 const reach = require('../services/agent-reach');
 const userData = require('../db/user-data');
 const { setTimeout: sleep } = require('node:timers/promises');
+const { createHash } = require('node:crypto');
 
 const CACHE = new Map(); // username -> { ts, posts }  (Jina path only)
 
@@ -58,6 +62,7 @@ const X_CURSOR_KEY = 'x_following_cursor';
 // Feed failure backoff ledger (also global scope). This is deliberately
 // separate from the data checkpoint: backoff must never move the cursor.
 const X_FAILURE_KEY = 'x_following_failure';
+const X_ROSTER_KEY = 'x_following_roster';
 
 /**
  * Resolve the mode switch. Feed is the safe default because the legacy mode
@@ -69,6 +74,7 @@ function resolveXMode() {
   const raw = String(process.env.X_FOLLOWING_MODE || '').trim().toLowerCase();
   if (raw === 'per-user') return 'per-user';
   if (raw === 'hybrid') return 'hybrid';
+  if (raw === 'roster') return 'roster';
   return 'feed';
 }
 
@@ -874,7 +880,7 @@ class XFollowingConnector extends BaseConnector {
     return posts;
   }
 
-  async fetch(_date, { signal } = {}) {
+  async fetch(_date, { signal, stats = {} } = {}) {
     signal?.throwIfAborted();
     const users = this.loadUserList();
     if (users.length === 0) {
@@ -891,7 +897,127 @@ class XFollowingConnector extends BaseConnector {
     if (resolveXMode() === 'hybrid') {
       return this.fetchHybrid(users, { signal });
     }
+    if (resolveXMode() === 'roster') {
+      return this.fetchViaRoster(users, { signal, stats });
+    }
     return this.fetchViaFeed(users, { signal });
+  }
+
+  /** One paced roster batch. Commit each user's rows before advancing its checkpoint. */
+  async fetchViaRoster(users, { signal, stats }) {
+    const { getDB } = require('../db/connection');
+    if (!getDB()) throw new Error('Database unavailable for roster checkpoint');
+    const hash = createHash('sha256').update(users.map(u => u.toLowerCase()).join('\n')).digest('hex');
+    const previous = userData.getValue(X_ROSTER_KEY) || {};
+    const state = previous.roster_hash === hash ? previous : {
+      roster_hash: hash, next_index: 0, completed_cycles: 0, unavailable: {},
+    };
+    const batchSize = Math.min(users.length, envInt('X_FOLLOWING_ROSTER_BATCH_SIZE', 40, 1, 50));
+    const perUser = envInt('X_FOLLOWING_TWEETS_PER_USER', 5, 1, 40);
+    const spacingMs = envInt('X_FOLLOWING_ROSTER_DELAY_MS', 3000, 1000, 60000);
+    const timeoutMs = envInt('X_FOLLOWING_ROSTER_USER_TIMEOUT_MS', 45000, 5000, 60000);
+    const deadline = Date.now() + Math.max(timeoutMs + 1000,
+      envInt('X_FOLLOWING_ROSTER_TOTAL_TIMEOUT_MS', 600000, 10000, 900000));
+    const items = [];
+    Object.assign(stats, { mode: 'roster', persisted: true, roster_size: users.length,
+      attempted: 0, succeeded: 0, failed: 0, fetched: 0, inserted: 0, duplicates: 0,
+      skipped: 0, retries: 0, unavailable: [], unavailable_deferred: 0,
+      start_index: state.next_index, next_index: state.next_index,
+      next_user: users[state.next_index], completed_cycles: state.completed_cycles });
+    state.unavailable ||= {};
+    const checkpoint = () => {
+      Object.assign(stats, { next_index: state.next_index, next_user: users[state.next_index],
+        completed_cycles: state.completed_cycles, unavailable_total: Object.keys(state.unavailable).length });
+      Object.assign(state, { roster_size: users.length, next_user: stats.next_user,
+        updated_at: new Date().toISOString(), last_batch: { ...stats } });
+      userData.setValue(X_ROSTER_KEY, state);
+    };
+    const advance = () => {
+      state.next_index = (state.next_index + 1) % users.length;
+      if (state.next_index === 0) {
+        state.completed_cycles++;
+        state.last_cycle_at = new Date().toISOString();
+      }
+      state.next_attempt_at = null;
+      state.last_error = null;
+      state.last_error_code = null;
+      checkpoint();
+    };
+    if (Date.parse(state.next_attempt_at || '') > Date.now()) {
+      stats.error = `X roster paused until ${state.next_attempt_at}: ${state.last_error || 'upstream cooldown'}`;
+      stats.error_code = state.last_error_code || 'FEED_COOLDOWN';
+      return items;
+    }
+    for (let i = 0; i < batchSize; i++) {
+      signal?.throwIfAborted();
+      if (i) await sleep(spacingMs, undefined, { signal });
+      // Stop cleanly between accounts; do not start work beyond this batch's budget.
+      if (Date.now() + timeoutMs > deadline) break;
+      const username = users[state.next_index];
+      const unavailable = state.unavailable[username];
+      const retryAt = Date.parse(unavailable?.next_retry_at || '') || Date.parse(unavailable?.at || '') + 86400000;
+      if (unavailable && retryAt > Date.now()) {
+        stats.skipped++;
+        stats.unavailable_deferred++;
+        advance();
+        continue;
+      }
+      stats.attempted++;
+      const userDeadline = Math.min(deadline, Date.now() + timeoutMs);
+      let result = await reach.twitterUserPosts(username, perUser, { signal, timeoutMs });
+      // Recreate the CLI connection once after a transient failure, within the
+      // original user/batch deadline. Authentication and rate limits cool down.
+      const transient = !result.ok && (result.code === 'NETWORK_ERROR' || result.code === 'TIMEOUT' ||
+        (result.code === 'UPSTREAM_ERROR' && /TLS|SSL|socket|connection (?:closed|reset)/i.test(result.message || '')));
+      if (transient && userDeadline - Date.now() > 15000) {
+        stats.retries++;
+        await sleep(3000, undefined, { signal });
+        result = await reach.twitterUserPosts(username, perUser, { signal, timeoutMs: userDeadline - Date.now() });
+      }
+      signal?.throwIfAborted();
+      if (!result.ok && result.code !== 'USER_UNAVAILABLE') {
+        stats.failed++;
+        stats.error = `@${username}: ${result.code}: ${String(result.message).slice(0, 300)}`;
+        stats.error_code = result.code;
+        state.last_error = stats.error;
+        state.last_error_code = result.code;
+        state.next_attempt_at = new Date(Date.now() + 30 * 60000).toISOString();
+        checkpoint();
+        console.warn(`  ⚠ X roster paused: ${stats.error}`);
+        return items;
+      }
+      if (!result.ok) {
+        // A suspended/deleted/private target must not block the remaining roster.
+        // Keep coverage gaps visible, without treating an unavailable target as
+        // a failed collector. Recheck after 1/2/4/7 days; retain the full roster.
+        const failures = (Number(unavailable?.failures) || 0) + 1;
+        state.unavailable[username] = { at: new Date().toISOString(), reason: result.message, failures,
+          next_retry_at: new Date(Date.now() + Math.min(7, 2 ** Math.min(failures - 1, 3)) * 86400000).toISOString() };
+        stats.unavailable.push(username);
+        stats.skipped++;
+      } else {
+        stats.requestSucceeded = true;
+        stats.parsed = true;
+        const posts = (result.data || []).filter(tw => process.env.X_FOLLOWING_INCLUDE_RT === '1' || !isRetweetTweet(tw))
+          .map(tw => this._normalizeFeedTweet(tw)).filter(p => p.id && p.text);
+        const batch = posts.map(p => this._twitterPostToItem(username, p, { backend: 'twitter-cli-roster' }));
+        const outcome = this.saveItems(batch, { returnDetails: true });
+        if (outcome.error || outcome.failed) throw new Error('Roster persistence failed: ' + (outcome.error || outcome.failed));
+        items.push(...batch);
+        stats.succeeded++;
+        stats.fetched += batch.length;
+        stats.inserted += outcome.inserted;
+        stats.duplicates += outcome.duplicates + outcome.existing;
+        stats.skipped += outcome.skipped;
+        delete state.unavailable[username];
+        console.log(`  𝕏 roster @${username}: ${batch.length} posts, ${outcome.inserted} new (${stats.attempted}/${batchSize})`);
+      }
+      advance();
+    }
+    // Preserve a batch summary even when the time budget stopped it early.
+    stats.partial = stats.failed > 0;
+    checkpoint();
+    return items;
   }
 
   /**

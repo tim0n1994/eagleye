@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Eagleye X Following 2h incremental trigger (Round 2 feed mode, R2.1 hybrid).
+"""Eagleye X Following 2h incremental trigger (feed, hybrid, or roster).
 
 Runs from a systemd timer (every 2h, offset from the enrich drainer's
 00/2:40 and from the 01:00 pipeline). Fires the existing admin endpoint
@@ -9,7 +9,8 @@ effective "feed") or an explicit hybrid pin, it does ONE cursor-bounded
 following-feed pull — hybrid additionally degrades a failed feed round to
 a per-user scan at most once per X_FOLLOWING_FULL_FALLBACK_COOLDOWN_MS
 (default 24h) — instead of a 442-account per-user scan. Clones
-eagleye-drain.py: read-only sqlite + one POST.
+eagleye-drain.py: read-only sqlite + one POST. Roster mode instead processes
+one paced, checkpointed batch of saved handles, using the same singleton job.
 
 Mode guard: the effective mode follows the CONNECTOR default — unset means
 "feed", so the 2h lane owns X and the 01:00 pipeline stage skips it. Only
@@ -45,7 +46,7 @@ try:
                 break
 except FileNotFoundError:
     pass  # no env file -> connector default feed -> 2h lane owns X
-if mode not in ('feed', 'hybrid'):
+if mode not in ('feed', 'hybrid', 'roster'):
     print(json.dumps({'skipped': True, 'mode': mode,
                       'reason': 'X_FOLLOWING_MODE=%s: X owned by the 01:00 pipeline '
                                 '(legacy per-user); 2h lane stays inert' % mode}))

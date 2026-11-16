@@ -48,6 +48,7 @@ function withHostSlot(url, signal, work) {
 }
 function intervalHours(source) {
   if (Number(source.expected_interval_hours) > 0) return Number(source.expected_interval_hours);
+  if (source.slug === 'x-following' && process.env.X_FOLLOWING_MODE !== 'per-user') return 2;
   if (source.slug === 'startup-archive') return 168;
   if (/arxiv|neuroscience-nature|neuroscience-elife/.test(source.slug)) return 24;
   if (source.slug === 'xiaohongshu') return 24;
@@ -60,10 +61,15 @@ function recordCollection(slug, data) {
   const source = db.prepare('SELECT * FROM sources WHERE slug = ?').get(slug);
   if (!source) return;
   const previous = db.prepare('SELECT * FROM source_collection_state WHERE slug = ?').get(slug);
-  const failures = data.error ? (previous?.failures || 0) + 1 : 0;
-  const hours = data.partial ? 1 / 12 : data.error ? Math.min(intervalHours(source), 0.5 * 2 ** Math.min(failures - 1, 5)) : intervalHours(source);
+  const incomplete = Boolean(data.error || data.failed > 0);
+  const failures = incomplete ? (previous?.failures || 0) + 1 : 0;
+  let hours = incomplete ? Math.min(intervalHours(source), 0.5 * 2 ** Math.min(failures - 1, 5)) : data.partial ? 1 / 12 : intervalHours(source);
+  const endpointRetry = Date.parse(data.next_retry_at || '');
+  if (!data.error && data.failed > 0 && Number.isFinite(endpointRetry)) {
+    hours = Math.max(0.5, Math.min(intervalHours(source), (endpointRetry - Date.now()) / 3600000));
+  }
   const now = new Date().toISOString();
-  const outcome = data.error ? 'failed' : data.notModified ? 'not_modified' : data.inserted > 0 ? 'stored' : data.fetched > 0 ? 'unchanged' : 'empty';
+  const outcome = data.error ? 'failed' : data.partial ? 'partial' : data.notModified ? 'not_modified' : data.inserted > 0 ? 'stored' : data.fetched > 0 ? 'unchanged' : 'empty';
   db.prepare(`INSERT INTO source_collection_state
     (slug, last_attempt_at, last_request_success_at, last_parse_success_at, last_commit_at, next_due_at,
      outcome, fetched, inserted, duplicates, skipped, failures, error_class)
@@ -78,7 +84,12 @@ function recordCollection(slug, data) {
       parsed: data.parsed ? now : null, committed: data.error || data.partial ? null : now,
       due: new Date(Date.now() + hours * 3600000).toISOString(), outcome,
       fetched: data.fetched || 0, inserted: data.inserted || 0, duplicates: data.duplicates || 0,
-      skipped: data.skipped || 0, failures, error: data.error || null });
+      skipped: data.skipped || 0, failures, error: data.error || (data.failed > 0 ? 'partial' : null) });
+  if (!data.error && data.failed > 0) {
+    db.prepare("UPDATE sources SET last_error_class = 'partial', health_status = 'stale' WHERE slug = ?").run(slug);
+  } else if (!data.error && data.requestSucceeded && data.parsed) {
+    db.prepare("UPDATE sources SET last_error_class = NULL, health_status = 'healthy' WHERE slug = ? AND last_error_class = 'partial'").run(slug);
+  }
 }
 function lookbackHours(slug) {
   const db = require('../db/connection').getDB();

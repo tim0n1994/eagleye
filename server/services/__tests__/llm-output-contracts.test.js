@@ -26,6 +26,7 @@ function loadService(name, mocks) {
     if (id === './llm-error-class') return require('../llm-error-class');
     if (id === './content-sufficiency') return require('../content-sufficiency');
     if (id === './date-contract') return require('../date-contract');
+    if (id === './translation-queue') return require('../translation-queue');
     if (id === 'crypto') return require('node:crypto');
     throw new Error(`Unmocked service dependency: ${id}`);
   };

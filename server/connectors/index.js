@@ -252,6 +252,7 @@ async function fetchSourceAdmitted(slug, date, opts = {}) {
       }
       const { recordCollection } = require('../services/collection-control');
       recordCollection(slug, { ...stats, ...saved, fetched: items.length,
+        failed: stats.failed + (saved.failed || 0),
         partial: selected.length < items.length || stats.failed > 0,
         requestSucceeded: true, parsed: !stats.notModified });
       if (!returnDetails) {
@@ -275,6 +276,7 @@ async function fetchSourceAdmitted(slug, date, opts = {}) {
         fetched: items.length,
         skipped: (savedCounts.skipped || 0) + stats.skipped + (items.length - selected.length),
         failed: (savedCounts.failed || 0) + stats.failed,
+        partial_errors: stats.partialErrors || [],
         duration_ms: durationMs,
         retries: retryCount(),
         notModified: notModifiedCount(),
@@ -344,7 +346,7 @@ async function fetchAllSources(date, opts = {}) {
   const reused = new Map();
   for (const row of checkpoint) {
     if (!row?.source || !activeSources.has(row.source) || reused.has(row.source)) continue;
-    if (row.error || row.status === 'failed') continue;
+    if (row.error || row.status === 'failed' || row.failed > 0) continue;
     reused.set(row.source, { ...row, checkpoint_reused: true });
   }
   const results = [...reused.values()];
@@ -409,6 +411,8 @@ async function fetchAllSources(date, opts = {}) {
       const result = Array.isArray(r)
         ? { source: source.slug, items: r.length, duration_ms: null, retries: null, notModified: null }
         : { source: source.slug, items: (r.items || []).length, duplicates: r.duplicates || 0,
+          ...(r.failed > 0 ? { failed: r.failed, partial_errors: r.partial_errors,
+            error: `${r.failed} upstream request(s) failed; available items were saved` } : {}),
           duration_ms: r.duration_ms ?? null, retries: r.retries ?? null, notModified: r.notModified ?? 0 };
       results.push(result);
       completed++;

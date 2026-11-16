@@ -695,6 +695,7 @@ server.listen(PORT, process.env.EAGLEYE_HOST || undefined, async () => {
   }
 
   require('./server/services/intelligence').start();
+  require('./server/services/radar').startRadar();
 
   // Optional: initial sync (disabled by default — user starts manually or via API)
   console.log('  System ready. Start sync via /api/sync');

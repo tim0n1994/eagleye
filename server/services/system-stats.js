@@ -1,6 +1,7 @@
 const fs = require('fs');
 const { getDBPath } = require('../config');
 const { normalizeDigestDate, todayDigestDate } = require('./date-contract');
+const { countPendingTranslations } = require('./translation-queue');
 
 function dateState(date, total, now) {
   if (!total) return { status: 'empty', age_days: null };
@@ -17,7 +18,7 @@ function getSystemStats(db, { now = new Date(), dbPath = getDBPath() } = {}) {
   // A current item succeeds if any attached row contains actual summary text.
   const stats = db.prepare(`
     WITH summary_items AS (
-      SELECT item_id, MAX(CASE WHEN translation_status = 'translated' THEN 1 ELSE 0 END) AS translated
+      SELECT item_id
       FROM ai_summaries
       WHERE LENGTH(TRIM(COALESCE(short_summary, '') || COALESCE(short_summary_zh, '') ||
         COALESCE(one_liner, '') || COALESCE(one_liner_zh, '') || COALESCE(deep_summary, ''), char(9) || char(10) || char(13) || ' ')) > 0
@@ -27,12 +28,12 @@ function getSystemStats(db, { now = new Date(), dbPath = getDBPath() } = {}) {
       COUNT(a.item_id) AS summaries,
       COALESCE(SUM(CASE WHEN a.item_id IS NULL AND COALESCE(i.enrichment_attempts, 0) < 3 THEN 1 ELSE 0 END), 0) AS enrichment_backlog,
       COALESCE(SUM(CASE WHEN a.item_id IS NULL AND COALESCE(i.enrichment_attempts, 0) >= 3 THEN 1 ELSE 0 END), 0) AS poisoned_items,
-      COALESCE(SUM(CASE WHEN a.item_id IS NOT NULL AND a.translated = 0 THEN 1 ELSE 0 END), 0) AS translation_backlog,
       MAX(NULLIF(i.digest_date, '')) AS latest_digest_date,
       MAX(strftime('%Y-%m-%dT%H:%M:%fZ', i.fetched_at)) AS latest_item_fetched_at
     FROM information_items i LEFT JOIN summary_items a ON a.item_id = i.id
     WHERE i.duplicate_of IS NULL
   `).get();
+  stats.translation_backlog = countPendingTranslations(db);
   Object.assign(stats, db.prepare(`SELECT
     (SELECT COUNT(*) FROM ai_summaries) AS summary_rows,
     (SELECT COUNT(DISTINCT ss.item_id) FROM signal_scores ss JOIN information_items i ON i.id = ss.item_id WHERE i.duplicate_of IS NULL) AS scored,

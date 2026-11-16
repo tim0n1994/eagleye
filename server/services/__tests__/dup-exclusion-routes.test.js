@@ -178,9 +178,9 @@ describe('R3.0 — getSystemStats counts non-dup rows only', () => {
     db = new Database(':memory:');
     db.exec(`
       CREATE TABLE information_items (id TEXT PRIMARY KEY, source_id TEXT, enrichment_attempts INTEGER,
-        digest_date TEXT, fetched_at TEXT, duplicate_of TEXT);
+        digest_date TEXT, fetched_at TEXT, duplicate_of TEXT, title_zh TEXT, title_zh_status TEXT);
       CREATE TABLE ai_summaries (item_id TEXT, short_summary TEXT, short_summary_zh TEXT,
-        one_liner TEXT, one_liner_zh TEXT, deep_summary TEXT, translation_status TEXT);
+        one_liner TEXT, one_liner_zh TEXT, deep_summary TEXT, translation_status TEXT, ai_title_zh TEXT);
       CREATE TABLE sources (id TEXT, slug TEXT, label TEXT, is_active INTEGER, last_fetched_at TEXT);
       CREATE TABLE signal_scores (item_id TEXT, signal_type TEXT);
       CREATE TABLE research_reports (status TEXT);

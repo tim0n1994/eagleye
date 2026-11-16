@@ -98,6 +98,7 @@ function buildHarness(db, respond, environment = {}) {
             if (name === '../services/utils' || name === './utils') return { ...utils, fetchURL };
             if (name === '../services/date-contract' || name === './date-contract') return dateContract;
         if (name === "../services/secret-redaction") return require("../secret-redaction"); // 案2 redaction lane: rss writeCondState 写库前脱敏（真实模块，纯叶子）
+            if (name === '../db/user-data') return { getValue: () => ({}), setValue: () => {} }; // humanoid endpoint backoff: hermetic stub, never the real user_data DB
             if (name === '../services/x-following-config') return { readBlocklist: () => new Set(), isBlocked: () => false };
             if (name === '../services/outbox') return { registerEvent() {} };
             if (name === './base') return load('connectors/base.js');
@@ -236,8 +237,8 @@ describe('D2 connector date-window filtering (01:00 CST schedule)', () => {
     // 请求日期 20261020 == 假时钟下的本地今天（2026-10-20 01:00 CST）。
     // 现状 _scrapePage 用 UTC 今天（20261019）比较，附加门在 01:00 CST 永远关闭。
     const h = buildHarness(db, (url) => {
-      if (url === 'https://www.tesla.com/blog') {
-        return `<html><body><main><a href="https://www.tesla.com/blog/optimus-v3-line">Tesla shows Optimus v3 walking the production line</a></main></body></html>`;
+      if (url === 'https://www.tesla.cn/blog') {
+        return `<html><body><main><a href="https://www.tesla.cn/blog/optimus-v3-line">Tesla shows Optimus v3 walking the production line</a></main></body></html>`;
       }
       return new Error(`boom ${url}`);
     });

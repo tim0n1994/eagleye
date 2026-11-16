@@ -74,7 +74,9 @@ function parseJSON(stdout, jsonMode) {
     if (env && env.ok === true) return { ok: true, data: Array.isArray(env.data) ? env.data : [env.data], raw: env };
     if (env && env.ok === false) {
       const e = env.error || {};
-      return { ok: false, code: e.code || 'ERROR', message: e.message || 'twitter-cli returned ok:false', raw: env };
+      const codes = { not_authenticated: 'AUTH_REQUIRED', rate_limited: 'RATE_LIMITED',
+        not_found: 'NOT_FOUND', network_error: 'NETWORK_ERROR' };
+      return { ok: false, code: codes[e.code] || e.code || 'ERROR', message: e.message || 'twitter-cli returned ok:false', raw: env };
     }
     return { ok: false, code: 'PARSE_ERROR', message: 'twitter-cli envelope missing ok field', raw: env };
   }
@@ -140,6 +142,16 @@ async function runReach(cmd, args, opts = {}) {
         }
         return;
       }
+      // twitter-cli reports actionable errors in JSON even on exit 1.
+      if (!signal && jsonMode === 'cli-json') {
+        try {
+          const parsed = parseJSON(stdout, jsonMode);
+          if (!parsed.ok && parsed.raw?.ok === false) {
+            resolve({ ...parsed, stdout, stderr });
+            return;
+          }
+        } catch { /* non-JSON process failure: classify below */ }
+      }
       const classified = classifyError(stdout, stderr, code, signal);
       resolve({ ok: false, ...classified, stdout, stderr });
     });
@@ -158,6 +170,7 @@ function twitterUserPosts(username, count = 10, opts = {}) {
   return runReach('twitter', ['user-posts', `@${handle}`, '-n', String(count), '--json'], {
     jsonMode: 'cli-json',
     signal: opts.signal,
+    timeoutMs: opts.timeoutMs,
   });
 }
 

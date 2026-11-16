@@ -170,17 +170,7 @@ function register(routes) {
       FROM information_items i
       JOIN sources src ON src.id = i.source_id
       LEFT JOIN ai_summaries s ON s.item_id = i.id
-      WHERE (
-        i.title_zh IS NULL OR i.title_zh = '' OR i.title_zh_status = 'pending'
-        OR (
-          s.item_id IS NOT NULL AND (
-            s.ai_title_zh IS NULL OR s.ai_title_zh = ''
-            OR s.one_liner_zh IS NULL OR s.one_liner_zh = ''
-            OR s.short_summary_zh IS NULL OR s.short_summary_zh = ''
-            OR s.translation_status = 'pending'
-          )
-        )
-      )
+      WHERE ${require('../services/translation-queue').pendingTranslationWhere({ retryBlocked })}
       ${sourceSlug ? 'AND src.slug = ?' : ''}
     `).get(...(sourceSlug ? [sourceSlug] : []));
     const totalPending = pendingRow.c;

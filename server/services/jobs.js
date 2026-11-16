@@ -435,6 +435,9 @@ function stageFailure(result, stageKey = null) {
   if (!result || typeof result !== 'object') return null;
   if (result.error || ['error', 'failed'].includes(result.status)) return result.error || result.message || 'Stage returned a failure';
   if (result.fallback_reason) return `Requested backend degraded: ${result.fallback_reason}`;
+  // A roster batch can finish with unavailable target accounts. Keep its
+  // partial status/counts without turning the successful batch into an outage.
+  if (result.mode === 'roster' && result.status === 'partial' && result.succeeded > 0) return null;
   // A fetch envelope signals per-source failures, not a failed stage. The
   // distinction between partial and total fetch failure belongs to the stage
   // runner, which has the whole source list. Check this before the generic

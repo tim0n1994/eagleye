@@ -88,7 +88,7 @@ function isRetryableFetchError(err, depth = 0) {
     && isRetryableFetchError(err.cause, depth + 1)) return true;
   const code = String(err.code || '');
   const msg = String(err.message || '');
-  if (code === 'ECONNRESET' || code === 'ETIMEDOUT') return true;
+  if (['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'EPIPE'].includes(code)) return true;
   if (/^UND_ERR_(CONNECT_TIMEOUT|SOCKET|HEADERS_TIMEOUT|BODY_TIMEOUT)$/.test(code)) return true;
   if (msg.includes(TLS_DISCONNECT_MSG)) return true;
   if (/socket hang up|ECONNRESET|ETIMEDOUT/i.test(msg)) return true;
@@ -162,9 +162,13 @@ async function withFetchRetry(attempt, options = {}) {
 }
 
 /** One HTTP(S) request; rejects with the historical error shapes/texts. */
-function fetchOnce(targetUrl, options, signal) {
+function fetchOnce(targetUrl, options, signal, redirects = 0) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(targetUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      reject(new Error('Unsupported fetch protocol'));
+      return;
+    }
     const isHttps = parsed.protocol === 'https:';
     const timeoutMs = options.timeoutMs || parseInt(process.env.FETCH_TIMEOUT_MS || '15000', 10);
     const reqOpts = {
@@ -184,6 +188,22 @@ function fetchOnce(targetUrl, options, signal) {
 
     const mod = parsed.protocol === 'https:' ? https : http;
     const req = mod.request(reqOpts, (proxyRes) => {
+      if ([301, 302, 303, 307, 308].includes(proxyRes.statusCode) && proxyRes.headers.location) {
+        proxyRes.on('error', reject);
+        proxyRes.resume();
+        if (redirects >= 5) return reject(new Error('Too many HTTP redirects'));
+        let next;
+        try { next = new URL(proxyRes.headers.location, parsed); }
+        catch (err) { return reject(err); }
+        const headers = { ...options.headers };
+        if (next.origin !== parsed.origin) {
+          for (const key of Object.keys(headers)) {
+            if (/^(authorization|proxy-authorization|cookie|host)$/i.test(key)) delete headers[key];
+          }
+        }
+        resolve(fetchOnce(next.href, { ...options, headers }, signal, redirects + 1));
+        return;
+      }
       const chunks = [];
       proxyRes.on('error', reject);
       proxyRes.on('data', c => chunks.push(c));

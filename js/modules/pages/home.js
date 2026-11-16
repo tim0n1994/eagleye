@@ -21,7 +21,7 @@ try {
       const queryDate = params?.date || new URLSearchParams(window.location.search).get('date');
       const [srcData, sysData] = await Promise.all([
         fetchJSON(`${API_BASE}/sources`),
-        fetchJSON(`${API_BASE}/system/stats`).catch(() => null),
+        fetchJSON(`${API_BASE}/system/home`).catch(() => null),
       ]);
       const serverDate = sysData?.stats?.server_date || localDateStr();
       const today = queryDate || serverDate;
@@ -51,7 +51,7 @@ try {
      const loadedLabel = () => t('home.loaded_count', { loaded: formatNumber(loadedCount), total: dailyTotal === null ? t('common.unknown') : formatNumber(dailyTotal) });
      const freshnessNotice = !loadedCount
        ? (!sysData ? (zh ? '该日无条目；最新数据状态未知（状态接口不可用）。' : 'No items for this date; latest data status unknown (status unavailable).')
-         : sysData.stats?.total_items === 0 ? (zh ? '暂无存储数据。' : 'No stored data.')
+         : sysData.stats?.has_items === false ? (zh ? '暂无存储数据。' : 'No stored data.')
          : (zh ? '该日无条目。' : 'No items for this date.'))
        : !dateIsToday ? (zh ? `历史数据 / ${displayDate}。这些条目不是今日信号。` : `Archive / ${displayDate}. These are historical items.`)
          : !sysData ? (zh ? '最新数据状态未知（状态接口不可用）。' : 'Latest data status unknown (status unavailable).') : '';

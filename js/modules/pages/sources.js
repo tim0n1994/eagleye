@@ -75,6 +75,12 @@ export async function renderSources(_params) {
       { key: 'specialist', title: zh ? '专题来源 · 具身、AI 教育与脑科学' : 'Specialist sources · Robotics, AI education and neuroscience', description: zh ? '论文、官方项目版本与开发者实践分别保留来源。社区帖子和版本更新不等于已验证的研究结论或应用落地。' : 'Papers, official releases and developer practice retain their provenance. Community posts and releases are not verified research or deployments.' },
     ];
     const x = data.x_network;
+    if (x?.mode === 'roster') groups.find(group => group.key === 'x').description = zh
+      ? '使用已保存名单分批采集，记录每轮进度；不可访问账号冷却后复查。'
+      : 'Collecting the saved account list in batches; unavailable accounts are checked again after a cooldown.';
+    const rosterSummary = x?.roster ? `<p class="source-network-summary">${escapeHtml(zh
+      ? `已完成 ${x.roster.completed_cycles} 轮 · 下次从 @${x.roster.next_user || '—'} 开始 · 暂不可访问 ${x.roster.unavailable.length} 人`
+      : `${x.roster.completed_cycles} passes completed · Next: @${x.roster.next_user || '—'} · ${x.roster.unavailable.length} unavailable accounts`)}${x.roster.unavailable.length ? `<br>${escapeHtml(x.roster.unavailable.map(row => '@' + row.username).join(', '))}` : ''}</p>` : '';
     const xSummary = x ? `<p class="source-network-summary">${escapeHtml(zh ? `采集模式：${x.mode} · 配置名单 ${x.configured} · 屏蔽 ${x.blocked}` : `Mode: ${x.mode} · Configured ${x.configured} · Blocked ${x.blocked}`)}${x.snapshot ? `<br>${escapeHtml(zh ? `历史导出 ${x.snapshot.count} · 重合 ${x.snapshot.common} · 仅配置 ${x.snapshot.only_configured} · 仅导出 ${x.snapshot.only_exported}（非实时关注数，不自动增删名单）` : `Historical export ${x.snapshot.count} · Common ${x.snapshot.common} · Configuration only ${x.snapshot.only_configured} · Export only ${x.snapshot.only_exported}; not a live count.`)}` : `<br>${zh ? '历史导出不可用，差异未知。' : 'Historical export unavailable.'}`}</p>` : '';
 
     const html = `
@@ -92,7 +98,7 @@ export async function renderSources(_params) {
           return `<section class="source-group" aria-labelledby="source-group-${group.key}">
           <h3 id="source-group-${group.key}">${group.title} <small>${members.filter(s => s.is_active).length} / ${members.length} ${zh ? '启用' : 'enabled'}</small></h3>
           <p class="page-description">${group.description}</p>
-          ${group.key === 'x' ? xSummary : ''}
+          ${group.key === 'x' ? xSummary + rosterSummary : ''}
           <div class="sources-grid">
           ${members.map(src => {
             const icon = sourceIcon(src.slug);
@@ -148,7 +154,7 @@ export async function renderSources(_params) {
                 ${staleBadge}
               </div>
               <p class="source-last-success">${zh ? '最近成功' : 'Last success'}: ${src.last_success_at ? escapeHtml(new Date(parseTimestampMs(src.last_success_at)).toLocaleString(zh ? 'zh-CN' : 'en-US')) : (zh ? '暂无记录' : 'Not recorded')}</p>
-              ${src.collection ? `<p class="source-last-success">${escapeHtml(zh ? ({ stored: '已入库', unchanged: '内容已收录', empty: '请求成功，暂无内容', not_modified: '没有更新（304）', failed: '采集失败，等待重试' }[src.collection.outcome] || src.collection.outcome) : src.collection.outcome)} · ${zh ? '新增' : 'New'} ${Number(src.collection.inserted) || 0} · ${zh ? '重复' : 'Duplicates'} ${Number(src.collection.duplicates) || 0}</p>
+              ${src.collection ? `<p class="source-last-success">${escapeHtml(zh ? ({ stored: '已入库', unchanged: '内容已收录', empty: '请求成功，暂无内容', not_modified: '没有更新（304）', partial: '部分完成，等待续采', failed: '采集失败，等待重试' }[src.collection.outcome] || src.collection.outcome) : src.collection.outcome)} · ${zh ? '新增' : 'New'} ${Number(src.collection.inserted) || 0} · ${zh ? '重复' : 'Duplicates'} ${Number(src.collection.duplicates) || 0}</p>
               ${src.is_active ? `<p class="source-last-success">${zh ? '下次采集' : 'Next collection'}: ${escapeHtml(new Date(src.collection.next_due_at).toLocaleString(zh ? 'zh-CN' : 'en-US'))}</p>` : ''}` : ''}
               ${(src.trend && src.trend.length > 0) ? (() => {
                 const maxC = Math.max(1, ...src.trend.map(t => t.count));

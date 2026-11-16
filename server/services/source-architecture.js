@@ -10,6 +10,15 @@ function xNetworkSummary() {
   const configured = new Set((config.users || []).map(s => s.toLowerCase()));
   const result = { mode: process.env.X_FOLLOWING_MODE || 'feed', configured: configured.size,
     blocked: readBlocklist().size, snapshot: null };
+  if (result.mode === 'roster') {
+    const state = require('../db/user-data').getValue('x_following_roster') || {};
+    result.roster = {
+      completed_cycles: state.completed_cycles || 0, next_user: state.next_user || null,
+      unavailable: Object.entries(state.unavailable || {}).map(([username, value]) => ({
+        username, next_retry_at: value.next_retry_at || null,
+      })),
+    };
+  }
   // Local export is evidence of a past list, never a live following count.
   const file = process.env.X_FOLLOWING_SNAPSHOT_PATH || path.join(process.env.HOME || '', '.config/argus/x-following-set.json');
   try {
