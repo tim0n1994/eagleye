@@ -982,6 +982,14 @@ class XFollowingConnector extends BaseConnector {
         state.last_error = stats.error;
         state.last_error_code = result.code;
         state.next_attempt_at = new Date(Date.now() + 30 * 60000).toISOString();
+        // Advance past the failing account: transient TLS/egress failures are
+        // host-level, not account-level, so restarting the next round at the
+        // same index would wedge the whole roster on one flaky account.
+        state.next_index = (state.next_index + 1) % users.length;
+        if (state.next_index === 0) {
+          state.completed_cycles++;
+          state.last_cycle_at = new Date().toISOString();
+        }
         checkpoint();
         console.warn(`  ⚠ X roster paused: ${stats.error}`);
         return items;
