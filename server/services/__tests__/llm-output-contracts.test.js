@@ -377,7 +377,7 @@ describe('LLM business output contracts with isolated SQLite', () => {
     const items = [{ id: 'a', title: 'a' }, { id: 'b', title: 'b' }];
     expect((await classifier.classifySignals(items)).map(row => row.id)).toEqual(['b', 'a']);
     expect(provider.callWithMetadata.mock.calls[1][0]).not.toContain('"id":"b"');
-    expect(provider.callWithMetadata.mock.calls[0][1]).toMatchObject({ task: 'classify', maxTokens: 340 });
+    expect(provider.callWithMetadata.mock.calls[0][1]).toMatchObject({ task: 'classify', maxTokens: 420 });
     expect(await classifier.classifyUncategorizedRetry(items)).toEqual([]);
     expect(provider.callWithMetadata).toHaveBeenCalledTimes(2);
   });

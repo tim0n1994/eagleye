@@ -55,7 +55,7 @@ function preClassifyByTags(itemTags) {
 const CLASSIFY_BATCH_SIZE = parseInt(process.env.SIGNAL_CLASSIFY_BATCH || '6', 10);
 // Keep broad prompts away from output-token cliffs and stop chatty routers early.
 const CLASSIFY_INPUT_TOKEN_BUDGET = parseInt(process.env.SIGNAL_CLASSIFY_INPUT_TOKEN_BUDGET || '2000', 10);
-const CLASSIFY_MAX_OUTPUT_TOKENS = parseInt(process.env.SIGNAL_CLASSIFY_MAX_OUTPUT_TOKENS || '1024', 10);
+const CLASSIFY_MAX_OUTPUT_TOKENS = parseInt(process.env.SIGNAL_CLASSIFY_MAX_OUTPUT_TOKENS || '2048', 10);
 
 const SIGNAL_CLASSIFIER_PROMPT = `/no_think
 You are a strict JSON signal classifier for tech/AI investment intelligence. Output ONLY a JSON array. NO markdown, NO explanation, NO thinking.
@@ -273,7 +273,7 @@ async function classifyChunk(chunk, opts = {}) {
     const allowedIds = new Set(pending.map(item => item.id));
     const basePrompt = retry ? SIGNAL_CLASSIFIER_RETRY_PROMPT : SIGNAL_CLASSIFIER_PROMPT;
     const prompt = basePrompt + '\n\n输入：' + JSON.stringify(batch);
-    const maxTokens = Math.min(CLASSIFY_MAX_OUTPUT_TOKENS, 180 + batch.length * 80);
+    const maxTokens = Math.min(CLASSIFY_MAX_OUTPUT_TOKENS, 180 + batch.length * 120);
     const started = Date.now();
     callCount++;
     try {
