@@ -118,13 +118,13 @@ describe('hermetic LLM throughput resilience', () => {
     expect(provider.callWithMetadata.mock.calls[0][0]).toContain('"id":"b"');
     expect(provider.callWithMetadata.mock.calls[1][0]).toContain('"id":"a"');
     expect(provider.callWithMetadata.mock.calls[1][0]).not.toContain('"id":"b"');
-    expect(provider.callWithMetadata.mock.calls[0][1].maxTokens).toBe(340);
-    expect(provider.callWithMetadata.mock.calls[1][1].maxTokens).toBe(260);
+    expect(provider.callWithMetadata.mock.calls[0][1].maxTokens).toBe(420);
+    expect(provider.callWithMetadata.mock.calls[1][1].maxTokens).toBe(300);
     expect(result.task_stats.attempt_count).toBe(3);
     expect(result.task_stats.attempts[0]).toMatchObject({
       attempt: 1,
       batch_size: 2,
-      max_tokens: 340,
+      max_tokens: 420,
       error_code: 'TRUNCATED',
       error_class: 'OUTPUT_INVALID',
     });
