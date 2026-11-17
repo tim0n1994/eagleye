@@ -11,6 +11,9 @@
 | [juice](https://github.com/Automattic/juice) | 12.2.4 | 将公众号样式内联，便于复制到编辑器 | MIT |
 | [resvg-js](https://github.com/yisibl/resvg-js) | 2.6.2 | 将固定版式的 SVG 渲染为 1080 × 1440 PNG | MPL-2.0 |
 | [JSZip](https://github.com/Stuk/jszip) | 3.10.2 | PNG、文案和公开来源信息打包 | MIT / GPL-3.0 双许可，本集成按 MIT 使用 |
+| [sharp](https://github.com/lovell/sharp) | 0.35.5 | 图片识别、方向修正、缩放和安全重编码 | Apache-2.0 |
+| [cheerio](https://github.com/cheeriojs/cheerio) | 1.2.0 | 提取所选原文的配图候选 | MIT |
+| [ipaddr.js](https://github.com/whitequark/ipaddr.js) | 2.5.0 | 图片抓取的地址范围校验 | MIT |
 
 完整依赖固定在 `package-lock.json`。写作参考保留了原许可文件；运行时只提取编辑规则和文风分析段落，不执行上游 skill 的安装或文件操作指令。
 
@@ -22,11 +25,13 @@
 
 ## 导出约定
 
-- `renderWechat(draft)` 返回经过清理、带内联样式的完整 HTML。原始 HTML 与远程图片不会进入排版，也不会由 Juice 抓取外部资源。
+- `renderWechat(draft)` 返回经过清理、带内联样式的完整 HTML。图片只使用当前用户已保存到本稿的图片，以内嵌数据呈现。原始 HTML 和任意远程图片地址不会进入排版，Juice 不抓取外部资源。
 - `renderCard(draft, index)` 使用异步原生渲染返回 PNG。主题为纸色、墨色、薄荷色；每张卡有页码及来源编号。
-- `exportDraft(draft, format)` 支持 `wechat-html`、`markdown`、`xiaohongshu-zip`。图片包含 `01.png` 等图片、`caption.txt` 和 `sources.json`。
+- `exportDraft(draft, format)` 支持 `wechat-html`、`markdown`、`wechat-zip`、`xiaohongshu-zip`。公众号图文包带文章与实际图片；小红书包包含 `01.png` 等图卡、`caption.txt` 和 `sources.json`。图片说明保留来源或 AI 插图标识，不打包未用于导出的私有图片。
 - `sources.json` 只输出来源 ID、标题、公开 URL、来源名称与证据级别，不含内部批注、摘录、全文快照或风格样本。
 - 每篇允许1至6张图卡，每张标题最多40字、正文最多200字。版式会在可读字号范围内调整；过多换行无法容纳时提示修改，不静默裁掉文字。
 - 文字长度与平台发布限制仍需在平台编辑器确认；HTML 粘贴也可能受平台样式过滤影响。
 
-图卡是文字排版图片，不需要图像模型或第三方平台密钥。本轮不包含公域账号授权和自动发布。
+图片存在按用户和草稿隔离的 SQLite 表中；上传和远程导入经过有界解码并重新编码，导出时无需访问原网站。公众号插图位置和小红书配图选择保存在各自的草稿 JSON 中，旧的纯文字草稿继续兼容。
+
+上传、导入和图文排版不需要图像模型。只有点击「生成配图」才调用服务端配置的图像模型。公域账号授权和自动发布仍不在本轮范围内。

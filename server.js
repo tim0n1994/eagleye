@@ -432,6 +432,10 @@ async function handleRequest(req, res) {
 
       // Try param-based routes (ordered from most to least specific)
       const paramRoutes = [
+        { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/images\/(?<imageId>[^/]+)$/, handlerName: '/api/publishing/drafts/:id/images/:imageId' },
+        { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/images$/, handlerName: '/api/publishing/drafts/:id/images' },
+        { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/generate-image$/, handlerName: '/api/publishing/drafts/:id/generate-image' },
+        { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/image-candidates$/, handlerName: '/api/publishing/drafts/:id/image-candidates' },
         { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/cards\/(\d+)\.png$/, handlerName: '/api/publishing/drafts/:id/cards/:index.png' },
         { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/export$/, handlerName: '/api/publishing/drafts/:id/export' },
         { pattern: /^\/api\/publishing\/drafts\/([^/]+)$/, handlerName: '/api/publishing/drafts/:id' },
@@ -474,6 +478,7 @@ async function handleRequest(req, res) {
           const decoded = decodeURIComponent(match[1]);
           const params = { slug: decoded, id: decoded, year: decoded, source: decoded, key: decoded };
           if (match[2] !== undefined) params.index = match[2];
+          for (const [name, value] of Object.entries(match.groups || {})) params[name] = decodeURIComponent(value);
           if (routeMap[handlerName].constructor.name === 'AsyncFunction') {
             await routeMap[handlerName](req, res, parsed, params);
           } else {

@@ -48,7 +48,7 @@ Set these values in the private service EnvironmentFile, then restart the app:
 
 ```ini
 X_FOLLOWING_MODE=roster
-AGENT_REACH_TWITTER_BIN=/home/jc/.local/bin/eagleye-twitter
+AGENT_REACH_TWITTER_BIN=/home/username/.local/bin/eagleye-twitter
 X_FOLLOWING_ROSTER_BATCH_SIZE=40
 X_FOLLOWING_ROSTER_DELAY_MS=3000
 X_FOLLOWING_ROSTER_USER_TIMEOUT_MS=45000

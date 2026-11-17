@@ -9,8 +9,9 @@
 3. 勾选一条或多条卡片。可以跨页面、跨日期组合，每篇最多 20 条。底部工具栏显示已选数量。
 4. 点击「组合成稿」，或进入导航中的「创作」（`/publishing`）。调整素材顺序、批注、摘录和整篇想说的话。
 5. 生成公众号与小红书草稿。生成失败不会替换成模板文章；页面显示错误，可修正或重试。
-6. 编辑文章标题、正文与小红书每张图卡的内容，切换图卡配色并预览。保存后可以重新打开草稿。
-7. 下载公众号 HTML/Markdown，或下载小红书 PNG 图片包和配套文案。富文本复制取决于浏览器剪贴板权限；不支持时使用 HTML 文件。
+6. 在「配图」区按文章生成插图、挑选原文图片，或上传自己的图片。已有草稿也可以直接补图；每篇最多12张，每张上传文件不超过8 MB。
+7. 选择公众号插图位置、图片说明，以及小红书每张图卡使用的图片。图片可完整显示，也可铺满图框。编辑文字、切换配色后保存并预览。
+8. 下载公众号图文包（HTML、Markdown 和实际图片），或小红书 PNG 图片包和配套文案。图片保存在 Eagleye 中，导出不依赖外部图片链接。平台可能过滤粘贴图片，可从图文包上传图片；纯文字和富文本复制仍可使用。
 
 选择会保存在当前账号的工作区，草稿保存生成时的素材与批注快照。之后修改卡片批注不会悄悄改变以前的草稿。
 
@@ -31,12 +32,14 @@
 - 写作规则：仓库内固定快照的 `op7418/Humanizer-zh`，以及 `shir-danishyar/humanize` 的文风校准方法。许可与来源在 `vendor/publishing/`，各文件的上游 Git blob SHA 记录在 `manifest.json`。
 - 模型调用：沿用 Eagleye 的 LLM provider/pool 与已有任务路由。管理员需要在原有设置中配置可用模型端点。
 - 公众号排版：`markdown-it`、`sanitize-html`、`juice`。
-- 小红书图卡：`@resvg/resvg-js` 生成 PNG，`jszip` 打包。无需额外图像模型密钥；图卡是实际渲染的文字排版图片。
+- 图片处理：`sharp` 识别、旋转、缩放并重新编码上传和导入图片；`cheerio` 从所选原文提取候选图片；`ipaddr.js` 用于公网地址校验。原文不能公开读取或没有图片时显示说明，可以改用上传或生成。
+- AI 插图：复用现有网关的 OpenAI 兼容 Images API。设置 `EAGLEYE_PUBLISHING_IMAGE_MODEL` 为网关实际支持的图像模型；基址和密钥默认沿用 `LLM_*` / `OPENAI_*`，也可通过 `EAGLEYE_PUBLISHING_IMAGE_BASE_URL`、`EAGLEYE_PUBLISHING_IMAGE_API_KEY` 单独配置。凭据只保留在服务端，未配置时上传与原文图片仍可用。
+- 小红书图卡：`@resvg/resvg-js` 将图片和文字共同排版生成 PNG，`jszip` 打包。AI 插图有明确标识，原文图片保留来源，配图不作为事实证据。
 - 中文字体与主题细节见 [组件说明](personal-publishing-components.md)。
 
 安装使用仓库原有 Node.js 要求（Node 22.21+ 或 24.5+）和 `npm ci`。服务启动时会应用新增数据库迁移。启动命令仍为 `node server.js <port>`；数据库路径沿用 `EAGLEYE_DB_PATH`。
 
-开发分支不能直接对正在运行的生产数据库启动第二个完整服务：Eagleye 启动会恢复任务并启用原有后台服务。运行与部署沿用 [ThinkPad 操作说明](../deploy/thinkpad/README.md)。本分支交付不包含合并或生产重启。
+开发分支不能直接对正在运行的生产数据库启动第二个完整服务：Eagleye 启动会恢复任务并启用原有后台服务。运行与部署沿用 [ThinkPad 操作说明](../deploy/thinkpad/README.md)，检查后台任务结束后再切换正式服务。生产入口为站内「创作」（`/publishing`）。
 
 ## 独立体验入口
 
@@ -46,7 +49,7 @@
 
 体验版沿用快照时的账号与素材。批注、选择和草稿持久保存在体验数据库，后续重启仍会保留；正式站点的新素材不会自动同步进来。体验结束后的草稿迁移应单独处理，不能用体验数据库覆盖生产数据库。
 
-ThinkPad 当前体验服务为 `argus-eagleye-publishing-preview.service`，入口为 `http://100.107.223.2:3023/`（需能访问 ThinkPad 的 Tailscale 网络）。服务使用本分支工作区，数据与仅本机可读的运行配置放在 `~/.local/share/eagleye/personal-publishing-preview/`。可用 `systemctl --user status argus-eagleye-publishing-preview.service` 查看状态，用 `journalctl --user -u argus-eagleye-publishing-preview.service -n 50` 查看最近日志。停止体验仅停止这个独立单元。
+体验服务使用独立的 systemd 用户单元和端口，实际地址由私有部署配置提供。数据与仅本机可读的运行配置放在代码仓库外。查看状态或停止体验时只操作该独立单元。
 
 ## 输出边界
 

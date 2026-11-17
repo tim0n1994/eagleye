@@ -105,7 +105,7 @@ function acceptWebhook(raw,signature) {
 }
 let draining=false;
 async function drainInbox() {
-  if (!initialized || draining) return;
+  if (process.env.EAGLEYE_PUBLISHING_PREVIEW === '1' || !initialized || draining) return;
   draining=true;
   try {
     const pending=db().prepare('SELECT * FROM billing_inbox WHERE next_try<=? ORDER BY next_try LIMIT 10').all(Date.now());

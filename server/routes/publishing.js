@@ -8,27 +8,38 @@
 
 const { sendJSON, sendError } = require('./_shared');
 const publishing = require('../services/publishing');
+const publishingMedia = require('../services/publishing-media');
 
 function methodNotAllowed(res, allowed) {
   res.setHeader('Allow', allowed.join(', '));
   sendError(res, 405, 'Method not allowed');
 }
 
-async function readJSON(req, maxLen) {
+function httpError(status, message) {
+  return Object.assign(new Error(message), { statusCode: status });
+}
+
+async function readJSON(req, maxLen, maxBytes) {
   try {
     // Decode after joining chunks so Chinese characters split across network
     // frames are not replaced with U+FFFD in a saved personal note.
     const chunks = [];
     let bytes = 0;
+    const byteLimit = Number.isInteger(maxBytes) && maxBytes > 0 ? maxBytes : maxLen * 4;
     for await (const chunk of req) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       bytes += buffer.length;
-      if (bytes > maxLen * 4) throw new Error('Body too large');
+      if (bytes > byteLimit) throw new Error('请求体超过大小限制。');
       chunks.push(buffer);
     }
     const text = Buffer.concat(chunks).toString('utf8');
-    if (text.length > maxLen) throw new Error('Body too large');
-    return text ? JSON.parse(text) : {};
+    if (text.length > maxLen) throw new Error('请求体超过长度限制。');
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('请求数据不是有效的 JSON。');
+    }
   } catch (error) {
     throw Object.assign(new Error(error && error.message ? error.message : 'Invalid JSON body'), { statusCode: 400 });
   }
@@ -54,6 +65,10 @@ function queryIds(parsed) {
   const raw = String((parsed && parsed.query && parsed.query.ids) || '').trim();
   if (!raw) return [];
   return raw.split(',').map(id => id.trim()).filter(Boolean);
+}
+
+function imageGenerationHelper() {
+  return require('../services/publishing-image-generation');
 }
 
 function registerPublishingRoutes(routes) {
@@ -119,6 +134,45 @@ function registerPublishingRoutes(routes) {
       'Pragma': 'no-cache',
     });
     return res.end(png);
+  });
+  routes['/api/publishing/image-config'] = route(['GET'], async (_req, res) => {
+    return sendJSON(res, 200, imageGenerationHelper().configuration());
+  });
+
+  routes['/api/publishing/drafts/:id/images'] = route(['POST'], async (req, res, _parsed, params) => {
+    const body = await readJSON(req, 12 * 1024 * 1024, 12 * 1024 * 1024);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw httpError(400, '图片请求格式无效。');
+    const hasData = Object.hasOwn(body, 'data_base64');
+    const hasUrl = Object.hasOwn(body, 'url');
+    if (hasData === hasUrl) throw httpError(400, '请提供图片数据或来源图片地址。');
+    const image = hasData
+      ? await publishingMedia.addImageFromBase64(req.user.id, params.id, body)
+      : await publishingMedia.importSourceImage(req.user.id, params.id, body);
+    return sendJSON(res, 201, { image });
+  });
+
+  routes['/api/publishing/drafts/:id/images/:imageId'] = route(['GET'], async (req, res, _parsed, params) => {
+    const image = publishingMedia.getImage(req.user.id, params.id, params.imageId);
+    const body = Buffer.from(image.data || '');
+    res.writeHead(200, {
+      'Content-Type': image.mime_type || 'image/jpeg',
+      'Content-Length': body.length,
+      'Cache-Control': 'no-store, private',
+      'X-Content-Type-Options': 'nosniff',
+      'Pragma': 'no-cache',
+    });
+    return res.end(body);
+  });
+
+  routes['/api/publishing/drafts/:id/generate-image'] = route(['POST'], async (req, res, _parsed, params) => {
+    const body = await readJSON(req, 20000);
+    if (!body || typeof body.prompt !== 'string') throw httpError(400, '请提供配图想法。');
+    const image = await imageGenerationHelper().generateImage(req.user.id, params.id, body.prompt);
+    return sendJSON(res, 201, { image });
+  });
+
+  routes['/api/publishing/drafts/:id/image-candidates'] = route(['POST'], async (req, res, _parsed, params) => {
+    return sendJSON(res, 200, await publishingMedia.listImageCandidates(req.user.id, params.id));
   });
 }
 

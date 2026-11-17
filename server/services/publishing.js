@@ -207,7 +207,10 @@ function getDraftRow(userId, draftId) {
 }
 
 function getDraft(userId, draftId) {
-  return rowToDraft(getDraftRow(userId, draftId).row);
+  const draft = rowToDraft(getDraftRow(userId, draftId).row);
+  draft.images = require('./publishing-media').listImages(userId, draftId);
+  draft.wechat.images = draft.wechat.images || [];
+  return draft;
 }
 
 function listDrafts(userId) {
@@ -516,7 +519,7 @@ function textArray(value, label, maxItems, maxChars) {
   return value.map((item, index) => cleanText(item, label + '[' + (index + 1) + ']', maxChars));
 }
 
-function validateWechatEdit(value) {
+function validateWechatEdit(value, draft) {
   if (!isPlainObject(value) || !['title', 'summary', 'markdown'].every(key => Object.hasOwn(value, key))) {
     throw httpError(400, 'wechat must include title, summary, and markdown');
   }
@@ -524,7 +527,30 @@ function validateWechatEdit(value) {
     title: cleanText(value.title, 'wechat.title', 100),
     summary: cleanText(value.summary, 'wechat.summary', 300),
     markdown: cleanText(value.markdown, 'wechat.markdown', 30000),
+    images: validateArticleImages(value.images === undefined ? (draft.wechat.images || []) : value.images, draft),
   };
+}
+
+function validateImageId(imageId, draft) {
+  if (typeof imageId !== 'string' || !draft.images.some(image => image.id === imageId)) {
+    throw httpError(400, '请选择这篇草稿中的配图。');
+  }
+  return imageId;
+}
+
+function validateArticleImages(images, draft) {
+  if (!Array.isArray(images) || images.length > 12) throw httpError(400, '公众号文章最多使用12张配图。');
+  const ids = new Set();
+  return images.map(image => {
+    if (!isPlainObject(image)) throw httpError(400, '配图信息无效。');
+    const imageId = validateImageId(image.image_id, draft);
+    if (ids.has(imageId)) throw httpError(400, '同一张图片只需插入文章一次。');
+    ids.add(imageId);
+    if (!Number.isInteger(image.after_paragraph) || image.after_paragraph < 0 || image.after_paragraph > 1000) {
+      throw httpError(400, '配图位置需要是0到1000之间的段落编号，0表示文章开头。');
+    }
+    return { image_id: imageId, caption: cleanText(image.caption, '图片说明', 300, true), after_paragraph: image.after_paragraph };
+  });
 }
 
 function validateXiaohongshuEdit(value, draft) {
@@ -544,10 +570,14 @@ function validateXiaohongshuEdit(value, draft) {
     if (!sourceIds.length || sourceIds.some(id => !allowedIds.has(id))) {
       throw httpError(400, "Card " + (index + 1) + " source_ids must match this draft's immutable sources");
     }
+    const imageId = card.image_id ? validateImageId(card.image_id, draft) : '';
+    if (card.image_fit !== undefined && !['contain', 'cover'].includes(card.image_fit)) throw httpError(400, '请选择完整显示图片或铺满图框。');
     return {
       title: cleanText(card.title, 'Card ' + (index + 1) + ' title', 40),
       body: cleanText(card.body, 'Card ' + (index + 1) + ' body', 200),
       source_ids: sourceIds,
+      image_id: imageId,
+      image_fit: card.image_fit || 'contain',
     };
   });
   return {
@@ -563,15 +593,17 @@ function updateDraft(userId, draftId, input) {
   if (!isPlainObject(input)) throw httpError(400, 'Request body must be an object');
   const draftRow = getDraftRow(userId, draftId);
   if (draftRow.row.status === 'generating') throw httpError(409, 'The draft is still generating');
+  const current = rowToDraft(draftRow.row);
+  current.images = require('./publishing-media').listImages(userId, draftId);
   const updates = {};
   if (Object.hasOwn(input, 'title')) updates.title = cleanText(input.title, 'title', 200, true);
   if (Object.hasOwn(input, 'theme')) {
     if (!THEMES.has(input.theme)) throw httpError(400, 'theme must be paper, ink, or mint');
     updates.theme = input.theme;
   }
-  if (Object.hasOwn(input, 'wechat')) updates.wechat_json = JSON.stringify(validateWechatEdit(input.wechat));
+  if (Object.hasOwn(input, 'wechat')) updates.wechat_json = JSON.stringify(validateWechatEdit(input.wechat, current));
   if (Object.hasOwn(input, 'xiaohongshu')) {
-    updates.xiaohongshu_json = JSON.stringify(validateXiaohongshuEdit(input.xiaohongshu, rowToDraft(draftRow.row)));
+    updates.xiaohongshu_json = JSON.stringify(validateXiaohongshuEdit(input.xiaohongshu, current));
   }
   if (!Object.keys(updates).length) throw httpError(400, 'At least one editable field is required');
   updates.updated_at = nowISO();
@@ -600,6 +632,7 @@ async function exportDraft(userId, draftId, format) {
   if (typeof renderer.exportDraft !== 'function') {
     throw httpError(503, 'The publishing renderer does not implement exportDraft');
   }
+  draft.images = require('./publishing-media').hydrateImages(userId, draftId);
   return renderer.exportDraft(draft, format);
 }
 
@@ -615,6 +648,7 @@ async function renderCard(userId, draftId, index) {
   if (typeof renderer.renderCard !== 'function') {
     throw httpError(503, 'The publishing renderer does not implement renderCard');
   }
+  draft.images = require('./publishing-media').hydrateImages(userId, draftId);
   const png = await renderer.renderCard(draft, index);
   if (!Buffer.isBuffer(png)) throw httpError(503, 'The publishing renderer returned an invalid card');
   return png;
