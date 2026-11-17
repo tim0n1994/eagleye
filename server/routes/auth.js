@@ -195,9 +195,7 @@ function register(routes) {
   // POST /api/auth/logout — clear session
   routes['/api/auth/logout'] = async (req, res, _parsed) => {
     if (req.method !== 'POST') return sendError(res, 405, 'Method not allowed');
-    const cookieHeader = req.headers?.cookie || '';
-    const match = cookieHeader.match(/(?:^|;\s*)session=([a-f0-9]+)/);
-    auth.clearSession(res, match?.[1]);
+    auth.clearSession(res, auth.getSessionToken(req));
     sendJSON(res, 200, { status: 'ok' });
   };
 

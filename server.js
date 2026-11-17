@@ -30,6 +30,12 @@ const { frontendAssetVersion, versionAssetReferences, publicAssetPath } = requir
 const PORT = parsePort(process.argv[2] || process.env.PORT, DEFAULT_APP_PORT);
 const ROOT = __dirname;
 const FRONTEND_ASSET_VERSION = frontendAssetVersion(ROOT);
+// A personal review instance uses an explicit, existing snapshot. It serves
+// reading/publishing without recovering jobs or starting a second collector.
+const PUBLISHING_PREVIEW = process.env.EAGLEYE_PUBLISHING_PREVIEW === '1';
+if (PUBLISHING_PREVIEW && (!process.env.EAGLEYE_DB_PATH || !fs.existsSync(process.env.EAGLEYE_DB_PATH))) {
+  throw new Error('Publishing preview requires EAGLEYE_DB_PATH pointing to an existing isolated snapshot.');
+}
 
 // --- MIME Types ---
 const MIME = {
@@ -121,7 +127,7 @@ function serveStatic(res, reqPath, req) {
     const ext = path.extname(filePath).toLowerCase();
     // The HTML bytes also depend on the frontend version, even when the
     // underlying index.html file itself did not change between releases.
-    const versionSuffix = safePath === '/index.html' ? `-${FRONTEND_ASSET_VERSION}` : '';
+    const versionSuffix = safePath === '/index.html' ? `-${FRONTEND_ASSET_VERSION}${PUBLISHING_PREVIEW ? '-preview' : ''}` : '';
     const etag = `"${st.size.toString(16)}-${st.mtimeMs.toString(16)}${versionSuffix}"`;
     const base = {
       'Content-Type': mimeType(ext),
@@ -150,7 +156,9 @@ function serveStatic(res, reqPath, req) {
       if (err) return sendError(res, err.code === 'ENOENT' ? 404 : 500, err.code === 'ENOENT' ? 'Not Found' : 'Server Error');
 
       if (safePath === '/index.html') {
-        data = Buffer.from(versionAssetReferences(data.toString('utf8'), FRONTEND_ASSET_VERSION));
+        let html = data.toString('utf8');
+        if (PUBLISHING_PREVIEW) html = html.replace('<!-- Runtime preview notice -->', '<div class="publishing-preview-notice" role="status">个人创作体验版 · 使用真实数据副本，批注与草稿保存在本体验版。请使用原有账号登录。</div>');
+        data = Buffer.from(versionAssetReferences(html, FRONTEND_ASSET_VERSION));
       }
 
       const store = (body) => {
@@ -327,6 +335,11 @@ async function handleRequest(req, res) {
   console.log(`[${new Date().toISOString()}] ${method} ${pathname.replace(/(\/api\/auth\/keys\/).+$/, '$1[REDACTED]')}`);
 
   try {
+    if (PUBLISHING_PREVIEW && pathname.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(method)
+        && !pathname.startsWith('/api/publishing/') && !['/api/auth/login', '/api/auth/logout', '/api/seen/batch'].includes(pathname)
+        && !/^\/api\/items\/[^/]+\/(seen|save)$/.test(pathname)) {
+      return sendError(res, 409, '体验版开放阅读与个人创作；采集、系统配置、支付与账号变更请使用正式站点。');
+    }
     // --- API Routes ---
     // Build the routes map once per request (cheap; avoids stale-handler bugs).
     const routeMap = {};
@@ -674,6 +687,11 @@ server.listen(PORT, process.env.EAGLEYE_HOST || undefined, async () => {
   console.log('  Running migrations...');
   runMigrations();
 
+  if (PUBLISHING_PREVIEW) {
+    console.log('  Personal publishing preview ready; collectors, recovery, and scheduler are disabled.');
+    return;
+  }
+
   // Migrate legacy data from old items table
   const { run: migrateLegacy } = require('./server/migrations/002_migrate_legacy');
   migrateLegacy();
@@ -732,7 +750,7 @@ async function shutdown() {
     if (finished) return;
     finished = true;
     try {
-      require('./server/services/jobs').markInterruptedJobs();
+      if (!PUBLISHING_PREVIEW) require('./server/services/jobs').markInterruptedJobs();
     } finally {
       require('./server/db/connection').closeDB();
       process.exit(0);

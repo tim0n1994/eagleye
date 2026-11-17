@@ -15,6 +15,7 @@
   white-space: nowrap;
   cursor: pointer;
 }
+.publishing-preview-notice { margin: 16px 0; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--bg-side, var(--bg)); color: var(--fg-dim); font-size: 12px; line-height: 1.7; }
 .editor-mode-toggle::before {
   content: '';
   width: 8px;

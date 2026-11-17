@@ -12,6 +12,12 @@ const { getDB } = require('../db/connection');
 
 const BCRYPT_ROUNDS = 10;
 const SESSION_MAX_AGE_DAYS = 7;
+const SESSION_COOKIE_NAME = process.env.EAGLEYE_PUBLISHING_PREVIEW === '1' ? 'eagleye_publishing_session' : 'session';
+
+function getSessionToken(req) {
+  const match = (req.headers?.cookie || '').match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([a-f0-9]+)`));
+  return match?.[1] || null;
+}
 
 function parseSqliteUTC(s) {
   if (typeof s !== 'string' || !s.trim()) return new Date(NaN);
@@ -65,7 +71,7 @@ function createSession(res, userId) {
   // HttpOnly: JS can't read it (XSS protection)
   // SameSite=Strict: cookie not sent on cross-site requests (CSRF protection)
   // Production explicitly enables Secure; local HTTP development may omit it.
-  const cookie = `session=${token}; HttpOnly; Path=/; Max-Age=${SESSION_MAX_AGE_DAYS * 86400}; SameSite=Strict${process.env.AUTH_COOKIE_SECURE === '1' ? '; Secure' : ''}`;
+  const cookie = `${SESSION_COOKIE_NAME}=${token}; HttpOnly; Path=/; Max-Age=${SESSION_MAX_AGE_DAYS * 86400}; SameSite=Strict${process.env.AUTH_COOKIE_SECURE === '1' ? '; Secure' : ''}`;
   res.setHeader('Set-Cookie', cookie);
   return token;
 }
@@ -78,7 +84,7 @@ function clearSession(res, token) {
   if (token) {
     db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
   }
-  res.setHeader('Set-Cookie', `session=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict${process.env.AUTH_COOKIE_SECURE === '1' ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict${process.env.AUTH_COOKIE_SECURE === '1' ? '; Secure' : ''}`);
 }
 
 /**
@@ -89,10 +95,8 @@ function getSessionUser(req) {
   const db = getDB();
   if (!db) return null;
 
-  const cookieHeader = req.headers?.cookie || '';
-  const match = cookieHeader.match(/(?:^|;\s*)session=([a-f0-9]+)/);
-  if (!match) return null;
-  const token = match[1];
+  const token = getSessionToken(req);
+  if (!token) return null;
 
   const row = db.prepare(`
     SELECT u.id, u.email, u.display_name, u.role, u.status, u.email_verified,
@@ -361,6 +365,7 @@ function revokeApiKey(key) {
 }
 
 module.exports = {
+  getSessionToken,
   normalizeEmail,
   requestVerificationEmail,
   hashPassword,

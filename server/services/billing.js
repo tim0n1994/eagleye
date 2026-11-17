@@ -25,7 +25,7 @@ function db() {
       id TEXT PRIMARY KEY, payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
       next_try INTEGER NOT NULL DEFAULT 0, last_error TEXT);`);
     initialized = conn;
-    setImmediate(drainInbox);
+    if (process.env.EAGLEYE_PUBLISHING_PREVIEW !== '1') setImmediate(drainInbox);
   }
   return conn;
 }
