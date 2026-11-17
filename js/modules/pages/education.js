@@ -62,7 +62,7 @@ export async function renderEducation() {
       const titleHtml = url
         ? `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)} <span aria-hidden="true">↗</span></a>`
         : escapeHtml(title);
-      return `<article class="education-item">
+      return `<article class="education-item" data-editor-item-id="${escapeAttr(item.id || item.item_id || '')}">
         <div class="education-item-meta"><span class="education-item-category">${escapeHtml(categoryName(item.category))}</span><span>${escapeHtml(item.source_label || item.source_slug || (zh ? '来源未知' : 'Unknown source'))}</span><time>${escapeHtml(dateLabel(item.published_at || item.digest_date, zh))}</time></div>
         <h3>${titleHtml}</h3>
         ${summary ? `<p><span class="education-summary-label">${aiSummary ? (zh ? 'AI 摘要' : 'AI summary') : (zh ? '原文摘要' : 'Source summary')}</span> ${escapeHtml(summary)}</p>` : ''}

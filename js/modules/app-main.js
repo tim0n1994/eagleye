@@ -16,6 +16,7 @@ import {
   renderLogin, renderRegister,
 } from './pages.js';
 import { renderMarkdown } from './markdown.js';
+import { initPublishingEditor, refreshPublishingEditor } from './publishing-editor.js';
 
   const NAV_LINKS = [
   { path: '/for-you',      i18n: 'nav.foryou' },
@@ -26,6 +27,7 @@ import { renderMarkdown } from './markdown.js';
   { path: '/papers',       i18n: 'nav.papers' },
   { path: '/signals',      i18n: 'nav.signals' },
   { path: '/digest',       i18n: 'nav.digest' },
+  { path: '/publishing',   i18n: 'nav.publishing' },
   { path: '/sources',      i18n: 'nav.sources' },
   { path: '/discover',     i18n: 'nav.discover' },
   { path: '/topics',       i18n: 'nav.topics' },
@@ -92,6 +94,7 @@ function renderFooter() {
         <a href="/watchlist">${t('nav.watchlist')}</a>
         <a href="/compare">${t('nav.compare')}</a>
         <a href="/saved" id="savedLink">${t('footer.saved')}</a>
+        <a href="/publishing">${t('nav.publishing')}</a>
       </div>
       <div class="footer-group">
         <h4>${t('footer.company')}</h4>
@@ -266,6 +269,12 @@ export async function initApp() {
   router.register('/industry-metrics', renderIndustryMetrics);
   router.register('/settings', renderSettings);
   router.register('/saved', renderSaved);
+  router.register('/publishing', async (params) => {
+    const query = window.location.search;
+    const page = await import('./pages/publishing.js');
+    if (window.location.pathname !== '/publishing' || window.location.search !== query) return;
+    return page.renderPublishing(params);
+  });
   router.register('/stories', renderStories);
   router.register(/^\/trajectory\/(.+)$/, renderEntityTrajectory);
   router.register('/watchlist', renderWatchlist);
@@ -393,6 +402,7 @@ export async function initApp() {
     '/trajectory': 'nav.tags',
     '/settings': 'nav.settings',
     '/saved': 'footer.saved',
+    '/publishing': 'nav.publishing',
     '/stories': 'nav.stories',
     '/watchlist': 'nav.watchlist',
     '/lens': 'nav.lens',
@@ -423,6 +433,7 @@ export async function initApp() {
   }
 
   router.afterEach((path) => {
+    refreshPublishingEditor();
     const label = resolveRouteTitle(path);
     document.title = `${label} — Eagleye`;
     // aria-live region: announce the new page so screen-reader users hear the
@@ -453,6 +464,7 @@ export async function initApp() {
     return;
   }
 
+  initPublishingEditor(_currentUser);
   router.init();
 
   wireLegacyInteractions();

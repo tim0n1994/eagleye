@@ -233,7 +233,7 @@ export async function renderSignals(_params) {
             const st = typesData.find(t => t.slug === s.signal_type) || {};
             const score = cardScore(s);
             return `
-              <article class="signal-card" data-signal-id="${escapeAttr(s.item_id)}">
+              <article class="signal-card" data-signal-id="${escapeAttr(s.item_id)}" data-editor-item-id="${escapeAttr(s.item_id)}">
                 <div class="signal-card-top">
                   <span class="signal-type-badge" data-type="${escapeAttr(s.signal_type)}">${escapeHtml(st.icon || '')} ${escapeHtml(pickZh(st.name, st.name_zh) || s.signal_type)}</span>
                   <span class="signal-alpha" title="${selectedAudience ? (zh ? `受众评分（基准 ${scorePercent(s.alpha_score)}）` : `Audience score (base ${scorePercent(s.alpha_score)})`) : (zh ? 'Alpha 分' : 'Alpha Score')}">${scorePercent(score)}</span>

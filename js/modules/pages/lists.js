@@ -127,7 +127,7 @@ export async function renderStories(_params) {
           const ttl = escapeHtml(getItemDisplayTitle(it).slice(0, 90));
           const src = escapeHtml(pickZh(it.source_label, it.source_label_zh) || '');
           const href = escapeAttr(it.canonical_url || '#');
-          return `<li class="story-member"><span class="story-member-src">${src}</span><a href="${href}" target="_blank" rel="noopener">${ttl}</a></li>`;
+          return `<li class="story-member" data-editor-item-id="${escapeAttr(it.id || it.item_id || '')}"><span class="story-member-src">${src}</span><a href="${href}" target="_blank" rel="noopener">${ttl}</a></li>`;
         })
         .join('');
       return `

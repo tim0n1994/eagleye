@@ -20,6 +20,7 @@ export const zh = {
   'nav.news': '新闻',
   'nav.papers': '论文',
   'nav.digest': '每日简报',
+  'nav.publishing': '创作',
   'nav.topics': '专题',
   'nav.signals': '信号',
   'nav.sources': '信息源',

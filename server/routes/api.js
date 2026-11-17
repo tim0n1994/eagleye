@@ -20,6 +20,7 @@ const registerRadarRoutes = require('./radar');
 const registerEducationRoutes = require('./education');
 const registerGraphRoutes = require('./graph');
 const registerItemsRoutes = require('./items');
+const registerPublishingRoutes = require('./publishing');
 const registerJobsRoutes = require('./jobs');
 const registerMcpConfigRoutes = require('./mcp-config');
 const registerPhysicalAiRoutes = require('./physical-ai');
@@ -45,6 +46,7 @@ function registerRoutes(routes) {
   registerRadarRoutes(routes);
   registerGraphRoutes(routes);
   registerItemsRoutes(routes);
+  registerPublishingRoutes(routes);
   registerJobsRoutes(routes);
   registerMcpConfigRoutes(routes);
   registerPhysicalAiRoutes(routes);

@@ -302,7 +302,7 @@ export async function renderForYou(_params) {
       const freshColor = ageHours < 24 ? 'var(--color-success)' : ageHours < 72 ? 'var(--color-warning)' : 'var(--color-error)';
       const freshChip = `<span class="fy-fresh" title="${freshLabel}"><span style="width:8px;height:8px;border-radius:1px;background:${freshColor};display:inline-block" aria-hidden="true"></span></span>`;
       return (
-        `<article class="fy-card${seenCls}">` +
+        `<article class="fy-card${seenCls}" data-editor-item-id="${escapeAttr(it.id || it.item_id || '')}">` +
         `<div class="fy-card-head">` +
         `<span class="fy-rel" title="${t('foryou.relevance_tip')}">${formatNumber(relPct)}</span>` +
         `${typeChip}${seenTag}${boostChip}${freshChip}` +

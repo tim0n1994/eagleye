@@ -308,7 +308,7 @@ export function renderItemCard(item) {
   const confidenceLabel = getLanguage() === 'zh' ? 'AI 置信度' : 'AI Confidence';
 
   return `
-    <article class="info-card">
+    <article class="info-card" data-editor-item-id="${escapeAttr(item.id || item.item_id || '')}">
       <div class="card-header">
         <span class="card-source">${escapeHtml(pickZh(item.source_label, item.source_label_zh) || '')}</span>
         <div class="card-meta-right">
@@ -379,7 +379,7 @@ export function renderItemMiniCard(item) {
   const lang = item.source_payload?.language || item.language ? `<span class="mini-lang">${escapeHtml(item.source_payload?.language || item.language || '')}</span>` : '';
 
   return `
-    <article class="mini-card${isXFollowing ? ' mini-card-x' : ''}">
+    <article class="mini-card${isXFollowing ? ' mini-card-x' : ''}" data-editor-item-id="${escapeAttr(item.id || item.item_id || '')}">
       <div class="mini-card-top">
         <h4 class="mini-title${isXFollowing ? ' mini-title-x' : ''}">
           <a href="${escapeAttr(item.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(title)}</a>

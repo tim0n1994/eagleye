@@ -53,7 +53,7 @@ export async function renderYearDetail(params) {
     };
     const srcRow = (s) => `<tr><td>${escapeHtml(String(s.label || ''))}</td><td>${formatNumber(s.items)}</td><td>${formatNumber(s.high_alpha || 0)}</td></tr>`;
     const itemRow = (it) =>
-      `<li class="story-member"><span class="story-member-src">${escapeHtml(it.source_label || '')}</span>` +
+      `<li class="story-member" data-editor-item-id="${escapeAttr(it.id || it.item_id || '')}"><span class="story-member-src">${escapeHtml(it.source_label || '')}</span>` +
       `<a href="/signals/${escapeAttr(it.id)}">${escapeHtml(getItemDisplayTitle(it).slice(0, 100))}</a></li>`;
 
     container.innerHTML =

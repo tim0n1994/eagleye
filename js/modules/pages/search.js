@@ -79,7 +79,7 @@ export async function renderSearch(params) {
             const ttl = escapeHtml((pickZh(it.title, it.title_zh) || '').slice(0, 100));
             const summary = pickZh(it.one_liner || it.short_summary, it.one_liner_zh || it.short_summary_zh);
             const ol = summary ? `<span class="search-ctx">${escapeHtml(String(summary).slice(0, 80))}</span>` : '';
-            return `<li class="story-member"><span class="story-member-src">${escapeHtml(pickZh(it.source_label, it.source_label_zh) || '')}</span>` +
+            return `<li class="story-member" data-editor-item-id="${escapeAttr(it.id || it.item_id || '')}"><span class="story-member-src">${escapeHtml(pickZh(it.source_label, it.source_label_zh) || '')}</span>` +
               `<a href="${escapeAttr(it.canonical_url || '#')}" target="_blank" rel="noopener" data-seen-id="${escapeAttr(it.id)}">${ttl}</a> ${ol}</li>`;
           }).join('') + `</ul></div>`;
       }

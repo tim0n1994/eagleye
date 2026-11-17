@@ -91,7 +91,7 @@ export async function renderPapers(_params) {
       const bibtex = `@article{${citeKey},\n  title = {${title}},\n  author = {${authorNames.join(' and ')}},\n  ${arxivId ? `eprint = {${arxivId}},\n  archivePrefix = {arXiv},\n  ` : ''}url = {${paper.canonical_url || ''}},\n  year = {${paper.published_at?.slice(0,4) || '2026'}},\n}`;
       const bibtexBtn = `<button class="mini-action" onclick='window.__copyBibtex(${JSON.stringify(bibtex).replace(/'/g,"\\'")})'>BibTeX</button>`;
       return `
-        <article class="mini-card paper-card">
+        <article class="mini-card paper-card" data-editor-item-id="${escapeAttr(paper.id || paper.item_id || '')}">
           <div class="mini-card-top">
             <h4 class="mini-title">
               <a href="${escapeAttr(paper.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(title)}</a>

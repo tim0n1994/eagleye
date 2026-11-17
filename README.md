@@ -24,6 +24,15 @@ source → provenance → enrichment → graph → brief
 - **Boundaries stay explicit:** collectors, workers, APIs, MCP tools, storage, and deployment each have their own failure surface.
 - **Current public line:** `v1.1.4` packages the reproducible application code and its operational contracts.
 
+## Personal publishing
+
+Turn on **Edit mode** on the home page to select information cards and add private
+comments or excerpts. **Create** (`/publishing`) combines those selections with
+your writing preferences into editable WeChat and Xiaohongshu drafts. Export
+WeChat HTML/Markdown or a ZIP of Xiaohongshu PNG cards and accompanying text.
+See the [personal publishing guide](docs/personal-publishing.md) for the workflow,
+open-source components, and runtime requirements.
+
 ## The pipeline
 
 ```text

@@ -23,12 +23,17 @@
   "license": "ISC",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@resvg/resvg-js": "2.6.2",
     "@waffo/pancake-ts": "0.28.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^18.0.8",
     "fast-xml-parser": "^5.11.2",
-    "resend": "^6.17.2"
+    "jszip": "3.10.2",
+    "juice": "12.2.4",
+    "markdown-it": "15.0.3",
+    "resend": "^6.17.2",
+    "sanitize-html": "2.18.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

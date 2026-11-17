@@ -101,7 +101,7 @@ export async function renderPhysicalAI() {
       const evidenceHtml = stageLabel || resourceUrl
         ? `<div class="pa-evidence">${stageLabel ? `<span class="pa-stage">${escapeHtml(stageLabel)}</span>` : ''}${licenseLabel ? `<span class="pa-stage">${escapeHtml(licenseLabel)}</span>` : ''}${resourceUrl ? `<a href="${escapeAttr(resourceUrl)}" target="_blank" rel="noopener noreferrer">${zh ? '资源' : 'Resource'} <span aria-hidden="true">↗</span></a>` : ''}</div>`
         : '';
-      return `<article class="education-item pa-item">
+      return `<article class="education-item pa-item" data-editor-item-id="${escapeAttr(item.id || item.item_id || '')}">
         <div class="education-item-meta"><span class="education-item-category">${escapeHtml(section ? (zh ? section.zh : section.en) : (zh ? '具身 AI' : 'Physical AI'))}</span><span>${sourceHtml}</span><time${item.published_at ? ` datetime="${escapeAttr(item.published_at)}"` : ''}>${escapeHtml(published)}</time></div>
         <h3>${titleHtml}</h3>
         ${summary ? `<p><span class="education-summary-label">${aiSummary ? (zh ? 'AI 摘要' : 'AI summary') : (zh ? '原文摘要' : 'Source summary')}</span> ${escapeHtml(summary)}</p>` : ''}

@@ -419,6 +419,10 @@ async function handleRequest(req, res) {
 
       // Try param-based routes (ordered from most to least specific)
       const paramRoutes = [
+        { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/cards\/(\d+)\.png$/, handlerName: '/api/publishing/drafts/:id/cards/:index.png' },
+        { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/export$/, handlerName: '/api/publishing/drafts/:id/export' },
+        { pattern: /^\/api\/publishing\/drafts\/([^/]+)$/, handlerName: '/api/publishing/drafts/:id' },
+        { pattern: /^\/api\/publishing\/notes\/([^/]+)$/, handlerName: '/api/publishing/notes/:id' },
         // Retired research endpoints (2026-10-21 方案C下线): answer 410 Gone ahead
         // of the topics/items catch-alls. Data table research_reports is kept until R5.
         { pattern: /^\/api\/items\/([^/]+)\/research\/chat$/, handlerName: '/api/items/:id/research/chat' },
@@ -456,6 +460,7 @@ async function handleRequest(req, res) {
         if (match && routeMap[handlerName]) {
           const decoded = decodeURIComponent(match[1]);
           const params = { slug: decoded, id: decoded, year: decoded, source: decoded, key: decoded };
+          if (match[2] !== undefined) params.index = match[2];
           if (routeMap[handlerName].constructor.name === 'AsyncFunction') {
             await routeMap[handlerName](req, res, parsed, params);
           } else {

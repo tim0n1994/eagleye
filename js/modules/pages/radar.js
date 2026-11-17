@@ -52,7 +52,7 @@ function eventCards(data,params,subs) {
     const item = event.representative;
     const summary = getLanguage() === 'zh' ? item.one_liner_zh || item.one_liner : item.one_liner || item.one_liner_zh;
     const description = summary || item.original_summary || '';
-    return `<article class="radar-event">
+    return `<article class="radar-event" data-editor-item-id="${a(item.id || item.item_id || '')}">
       <div class="radar-event-meta"><span>${h(pickZh(item.source_label,item.source_label_zh))}</span><span>${h(item.digest_date)}</span><span>${event.source_count} ${text('个采集来源','collection sources')} · ${event.evidence_count} ${text('条材料','records')}</span></div>
       <h3><a href="${a(safeUrl(item.canonical_url))}" target="_blank" rel="noopener noreferrer">${h(title(item))} <span aria-hidden="true">↗</span></a></h3>
       ${description ? `<p class="radar-summary"><span>${summary ? text('AI 摘要','AI summary') : text('来源摘要','Source excerpt')}</span> ${h(description)}</p>` : ''}

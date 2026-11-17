@@ -18,7 +18,10 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN mkdir -p /data /app/logs \
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends fontconfig fonts-noto-cjk \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /data /app/logs \
  && chown -R node:node /app /data
 USER node
 ENV EAGLEYE_DB_PATH=/data/eagleye.db

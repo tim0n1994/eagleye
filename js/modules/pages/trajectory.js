@@ -129,7 +129,7 @@ export async function renderEntityTrajectory(params) {
           <h3 class="metrics-block-title">${t('trajectory.recent')}</h3>
           <ul class="story-members">
             ${items.map(it => `
-              <li class="story-member">
+              <li class="story-member" data-editor-item-id="${escapeAttr(it.id || it.item_id || '')}">
                 <span class="story-member-src">${escapeHtml(pickZh(it.source_label || '', it.source_label_zh || ''))}</span>
                 <a href="${escapeAttr(it.canonical_url || '#')}" target="_blank" rel="noopener">${escapeHtml(getItemDisplayTitle(it).slice(0, 100))}</a>
               </li>`).join('')}

@@ -194,6 +194,7 @@ class PageRouter {
       if (!link) return;
 
       const href = link.getAttribute('href');
+      if (link.hasAttribute('download') || link.target === '_blank' || href?.startsWith('/api/') || href?.startsWith('blob:')) return;
       if (!href || href.startsWith('http') || href.startsWith('//') || href.startsWith('#')) return;
 
       e.preventDefault();

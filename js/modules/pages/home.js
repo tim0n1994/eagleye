@@ -8,6 +8,7 @@
 import { $, escapeAttr, escapeHtml, localDateStr, normalizeDateStr } from '../utils.js';
 import { getLanguage, t, getLocale, formatDate, formatNumber } from '../i18n.js';
 import { router } from '../router.js';
+import { publishingHomeToolbar } from '../publishing-editor.js';
 import { API_BASE, fetchJSON, getItemDisplayTitle, orderedSourceEntries, pickZh, renderItemMiniCard, showError, showLoader , setSourcesCache } from './shared.js';
 
 
@@ -118,6 +119,7 @@ try {
            </div>
          </div>
 
+        ${publishingHomeToolbar()}
         <div id="homeDigest" class="home-digest-loading"><span class="spinner"></span> ${t('home.loading_digest')}</div>
 
         <div class="search-wrap search-wrap-full">
