@@ -344,7 +344,7 @@ export async function initApp() {
     renderNav();
     document.querySelector('.header').classList.remove('nav-open');
     menu?.setAttribute('aria-expanded', 'false');
-    document.body.dataset.page = path === '/login' || path === '/register' ? 'auth' : 'workspace';
+    document.body.dataset.page = ['/login', '/register', '/forgot-password', '/reset-password'].includes(path) ? 'auth' : 'workspace';
     const pageContent = $('#pageContent');
     const itemsGrid = $('#itemsGrid');
     const statusBar = $('#statusBar');
