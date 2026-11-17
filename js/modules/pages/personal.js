@@ -126,13 +126,13 @@ export async function renderForYou(_params) {
 
     // Profile summary chip: shows whether personalisation is active.
     const profileChip = profile.has_signal
-      ? `<span class="fy-profile-on">${t('foryou.personalized')} · ${formatNumber(profile.type_count || 0)} ${t('foryou.types')} · ${formatNumber(profile.entity_count || 0)} ${t('foryou.entities')}</span>`
+      ? `<span class="fy-profile-on">${t('foryou.personalized')}</span><span class="fy-profile-meta">${formatNumber(profile.type_count || 0)} ${t('foryou.types')}</span><span class="fy-profile-meta">${formatNumber(profile.entity_count || 0)} ${t('foryou.entities')}</span>`
       : `<span class="fy-profile-off">${t('foryou.generic_hint')}</span>`;
 
     // Personalization weight visualization: show type affinity bars.
     const typeEntries = Object.entries(fullProfile.types || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
     const profileViz = typeEntries.length > 0
-      ? `<details class="metrics-block" style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:var(--fg-mute)">${getLanguage() === 'zh' ? '你的兴趣画像' : 'Your Interest Profile'}</summary>` +
+      ? `<details id="fyProfileDetails" class="metrics-block fy-profile-details"><summary>${getLanguage() === 'zh' ? '你的兴趣画像' : 'Your Interest Profile'}</summary>` +
         `<ul class="metrics-bars" style="margin-top:8px">` +
         typeEntries.map(([type, weight]) => {
           const pct = Math.round(weight * 100);
@@ -150,12 +150,23 @@ export async function renderForYou(_params) {
         `</details>`
       : '';
 
+    // Shared time-window tabs: kept visible in the empty state so the user
+    // can switch windows and recover results without leaving the page.
+    const rangeTabsHtml =
+      `<nav class="range-tabs fy-toolbar" aria-label="${escapeAttr(getLanguage() === 'zh' ? '时间筛选' : 'Time filter')}">` +
+      `<span class="subtle">${xt('reader.window')}:</span>` +
+      [['1','reader.window_1d'],['3','reader.window_3d'],['7','reader.window_7d'],['14','reader.window_14d']].map(([val,label]) =>
+        `<a href="/for-you?days=${val}" class="range-tab ${sinceDays === val ? 'active' : ''}" ${sinceDays === val ? 'aria-current="page"' : ''}>${xt(label)}</a>`
+      ).join('') +
+      `</nav>`;
+
     if (items.length === 0) {
       container.innerHTML =
-        `<section class="page-section">` +
-        `<div class="page-header"><h2 class="page-title">${t('foryou.title')}</h2>` +
-        `<p class="page-description">${t('foryou.subtitle')}</p></div>` +
-        `<div class="empty-state"><p>${t('foryou.empty')}</p></div>` +
+        `<section class="page-section fy-shell">` +
+        `<header class="page-header fy-header"><h2 class="page-title">${t('foryou.title')}</h2>` +
+        `<p class="page-description">${t('foryou.subtitle')}</p></header>` +
+        rangeTabsHtml +
+        `<div class="empty-state fy-empty"><p>${getLanguage() === 'zh' ? '所选时间范围内暂无条目。你可以扩大时间范围或同步信息源。' : 'No items in this time window. Widen the window or sync your sources.'}</p></div>` +
         `</section>`;
       return;
     }
@@ -256,7 +267,14 @@ export async function renderForYou(_params) {
         })()
       : '';
 
-    const statsWithPie = statsHtml + pieHtml + freshBarHtml;
+    // Analytics group 1: reading stats, type-distribution chart and freshness chart.
+    const statsDetails =
+      `<details class="fy-analytics-group metrics-block" style="margin-bottom:16px">` +
+      `<summary class="fy-analytics-summary">${getLanguage() === 'zh' ? '阅读统计' : 'Reading stats'}</summary>` +
+      statsHtml +
+      pieHtml +
+      freshBarHtml +
+      `</details>`;
 
     // Source mix: top 5 sources by item count, as horizontal bars.
     const srcCounts = {};
@@ -274,7 +292,8 @@ export async function renderForYou(_params) {
               const label = pickZh(items.find(it => it.source_slug === slug)?.source_label, items.find(it => it.source_slug === slug)?.source_label_zh) || slug;
               return '<div style="width:' + w + '%;background:' + stackColors[i % stackColors.length] + ';opacity:0.8" title="' + escapeHtml(label) + ': ' + formatNumber(count) + '"></div>';
             }).join('') + '</div>';
-          return '<div class="metrics-block" style="margin-bottom:16px"><h3 class="metrics-block-title">' + (zh ? '来源分布' : 'Source Mix') + '</h3>' +
+          return '<details class="fy-analytics-group metrics-block" style="margin-bottom:16px">' +
+            '<summary class="fy-analytics-summary">' + (zh ? '来源分布' : 'Source Mix') + '</summary>' +
             stackBar +
             '<ul class="metrics-bars">' +
             srcEntries.map(([slug, count]) => {
@@ -283,7 +302,7 @@ export async function renderForYou(_params) {
               return '<div class="metrics-bar-row"><span class="metrics-bar-label">' + escapeHtml(label) + '</span>' +
                 '<div class="metrics-bar"><div class="metrics-bar-fill" style="width:' + pct + '%"></div></div>' +
                 '<span class="metrics-bar-pct">' + formatNumber(count) + '</span></div>';
-            }).join('') + '</ul></div>';
+            }).join('') + '</ul></details>';
         })()
       : '';
 
@@ -296,15 +315,13 @@ export async function renderForYou(_params) {
         : '';
       const seenTag = it.seen ? `<span class="fy-seen-tag">${t('foryou.seen')}</span>` : '';
       const typeChip = it.signal_type ? `<span class="fy-type">${escapeHtml(signalLabel(it.signal_type))}</span>` : '';
-      // Freshness dot: green if today, yellow if 1-3d, red if older.
-      const ageHours = it.published_at ? (Date.now() - new Date(it.published_at).getTime()) / 3600000 : 999;
-      const freshLabel = ageHours < 24 ? xt('reader.today') : ageHours < 72 ? xt('reader.days_1_3') : xt('reader.days_3_plus');
-      const freshColor = ageHours < 24 ? 'var(--color-success)' : ageHours < 72 ? 'var(--color-warning)' : 'var(--color-error)';
-      const freshChip = `<span class="fy-fresh" title="${freshLabel}"><span style="width:8px;height:8px;border-radius:1px;background:${freshColor};display:inline-block" aria-hidden="true"></span></span>`;
+      const ageHours = it.published_at ? (Date.now() - new Date(it.published_at).getTime()) / 3600000 : NaN;
+      const freshLabel = !Number.isFinite(ageHours) ? (getLanguage() === 'zh' ? '时间未知' : 'Date unknown') : ageHours < 24 ? xt('reader.today') : ageHours < 72 ? xt('reader.days_1_3') : xt('reader.days_3_plus');
+      const freshChip = `<span class="fy-fresh">${escapeHtml(freshLabel)}</span>`;
       return (
         `<article class="fy-card${seenCls}" data-editor-item-id="${escapeAttr(it.id || it.item_id || '')}">` +
         `<div class="fy-card-head">` +
-        `<span class="fy-rel" title="${t('foryou.relevance_tip')}">${formatNumber(relPct)}</span>` +
+        `<span class="fy-rel" title="${t('foryou.relevance_tip')}">${formatNumber(relPct)}%</span>` +
         `${typeChip}${seenTag}${boostChip}${freshChip}` +
         `</div>` +
         `<h4 class="fy-title"><a href="${escapeAttr(it.canonical_url || '#')}" target="_blank" rel="noopener" data-seen-id="${escapeAttr(it.id)}">${escapeHtml(getItemDisplayTitle(it).slice(0, 120))}</a></h4>` +
@@ -315,24 +332,23 @@ export async function renderForYou(_params) {
     };
 
     container.innerHTML =
-      `<section class="page-section">` +
-      `<div class="page-header">` +
+      `<section class="page-section fy-shell">` +
+      `<header class="page-header fy-header">` +
       `<h2 class="page-title">${t('foryou.title')}</h2>` +
       `<p class="page-description">${t('foryou.subtitle')}</p>` +
-      `<div class="range-tabs" style="margin:4px 0">` +
-      `<span class="subtle" style="margin-right:8px">${xt('reader.window')}:</span>` +
-      [['1','reader.window_1d'],['3','reader.window_3d'],['7','reader.window_7d'],['14','reader.window_14d']].map(([val,label]) =>
-        `<a href="/for-you?days=${val}" class="range-tab ${sinceDays === val ? 'active' : ''}">${xt(label)}</a>`
-      ).join('') +
-      `</div>` +
+      rangeTabsHtml +
       `<div class="fy-profile">${profileChip}` +
       (unseen > 0 ? ` <button class="action-btn" id="fyMarkAllSeen" style="margin-left:12px">${getLanguage() === 'zh' ? '全部标记已读' : 'Mark all read'}</button>` : '') +
       ` <span id="readingTimer" style="font-size:11px;font-family:var(--font-mono);color:var(--fg-mute);margin-left:8px">0:00</span>` +
       `</div>` +
       profileViz +
-      `</div>` +
-      statsWithPie +
+      `</header>` +
+      `<details class="fy-analytics" id="fyAnalytics">` +
+      `<summary>${getLanguage() === 'zh' ? '阅读分析' : 'Reading insights'}</summary>` +
+      statsDetails +
       srcMixHtml +
+      `<details class="fy-analytics-group metrics-block" style="margin-bottom:16px">` +
+      `<summary class="fy-analytics-summary">${getLanguage() === 'zh' ? '阅读活动' : 'Reading activity'}</summary>` +
       `${(() => {
         const top20 = items.slice(0, 20);
         if (top20.length < 3) return '';
@@ -349,10 +365,11 @@ export async function renderForYou(_params) {
           }).join('') +
           '</div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--fg-mute);font-family:var(--font-mono)"><span>' + xt('reader.low_alpha') + '</span><span>' + xt('reader.high_alpha') + '</span></div></div>';
       })()}` +
-      `<div id="readingHeatmap" class="metrics-block" style="margin-bottom:16px">` +
-      `<h3 class="metrics-block-title">${getLanguage() === 'zh' ? '阅读活动' : 'Reading Activity'}</h3>` +
+      `<div id="readingHeatmap" class="metrics-block">` +
       `<p class="subtle">${getLanguage() === 'zh' ? '按日阅读记录尚不可用。' : 'Daily reading history is not available yet.'}</p></div>` +
-      `<div class="fy-grid">${items.map(card).join('')}</div>` +
+      `</details>` +
+      `</details>` +
+      `<div class="fy-queue"><div class="fy-grid">${items.map(card).join('')}</div></div>` +
       `</section>`;
 
     // Reading session timer: counts time spent on this page.

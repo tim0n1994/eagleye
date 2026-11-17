@@ -1,5 +1,5 @@
 /* Hallmark · shape: app screen · genre: modern-minimal · theme: brand · redesign: full
- * paper: graphite and warm white · accent: Eagleye orange · display: Inter · body: Inter
+ * paper: ink and warm stone · accent: muted copper · display: Inter · brand: serif · body: Inter
  * nav: two-level workspace with mobile disclosure · footer: grouped reference links
  * signature: dated intelligence brief and source reading queue · states: loading, empty, error, full
  * axes: dark/grotesk-sans/warm · posture: restrained · v2.0.0 */
@@ -13,18 +13,21 @@
   --color-error: oklch(52% 0.19 27); --color-success: oklch(50% 0.12 150);
   --container: 1440px; --gutter: 64px; --gap-columns: 32px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
   --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
-  --bg: #121517; --bg-side: #191d20; --bg-card: #191d20; --bg-hover: #22282c; --bg-elevated: #22282c;
-  --fg: #f0f1ee; --fg-dim: #c1c6c7; --fg-mute: #9ba5a8;
-  --accent: #f5a066; --accent-hover: #ffb783; --accent-dim: #30251f; --accent-glow: #493126;
-  --rule: #31383c; --rule-light: #566166; --sea: #85bed6; --olive: #a2c59a;
-  --color-accent-ink: #25170e; --color-error: #ff9a94; --color-success: #a2c59a;
-  --field-border: #76858b; --overlay: rgb(10 14 16 / 64%);
+  --bg: #111313; --bg-side: #191b1b; --bg-card: #1b1d1c; --bg-hover: #262927; --bg-elevated: #252725;
+  --bg-chrome: #171918; --bg-inset: #101211; --brand-rule: #64513f;
+  --fg: #f0eee8; --fg-dim: #c9c8c0; --fg-mute: #a8aaa3;
+  --accent: #d8b18a; --accent-hover: #ecc8a3; --accent-dim: #332b23; --accent-glow: #514131;
+  --rule: #353a37; --rule-light: #626a64; --sea: #9abdc0; --olive: #abc1a1;
+  --color-accent-ink: #21190f; --color-error: #ff9a94; --color-success: #abc1a1;
+  --field-border: #7d8580; --overlay: rgb(10 12 11 / 70%);
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --font-brand: 'Iowan Old Style', 'Baskerville', 'Times New Roman', serif;
   --font-display: var(--font-sans); --font-body: var(--font-sans); --font-outlier: var(--font-mono);
   --color-paper: var(--bg); --color-paper-2: var(--bg-card); --color-paper-3: var(--bg-side);
   --color-ink: var(--fg); --color-ink-2: var(--fg-dim); --color-muted: var(--fg-mute);
   --color-rule: var(--rule); --color-accent: var(--accent); --color-focus: var(--accent);
+  --text-color: var(--fg); --text-muted: var(--fg-mute); --hover-bg: var(--bg-hover);
   --radius: 6px; --radius-sm: 4px; --radius-card: 12px; --radius-pill: 6px; --rule-hair: 1px;
   --shadow-sm: none; --shadow-md: 0 12px 40px rgb(0 0 0 / 16%); --shadow-glow: none; --shadow-card: none;
   --tracking-display: -0.025em; --display-weight: 600;
@@ -32,11 +35,12 @@
   --container: 1440px; --gutter: 40px; --gap-columns: 24px; --header-height: 112px;
 }
 [data-theme="light"] {
-  --bg: #f7f7f3; --bg-side: #eeefea; --bg-card: #fafbf8; --bg-hover: #e8ebe5; --bg-elevated: #ffffff;
-  --fg: #202725; --fg-dim: #46514e; --fg-mute: #5e6a65;
-  --accent: #a23e18; --accent-hover: #823013; --accent-dim: #f4e9e1; --accent-glow: #e9d5c6;
-  --rule: #d8ddd5; --rule-light: #a5afa5; --field-border: #7b877f;
-  --sea: #286379; --olive: #426e3c; --color-accent-ink: #fffaf5;
+  --bg: #f3f2ee; --bg-side: #ebeae4; --bg-card: #fffefa; --bg-hover: #e8e7e0; --bg-elevated: #fffefa;
+  --bg-chrome: #faf9f5; --bg-inset: #e8e7e0; --brand-rule: #ad947b;
+  --fg: #222722; --fg-dim: #50594f; --fg-mute: #626b62;
+  --accent: #805534; --accent-hover: #674027; --accent-dim: #eee3d8; --accent-glow: #e5d3c1;
+  --rule: #d8dbd3; --rule-light: #a3aba0; --field-border: #788478;
+  --sea: #34686b; --olive: #426e3c; --color-accent-ink: #fffaf5;
   --color-error: #ad302d; --color-success: #426e3c;
   --shadow-md: 0 12px 40px rgb(27 39 31 / 10%);
 }
