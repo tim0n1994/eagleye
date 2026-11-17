@@ -1,5 +1,5 @@
 import { $ } from '../utils.js';
-import { getLanguage } from '../i18n.js';
+import { getLanguage, t } from '../i18n.js';
 import { router } from '../router.js';
 
 export function renderPasswordRecovery() {
@@ -9,8 +9,9 @@ export function renderPasswordRecovery() {
   const controller = new AbortController();
   let timer, pending = false, until = 0;
   router.onCleanup(() => { controller.abort(); clearInterval(timer); });
-  container.innerHTML = `<div class="auth-page"><div class="auth-card">
-    <div class="auth-logo">🦅</div><h2 class="auth-title">Eagleye</h2>
+  container.innerHTML = `<div class="auth-page"><div class="auth-layout">
+    <div class="auth-identity" aria-hidden="true"><img src="/icons/icon.svg?v=horus" width="132" height="132" alt=""><div class="auth-brand-name">Eagleye</div><p>${t('brand.tagline')}</p></div>
+    <div class="auth-card"><h2 class="auth-title">Eagleye</h2>
     <p class="auth-subtitle">${text('找回密码','Reset your password')}</p>
     <form id="recoveryRequest" class="auth-form">
       <label for="recoveryEmail">${text('注册邮箱','Account email')}</label>
@@ -31,7 +32,7 @@ export function renderPasswordRecovery() {
     </form>
     <div id="recoveryError" class="auth-error" role="alert"></div>
     <p class="auth-switch"><a class="auth-link" href="/login">${text('返回登录','Back to sign in')}</a> · <a class="auth-link" href="/register">${text('尚未完成注册？','Not registered yet?')}</a></p>
-  </div></div>`;
+  </div></div></div>`;
   const email = container.querySelector('#recoveryEmail');
   const send = container.querySelector('#recoverySend');
   const submit = container.querySelector('#recoverySubmit');

@@ -6,15 +6,15 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#0e1c2c",
-  "theme_color": "#e5824e",
+  "background_color": "#111313",
+  "theme_color": "#171918",
   "categories": ["news", "productivity", "utilities"],
   "icons": [
     {
-      "src": "/icons/icon.svg",
+      "src": "/icons/icon.svg?v=horus",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ],
   "shortcuts": [

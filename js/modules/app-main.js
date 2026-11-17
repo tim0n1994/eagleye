@@ -117,7 +117,10 @@ function renderFooter() {
         <a href="/help" style="font-size:11px;display:block;margin-top:4px">${t('footer.all_shortcuts')}</a>
       </div>
       <div class="footer-brand">
-        <span class="footer-logo">Eagleye</span>
+        <a class="footer-brand-link" href="/" aria-label="Eagleye">
+          <img src="/icons/icon.svg?v=horus" width="40" height="40" alt="">
+          <span class="footer-logo">Eagleye</span>
+        </a>
         <span class="footer-tagline">${t('brand.tagline')}</span>
       </div>
     </div>
@@ -341,7 +344,7 @@ export async function initApp() {
     renderNav();
     document.querySelector('.header').classList.remove('nav-open');
     menu?.setAttribute('aria-expanded', 'false');
-    document.body.dataset.page = path === '/login' || path === '/register' ? 'auth' : 'workspace';
+    document.body.dataset.page = ['/login', '/register', '/forgot-password', '/reset-password'].includes(path) ? 'auth' : 'workspace';
     const pageContent = $('#pageContent');
     const itemsGrid = $('#itemsGrid');
     const statusBar = $('#statusBar');

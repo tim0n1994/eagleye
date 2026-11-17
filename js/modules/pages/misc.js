@@ -6,7 +6,7 @@
  */
 
 import { $, escapeHtml } from '../utils.js';
-import { getLanguage } from '../i18n.js';
+import { getLanguage, t } from '../i18n.js';
 import { API } from '../api.js';
 import { readerError, xt } from '../i18n/reader-extra.js';
 
@@ -72,6 +72,12 @@ export async function renderLogin(_params) {
 
   container.innerHTML = `
     <div class="auth-page">
+      <div class="auth-layout">
+      <div class="auth-identity" aria-hidden="true">
+        <img src="/icons/icon.svg?v=horus" width="132" height="132" alt="">
+        <div class="auth-brand-name">Eagleye</div>
+        <p>${t('brand.tagline')}</p>
+      </div>
       <div class="auth-card">
         <h2 class="auth-title">${xt('reader.sign_in')}</h2>
         <p class="auth-subtitle">${zh ? '登录到你的账户' : 'Sign in to your account'}</p>
@@ -85,6 +91,7 @@ export async function renderLogin(_params) {
         <p class="auth-switch"><a href="/forgot-password" class="auth-link">${zh ? '忘记密码？' : 'Forgot password?'}</a></p>
         <p class="auth-switch">${zh ? '没有账户？' : 'No account?'} <a href="/register" class="auth-link">${zh ? '注册' : 'Register'}</a></p>
         <div id="authError" class="auth-error"></div>
+      </div>
       </div>
     </div>
   `;
@@ -117,6 +124,12 @@ export async function renderRegister(_params) {
 
   container.innerHTML = `
     <div class="auth-page">
+      <div class="auth-layout">
+      <div class="auth-identity" aria-hidden="true">
+        <img src="/icons/icon.svg?v=horus" width="132" height="132" alt="">
+        <div class="auth-brand-name">Eagleye</div>
+        <p>${t('brand.tagline')}</p>
+      </div>
       <div class="auth-card">
         <h2 class="auth-title">${zh ? '创建账户' : 'Create an account'}</h2>
         <p class="auth-subtitle">${zh ? '创建新账户' : 'Create a new account'}</p>
@@ -148,6 +161,7 @@ export async function renderRegister(_params) {
         </div>
         <p class="auth-switch">${zh ? '已有账户？' : 'Already have an account?'} <a href="/login" class="auth-link">${zh ? '登录' : 'Sign In'}</a></p>
         <div id="authError" class="auth-error"></div>
+      </div>
       </div>
     </div>
   `;
