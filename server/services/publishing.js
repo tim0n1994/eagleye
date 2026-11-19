@@ -469,8 +469,10 @@ async function writeDraftText(userId, draft, timeoutMs) {
   }
 }
 
-function hasBothImages(wechat, xiaohongshu) {
-  return Boolean(wechat.images?.length && xiaohongshu.cards?.[0]?.image_id);
+function hasBothImages(wechat, xiaohongshu, images) {
+  const imageIds = new Set(images.map(image => image.id));
+  return wechat.images?.some(item => imageIds.has(item?.image_id))
+    && xiaohongshu.cards?.some(card => imageIds.has(card?.image_id));
 }
 
 async function illustrateDraft(db, userId, draftId) {
@@ -668,6 +670,7 @@ function updateDraft(userId, draftId, input) {
   if (current.generation_stage === 'image_failed' && hasBothImages(
     parseStoredJSON(updates.wechat_json, current.wechat),
     parseStoredJSON(updates.xiaohongshu_json, current.xiaohongshu),
+    current.images,
   )) {
     updates.generation_stage = '';
     updates.status_message = '';
@@ -694,7 +697,7 @@ async function exportDraft(userId, draftId, format) {
   if (draft.status !== 'ready') {
     throw httpError(409, draft.status === 'generating' ? 'The draft is still generating' : 'A failed draft has no export content');
   }
-  if (draft.generation_stage === 'image_failed' && ['wechat-zip', 'xiaohongshu-zip'].includes(format)) {
+  if (draft.generation_stage === 'image_failed' && ['wechat-zip', 'xiaohongshu-zip', 'publishing-zip'].includes(format)) {
     throw httpError(409, '两份图文稿的配图还未完成。请重试配图，或手动选图并保存后下载。');
   }
   const renderer = loadRenderer();

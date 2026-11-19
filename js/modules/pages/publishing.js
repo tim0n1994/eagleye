@@ -153,6 +153,8 @@ export async function renderPublishing() {
   function showStyleDetails() {
     const preset = stylePresets.find(item => item.id === $('[data-style-preset]').value);
     const description = preset?.description;
+    const label = preset?.label;
+    $('[data-current-style]').textContent = words(label?.zh, label?.en) || '';
     $('#pub-style-description').textContent = words(description?.zh, description?.en) || '';
     const link = $('[data-style-reference]');
     const url = sourceUrl(preset?.reference_url);
@@ -389,10 +391,17 @@ export async function renderPublishing() {
       target.innerHTML = `${statusPanel}<button type="button" data-action="restore-sources">${words('将这份选材带回工作区', 'Restore these selections')}</button>`;
       return;
     }
+    const hasImage = id => draft.images.some(image => image.id === id);
+    const needsArticleImage = !draft.wechat.images.some(ref => hasImage(ref.image_id));
+    const needsCardImage = !draft.xiaohongshu.cards.some(card => hasImage(card.image_id));
     target.innerHTML = `<div class="pub-draft-heading"><div><span class="pub-kicker">${words('你的草稿', 'Your draft')}</span><h2>${h(draft.wechat.title)}</h2></div><span data-pub-save-state role="status"></span></div>
       ${imageFailed ? statusPanel : ''}
       ${draft.warnings?.length ? `<details class="pub-warnings"><summary>${words('有几处需要你对照来源确认', 'A few source details need your review')} (${draft.warnings.length})</summary><ul>${draft.warnings.map(value => `<li>${h(value)}</li>`).join('')}</ul></details>` : ''}
-      <div class="pub-actions"><button type="button" class="pub-primary" data-action="save-draft">${words('保存修改', 'Save changes')}</button><button type="button" data-action="preview">${words('保存并预览', 'Save & preview')}</button><label class="pub-theme">${words('图卡配色', 'Card palette')} <select data-draft-theme>${[['paper', '纸色', 'Paper'], ['ink', '墨色', 'Ink'], ['mint', '薄荷', 'Mint']].map(([value, zh, en]) => `<option value="${value}" ${draft.theme === value ? 'selected' : ''}>${words(zh, en)}</option>`).join('')}</select></label></div>
+      <div class="pub-actions"><button type="button" data-action="save-draft">${words('保存修改', 'Save changes')}</button><button type="button" data-action="preview">${words('保存并预览', 'Save & preview')}</button><button type="button" class="pub-primary" data-export="publishing-zip" ${needsArticleImage || needsCardImage ? 'disabled' : ''}>${words('下载两平台图文包', 'Download both platform bundles')}</button><label class="pub-theme">${words('图卡配色', 'Card palette')} <select data-draft-theme>${[['paper', '纸色', 'Paper'], ['ink', '墨色', 'Ink'], ['mint', '薄荷', 'Mint']].map(([value, zh, en]) => `<option value="${value}" ${draft.theme === value ? 'selected' : ''}>${words(zh, en)}</option>`).join('')}</select></label></div>
+      ${needsArticleImage || needsCardImage ? `<p class="pub-muted">${[
+        needsArticleImage && words('请在配图区为公众号文章选一张图。', 'Select an image for the WeChat article in Images.'),
+        needsCardImage && words('请为至少一张小红书图卡选图。', 'Select an image for at least one Xiaohongshu card.'),
+      ].filter(Boolean).join(' ')}</p>` : ''}
       ${renderImageStudio(draft)}
       <div class="pub-platforms"><section class="pub-platform"><h3>${words('公众号文章', 'WeChat article')}</h3>
         ${field(words('标题', 'Title'), 'wechat.title', draft.wechat.title, 100)}${field(words('分享摘要', 'Share summary'), 'wechat.summary', draft.wechat.summary, 300, 3)}${field(words('正文 · Markdown', 'Article · Markdown'), 'wechat.markdown', draft.wechat.markdown, 30000, 18)}
@@ -759,6 +768,11 @@ export async function renderPublishing() {
       changed(); renderCurrent(); return;
     }
     if (action === 'generate') return generate();
+    if (action === 'open-style-preferences') {
+      $('[data-style-preferences]').open = true;
+      $('[data-style-preset]').focus();
+      return;
+    }
     if (action === 'retry') return retryGeneration();
     if (action === 'save-draft') { await saveDraft(); await refreshList(); message(words('草稿已保存。', 'Draft saved.')); }
     if (action === 'save-voice') { await saveVoice(); message(words('写作偏好已保存。', 'Writing preferences saved.')); }
@@ -797,7 +811,9 @@ export async function renderPublishing() {
     saveNotes().catch(() => {}); saveBrief().catch(() => {});
   });
 
-  container.innerHTML = `<section class="publishing-page"><header class="pub-page-heading"><div><span class="pub-kicker">${words('个人创作', 'Personal publishing')}</span><h2>${words('把发现，写成你的表达。', 'Make discoveries your own.')}</h2><p>${words('选好素材，一键生成带配图的公众号文章和小红书图文卡片。', 'Turn your selections into an illustrated WeChat article and Xiaohongshu cards in one click.')}</p></div><a href="/">${words('← 继续选材', '← Keep exploring')}</a></header><button type="button" class="pub-reload" data-action="reload">${words('重新读取工作区', 'Reload workspace')}</button><p class="pub-notice" data-pub-message role="status">${words('正在读取你的工作区…', 'Loading your workspace…')}</p><div class="pub-layout"><aside class="pub-sidebar"><fieldset data-pub-compose disabled><section class="pub-panel"><div class="pub-section-title"><h3>${words('本次选材', 'Selections')}</h3><span data-pub-count></span></div><div data-pub-sources></div><label class="pub-field"><span>${words('这篇我想说', 'What I want to say')}</span><textarea data-pub-brief rows="4" maxlength="4000" placeholder="${words('这些东西为什么值得放在一起？不用写成完整文章。', 'What connects these discoveries? A rough thought is enough.')}"></textarea></label><button type="button" data-action="save-sources">${words('保存批注与想法', 'Save notes & direction')}</button><div class="pub-generate"><label class="pub-field"><span>${words('图卡配色', 'Card palette')}</span><select data-generation-theme><option value="paper">${words('纸色', 'Paper')}</option><option value="ink">${words('墨色', 'Ink')}</option><option value="mint">${words('薄荷', 'Mint')}</option></select></label><button type="button" class="pub-primary" data-action="generate" disabled>${words('一键生成两份图文稿', 'Generate both illustrated drafts')}</button></div></section><details class="pub-panel"><summary>${words('我的写作偏好', 'My writing voice')}</summary>
+  container.innerHTML = `<section class="publishing-page"><header class="pub-page-heading"><div><span class="pub-kicker">${words('个人创作', 'Personal publishing')}</span><h2>${words('把发现，写成你的表达。', 'Make discoveries your own.')}</h2><p>${words('选好素材，一键生成带配图的公众号文章和小红书图文卡片。', 'Turn your selections into an illustrated WeChat article and Xiaohongshu cards in one click.')}</p></div><a href="/">${words('← 继续选材', '← Keep exploring')}</a></header><button type="button" class="pub-reload" data-action="reload">${words('重新读取工作区', 'Reload workspace')}</button><p class="pub-notice" data-pub-message role="status">${words('正在读取你的工作区…', 'Loading your workspace…')}</p><div class="pub-layout"><aside class="pub-sidebar"><fieldset data-pub-compose disabled><section class="pub-panel"><div class="pub-section-title"><h3>${words('本次选材', 'Selections')}</h3><span data-pub-count></span></div><div data-pub-sources></div><label class="pub-field"><span>${words('这篇我想说', 'What I want to say')}</span><textarea data-pub-brief rows="4" maxlength="4000" placeholder="${words('这些东西为什么值得放在一起？不用写成完整文章。', 'What connects these discoveries? A rough thought is enough.')}"></textarea></label><button type="button" data-action="save-sources">${words('保存批注与想法', 'Save notes & direction')}</button><div class="pub-generate">
+      <button type="button" class="pub-style-current" data-action="open-style-preferences">${words('当前风格', 'Current style')} · <strong data-current-style></strong></button>
+      <label class="pub-field"><span>${words('图卡配色', 'Card palette')}</span><select data-generation-theme><option value="paper">${words('纸色', 'Paper')}</option><option value="ink">${words('墨色', 'Ink')}</option><option value="mint">${words('薄荷', 'Mint')}</option></select></label><button type="button" class="pub-primary" data-action="generate" disabled>${words('一键生成两份图文稿', 'Generate both illustrated drafts')}</button></div></section><details class="pub-panel" data-style-preferences><summary>${words('我的写作偏好', 'My writing voice')}</summary>
       <label class="pub-field"><span>${words('行文风格', 'Narrative style')}</span><select data-style-preset aria-describedby="pub-style-description"></select></label>
       <div class="pub-muted"><span id="pub-style-description"></span> <a data-style-reference hidden target="_blank" rel="noopener noreferrer">${words('查看风格参考', 'View style reference')}</a></div>
       <p class="pub-muted">${words('样本可以是你写过的短评或文章。只借鉴表达习惯，不搬用其中的经历。', 'Use your own comments or articles. Samples guide expression, not new facts.')}</p><label class="pub-field"><span>${words('希望怎么写，避免怎么写', 'Preferences and things to avoid')}</span><textarea data-voice="guidance" rows="5" maxlength="12000"></textarea></label><label class="pub-field"><span>${words('我认可的文字样本', 'Writing I recognize as mine')}</span><textarea data-voice="samples" rows="9" maxlength="12000"></textarea></label><span class="pub-muted" data-pub-voice-state></span><button type="button" data-action="save-voice">${words('保存写作偏好', 'Save writing preferences')}</button></details><section class="pub-panel"><div class="pub-section-title"><h3>${words('我的草稿', 'My drafts')}</h3><button type="button" data-action="refresh-list">${words('刷新', 'Refresh')}</button></div><button type="button" data-action="new">${words('+ 新的组合', '+ New composition')}</button><div data-pub-drafts></div></section></fieldset></aside><div class="pub-main" data-pub-current></div></div></section>`;

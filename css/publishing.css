@@ -45,6 +45,8 @@
 .pub-source textarea { font-size: 12px; }
 .pub-generate { border-top: 1px solid var(--rule); margin-top: 18px; padding-top: 8px; }
 .pub-generate > button { width: 100%; min-height: 42px; }
+.pub-generate .pub-style-current { width: auto; min-height: 30px; padding: 4px 0; border: 0; text-align: left; }
+.pub-style-current strong { color: var(--fg); }
 .publishing-page .pub-draft-link { display: block; text-align: left; width: 100%; padding: 12px 0; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; overflow-wrap: anywhere; }
 .pub-draft-link span { display: block; color: var(--fg); font-size: 12px; line-height: 1.6; }
 .pub-draft-link small { display: block; margin-top: 5px; color: var(--fg-mute); font-size: 10px; }

@@ -496,7 +496,7 @@ function exportMarkdown(draft, base) {
 // wechat-zip keeps one HTML + one Markdown copy of the article plus only the
 // placed images. Private notes/excerpts never enter this bundle; image
 // sources ride through publicUrl sanitation via imageCredit().
-async function exportWechatZip(draft, base) {
+async function writeWechatFolder(draft, zip) {
   const trusted = trustedImages(draft);
   const figures = plannedWechatFigures(draft, trusted);
   const usedImages = [];
@@ -511,14 +511,12 @@ async function exportWechatZip(draft, base) {
   const resolveSrc = image => linkedImages.get(image.id) || image.data_uri;
   const html = await renderWechat(draft, linkedImages);
   const markdownBody = wechatMarkdownBody(draft.wechat.markdown, figures, resolveSrc);
-  const zip = new JSZip();
   zip.file('article.html', html);
   zip.file('article.md', `# ${draft.wechat.title}\n\n${markdownBody}\n\n---\n\n来源与延伸阅读\n\n${sourceText(draft)}\n`);
   for (const image of usedImages) {
     const base64 = image.data_uri.slice(image.data_uri.indexOf(',') + 1);
     zip.file(linkedImages.get(image.id), Buffer.from(base64, 'base64'));
   }
-  return { body: await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } }), contentType: 'application/zip', filename: `${base}-公众号.zip` };
 }
 
 function cardImageCredits(draft) {
@@ -537,26 +535,44 @@ function cardImageCredits(draft) {
   return lines;
 }
 
+async function writeXiaohongshuFolder(draft, zip) {
+  const cards = draft.xiaohongshu?.cards || [];
+  if (!cards.length || cards.length > 6) fail('小红书图文需要1至6张图卡。', 400);
+  // Sequential rendering bounds native memory; renderAsync keeps the API free.
+  for (let index = 0; index < cards.length; index++) zip.file(`${String(index + 1).padStart(2, '0')}.png`, await renderCard(draft, index));
+  const tags = (draft.xiaohongshu.tags || []).map(tag => `#${String(tag).replace(/^#+/, '')}`).join(' ');
+  let captionContent = `${draft.xiaohongshu.title}\n\n${draft.xiaohongshu.caption}\n\n${tags}\n\n来源与延伸阅读\n\n${sourceText(draft)}\n`;
+  const imageCredits = cardImageCredits(draft);
+  if (imageCredits.length) captionContent += `\n图片说明\n\n${imageCredits.join('\n')}\n`;
+  zip.file('caption.txt', captionContent);
+  zip.file('sources.json', JSON.stringify(publicSources(draft), null, 2));
+}
+
 async function exportDraft(draft, format) {
   const base = filename(draft);
   if (format === 'wechat-html') return { body: await renderWechat(draft), contentType: 'text/html; charset=utf-8', filename: `${base}.html` };
-  if (format === 'wechat-zip') return exportWechatZip(draft, base);
   if (format === 'markdown') return exportMarkdown(draft, base);
-  if (format === 'xiaohongshu-zip') {
-    const cards = draft.xiaohongshu?.cards || [];
-    if (!cards.length || cards.length > 6) fail('小红书图文需要1至6张图卡。', 400);
-    const zip = new JSZip();
-    // Sequential rendering bounds native memory; renderAsync keeps the API free.
-    for (let index = 0; index < cards.length; index++) zip.file(`${String(index + 1).padStart(2, '0')}.png`, await renderCard(draft, index));
-    const tags = (draft.xiaohongshu.tags || []).map(tag => `#${String(tag).replace(/^#+/, '')}`).join(' ');
-    let captionContent = `${draft.xiaohongshu.title}\n\n${draft.xiaohongshu.caption}\n\n${tags}\n\n来源与延伸阅读\n\n${sourceText(draft)}\n`;
-    const imageCredits = cardImageCredits(draft);
-    if (imageCredits.length) captionContent += `\n图片说明\n\n${imageCredits.join('\n')}\n`;
-    zip.file('caption.txt', captionContent);
-    zip.file('sources.json', JSON.stringify(publicSources(draft), null, 2));
-    return { body: await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } }), contentType: 'application/zip', filename: `${base}-小红书.zip` };
+  const zip = new JSZip();
+  let label;
+  if (format === 'publishing-zip') {
+    const images = trustedImages(draft);
+    if (!draft.wechat?.images?.some(item => images.has(item?.image_id)) ||
+        !draft.xiaohongshu?.cards?.some(card => images.has(card?.image_id))) {
+      fail('请为公众号正文和至少一张小红书卡片选图并保存后下载。', 409);
+    }
+    await writeWechatFolder(draft, zip.folder('公众号'));
+    await writeXiaohongshuFolder(draft, zip.folder('小红书'));
+    label = '发布包';
+  } else if (format === 'wechat-zip') {
+    await writeWechatFolder(draft, zip);
+    label = '公众号';
+  } else if (format === 'xiaohongshu-zip') {
+    await writeXiaohongshuFolder(draft, zip);
+    label = '小红书';
+  } else {
+    fail('不支持的导出格式。', 400);
   }
-  fail('不支持的导出格式。', 400);
+  return { body: await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } }), contentType: 'application/zip', filename: `${base}-${label}.zip` };
 }
 
 module.exports = { renderWechat, renderCard, exportDraft };
