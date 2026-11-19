@@ -72,6 +72,12 @@ function imageGenerationHelper() {
   return require('../services/publishing-image-generation');
 }
 
+function startIllustratedDraft(req, res, draft) {
+  // Completion and recoverable errors are recorded on the draft for polling.
+  publishing.generateDraft(req.user.id, draft.id, { illustrated: true }).catch(() => {});
+  return sendJSON(res, 202, { draft });
+}
+
 function registerPublishingRoutes(routes) {
   routes['/api/publishing/workspace'] = route(['GET', 'PUT'], async (req, res) => {
     if (req.method === 'GET') return sendJSON(res, 200, publishing.workspaceResponse(req.user.id));
@@ -100,14 +106,18 @@ function registerPublishingRoutes(routes) {
     if (req.method === 'GET') return sendJSON(res, 200, { drafts: publishing.listDrafts(req.user.id) });
     const body = await readJSON(req, 65536);
     const created = publishing.createDraft(req.user.id, body);
-    const draft = await publishing.generateDraft(req.user.id, created.id, {
-      timeoutMs: publishing.GENERATION_TIMEOUT_MS,
-    });
+    if (body.illustrated === true) return startIllustratedDraft(req, res, created);
+    // Old clients still wait for a single HTTP response.
+    const draft = await publishing.generateDraft(req.user.id, created.id, { timeoutMs: 88000 });
     return sendJSON(res, 201, { draft });
   });
 
+  routes['/api/publishing/drafts/:id/retry'] = route(['POST'], async (req, res, _parsed, params) => {
+    return startIllustratedDraft(req, res, publishing.retryDraft(req.user.id, params.id));
+  });
+
   routes['/api/publishing/drafts/:id'] = route(['GET', 'PUT'], async (req, res, _parsed, params) => {
-    if (req.method === 'GET') return sendJSON(res, 200, { draft: publishing.getDraft(req.user.id, params.id) });
+    if (req.method === 'GET') return sendJSON(res, 200, { draft: publishing.getDraft(req.user.id, params.id, { recover: true }) });
     const body = await readJSON(req, 131072);
     return sendJSON(res, 200, { draft: publishing.updateDraft(req.user.id, params.id, body) });
   });

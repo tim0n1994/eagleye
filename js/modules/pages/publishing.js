@@ -54,6 +54,17 @@ function ensureImageState(draft) {
   }
 }
 
+function generationStatus(draft) {
+  if (draft.status === 'generating') {
+    return draft.generation_stage === 'illustrating'
+      ? words('正在配图', 'Creating illustration')
+      : words('正在撰写文案', 'Writing drafts');
+  }
+  if (draft.status === 'failed') return words('文案生成失败', 'Writing failed');
+  if (draft.generation_stage === 'image_failed') return words('文案可编辑，配图失败', 'Text ready · illustration failed');
+  return words('可编辑', 'Ready to edit');
+}
+
 function assetUrl(draft, image) {
   return `/api/publishing/drafts/${encodeURIComponent(draft.id)}/images/${encodeURIComponent(image.id)}`;
 }
@@ -106,6 +117,8 @@ export async function renderPublishing() {
   let imageConfigError = '';
   let artDirection = '';
   let imageBusy = false;
+  let polling = false;
+  let retryTarget = null;
   const $ = selector => container.querySelector(selector);
 
   function message(value, error = false) {
@@ -161,9 +174,15 @@ export async function renderPublishing() {
     if (target.saving) await target.saving;
     if (!target.dirty) return target.draft;
     const revision = target.revision;
-    const payload = clone({ title: target.draft.wechat.title, wechat: target.draft.wechat, xiaohongshu: target.draft.xiaohongshu, theme: target.draft.theme });
+    const stage = target.draft.generation_stage;
+    const payload = clone({ title: target.draft.wechat.title, wechat: target.draft.wechat, xiaohongshu: target.draft.xiaohongshu, theme: target.draft.theme, if_generation_stage: stage || '' });
     target.saving = request(`/drafts/${encodeURIComponent(target.draft.id)}`, { method: 'PUT', body: payload }).then(data => {
-      if (target.revision === revision) { target.draft = data.draft; target.dirty = false; ensureImageState(target.draft); }
+      if (target.revision === revision) {
+        target.draft = data.draft;
+        target.dirty = false;
+        ensureImageState(target.draft);
+        if (active && target === entry && stage !== data.draft.generation_stage) renderCurrent();
+      }
       return data.draft;
     }).finally(() => { target.saving = null; updateStatus(); });
     const saved = await target.saving;
@@ -185,10 +204,13 @@ export async function renderPublishing() {
       if (button.dataset.imageImported) { button.disabled = true; continue; }
       button.disabled = imageBusy || (button.dataset.action === 'generate-image' && !imageConfig.available);
     }
+    const pending = session.generating || entry?.draft.status === 'generating' || list.some(draft => draft.status === 'generating');
+    const retry = $('[data-action="retry"]');
+    if (retry) retry.disabled = pending || imageBusy || !!retryTarget;
     const generate = $('[data-action="generate"]');
     if (generate) {
-      generate.disabled = session.generating || !publishing.state.workspace.selected_ids.length;
-      generate.textContent = session.generating ? words('正在理解你的选材…', 'Working with your selections…') : words('生成一篇新稿', 'Generate a new draft');
+      generate.disabled = pending || !!retryTarget || !publishing.state.workspace.selected_ids.length;
+      generate.textContent = session.generating ? words('正在理解你的选材…', 'Working with your selections…') : words('一键生成两份图文稿', 'Generate both illustrated drafts');
     }
   }
 
@@ -212,10 +234,12 @@ export async function renderPublishing() {
   function renderList() {
     if (!active) return;
     const combined = new Map(list.map(draft => [draft.id, draft]));
-    for (const [id, draftEntry] of session.drafts) combined.set(id, draftEntry.draft);
+    for (const [id, cached] of session.drafts) {
+      if (entry === cached || cached.dirty || !combined.has(id)) combined.set(id, cached.draft);
+    }
     const rows = [...combined.values()].sort((left, right) => (right.updated_at || '').localeCompare(left.updated_at || ''));
     $('[data-pub-drafts]').innerHTML = rows.length ? rows.map(draft => {
-      const status = draft.status === 'ready' ? words('草稿', 'Draft') : draft.status === 'generating' ? words('生成中', 'Generating') : words('生成失败', 'Failed');
+      const status = generationStatus(draft);
       return `<button type="button" class="pub-draft-link ${entry?.draft.id === draft.id ? 'is-current' : ''}" data-open-draft="${a(draft.id)}"><span>${h(draft.title || words('未命名草稿', 'Untitled draft'))}${session.drafts.get(draft.id)?.dirty ? ' *' : ''}</span><small>${h(status)} · ${h(new Date(draft.updated_at).toLocaleDateString(getLanguage() === 'zh' ? 'zh-CN' : 'en-US'))}</small></button>`;
     }).join('') : `<p class="pub-muted">${words('还没有草稿。', 'No drafts yet.')}</p>`;
   }
@@ -225,9 +249,40 @@ export async function renderPublishing() {
     if (!active) return;
     list = data.drafts || [];
     for (const draft of list) {
-      if (session.drafts.get(draft.id)?.draft.status === 'generating' && draft.status !== 'generating') session.drafts.delete(draft.id);
+      const cached = session.drafts.get(draft.id);
+      if (cached !== entry && cached?.draft.status === 'generating' && draft.status !== 'generating') session.drafts.delete(draft.id);
     }
     renderList();
+  }
+
+  async function pollPending() {
+    updateStatus();
+    if (!active || polling) return;
+    const target = entry;
+    const pendingDetail = target?.draft.status === 'generating';
+    if (!pendingDetail && !list.some(draft => draft.status === 'generating')
+      && ![...session.drafts.values()].some(cached => cached.draft.status === 'generating')) return;
+    polling = true;
+    try {
+      const results = await Promise.allSettled([
+        refreshList(),
+        pendingDetail && refreshPendingDetail(target),
+      ]);
+      const failure = results.find(result => result.status === 'rejected');
+      if (failure && active) message(words('状态更新失败，正在自动重试。', 'Status update failed. Retrying automatically.'), true);
+    } finally { polling = false; }
+  }
+
+  async function refreshPendingDetail(target) {
+    const { draft } = await request(`/drafts/${encodeURIComponent(target.draft.id)}`, { signal: controller.signal });
+    if (!active || entry !== target || target.draft.status !== 'generating') return;
+    const previous = target.draft;
+    target.draft = draft;
+    if (draft.status === 'generating' && previous.generation_stage === draft.generation_stage
+      && previous.status_message === draft.status_message) return;
+    ensureImageState(draft);
+    renderCurrent(); renderList();
+    message(generationStatus(draft), draft.status === 'failed' || draft.generation_stage === 'image_failed');
   }
 
   function sourceChecks(card) {
@@ -237,6 +292,8 @@ export async function renderPublishing() {
   function renderImageStudio(draft) {
     const assets = draft.images;
     const refs = draft.wechat.images || [];
+    const replacements = assets.filter(image => !refs.some(ref => ref.image_id === image.id));
+    const replacementOptions = replacements.map(image => `<option value="${a(image.id)}">${h(image.filename || image.id)}</option>`).join('');
     const candidatesForDraft = imageCandidateDraftId === draft.id;
     const assetRows = assets.map(image => {
       const reference = refs.find(item => item.image_id === image.id);
@@ -249,6 +306,7 @@ export async function renderPublishing() {
           <label class="pub-image-check"><input type="checkbox" data-image-include="${a(image.id)}" ${reference ? 'checked' : ''}> ${words('用于文章', 'Use in article')}</label>
           ${reference ? `<label class="pub-image-control"><span>${words('文章位置 · 0=封面，N=第N段后', 'Article placement · 0=cover, N=after paragraph N')}</span><input type="number" min="0" max="1000" step="1" value="${a(reference.after_paragraph || 0)}" data-image-placement="${a(image.id)}"></label>` : ''}
           ${reference ? `<label class="pub-image-control"><span>${words('配图说明', 'Caption')}</span><input value="${a(reference.caption || '')}" maxlength="300" data-image-caption="${a(image.id)}"></label>` : ''}
+          ${reference && replacementOptions ? `<label class="pub-image-control"><span>${words('替换公众号配图', 'Replace WeChat image')}</span><select data-image-replace="${a(image.id)}"><option value="">${words('选择本稿配图', 'Choose a draft image')}</option>${replacementOptions}</select></label>` : ''}
           ${reference ? `<button type="button" data-action="remove-article-image" data-image-id="${a(image.id)}">${words('从文章移除', 'Remove from article')}</button>` : ''}
         </div>
       </article>`;
@@ -321,11 +379,18 @@ export async function renderPublishing() {
     if (!entry) { target.innerHTML = `<div class="pub-empty pub-start"><span class="pub-kicker">${words('从你的眼光开始', 'Start with your perspective')}</span><h2>${words('你选什么，为什么选，才是这篇的起点。', 'Your choices and your reasons shape the story.')}</h2><p>${words('选好素材，留几句判断，再让 AI 帮你组织成两种平台的表达。每一篇都可以继续修改。', 'Choose the material, add a thought, and let AI help shape it for two platforms. Everything stays editable.')}</p></div>`; return; }
     const draft = entry.draft;
     ensureImageState(draft);
+    const imageFailed = draft.generation_stage === 'image_failed';
+    const failed = draft.status === 'failed' || imageFailed;
+    const statusPanel = `<section class="pub-generation"><h3 role="status">${h(generationStatus(draft))}</h3>
+      ${draft.status_message ? `<p>${h(draft.status_message)}</p>` : ''}
+      ${failed ? `<button type="button" data-action="retry" ${imageBusy || retryTarget ? 'disabled' : ''}>${imageFailed ? words('仅重试配图', 'Retry illustration only') : words('用已保存素材重试', 'Retry with saved material')}</button>` : ''}
+    </section>`;
     if (draft.status !== 'ready') {
-      target.innerHTML = `<div class="pub-empty"><h2>${draft.status === 'generating' ? words('正在生成', 'Generating') : words('这次没有生成完成', 'Generation did not complete')}</h2><p>${h(draft.status_message || words('选材快照已保留。生成完成后会出现在草稿列表。', 'The source snapshot is saved. Completed writing will appear in your drafts.'))}</p><button type="button" data-action="restore-sources">${words('将这份选材带回工作区', 'Restore these selections')}</button></div>`;
+      target.innerHTML = `${statusPanel}<button type="button" data-action="restore-sources">${words('将这份选材带回工作区', 'Restore these selections')}</button>`;
       return;
     }
     target.innerHTML = `<div class="pub-draft-heading"><div><span class="pub-kicker">${words('你的草稿', 'Your draft')}</span><h2>${h(draft.wechat.title)}</h2></div><span data-pub-save-state role="status"></span></div>
+      ${imageFailed ? statusPanel : ''}
       ${draft.warnings?.length ? `<details class="pub-warnings"><summary>${words('有几处需要你对照来源确认', 'A few source details need your review')} (${draft.warnings.length})</summary><ul>${draft.warnings.map(value => `<li>${h(value)}</li>`).join('')}</ul></details>` : ''}
       <div class="pub-actions"><button type="button" class="pub-primary" data-action="save-draft">${words('保存修改', 'Save changes')}</button><button type="button" data-action="preview">${words('保存并预览', 'Save & preview')}</button><label class="pub-theme">${words('图卡配色', 'Card palette')} <select data-draft-theme>${[['paper', '纸色', 'Paper'], ['ink', '墨色', 'Ink'], ['mint', '薄荷', 'Mint']].map(([value, zh, en]) => `<option value="${value}" ${draft.theme === value ? 'selected' : ''}>${words(zh, en)}</option>`).join('')}</select></label></div>
       ${renderImageStudio(draft)}
@@ -506,9 +571,14 @@ export async function renderPublishing() {
       const data = await request(`/drafts/${encodeURIComponent(id)}`, { signal: controller.signal });
       cached = { draft: data.draft, dirty: false, revision: 0, saving: null };
       ensureImageState(cached.draft);
+      if (!active || version !== viewVersion) return;
       session.drafts.set(id, cached);
     }
-    if (!active || version !== viewVersion) return;
+    showDraft(cached);
+  }
+
+  function showDraft(cached) {
+    const id = cached.draft.id;
     entry = cached;
     session.activeId = id;
     window.history.replaceState(null, '', `/publishing?id=${encodeURIComponent(id)}`);
@@ -577,21 +647,66 @@ export async function renderPublishing() {
 
   async function generate() {
     if (session.generating) return;
-    const body = { item_ids: [...publishing.state.workspace.selected_ids], brief: session.brief ?? publishing.state.workspace.brief, theme: $('[data-generation-theme]').value };
+    const body = { illustrated: true, item_ids: [...publishing.state.workspace.selected_ids], brief: session.brief ?? publishing.state.workspace.brief, theme: $('[data-generation-theme]').value };
     session.generationError = '';
     session.generating = true; updateStatus();
     const version = ++viewVersion;
     try {
       await saveNotes(); await saveBrief(); await saveVoice();
       const data = await request('/drafts', { method: 'POST', body });
-      session.drafts.set(data.draft.id, { draft: data.draft, dirty: false, revision: 0, saving: null });
-      ensureImageState(data.draft);
-      if (active && version === viewVersion) await openDraft(data.draft.id);
-      if (active) { await refreshList(); message(words('两种平台的初稿已保存。现在可以改成你真正想说的样子。', 'Both drafts are saved. Make them your own before exporting.')); }
+      acceptGeneration(data.draft, version);
     } catch (error) {
       session.generationError = error.message;
       throw error;
     } finally { session.generating = false; updateStatus(); }
+  }
+
+  function acceptGeneration(draft, version) {
+    ensureImageState(draft);
+    const cached = { draft, dirty: false, revision: 0, saving: null };
+    session.drafts.set(draft.id, cached);
+    if (!active) {
+      if (version === viewVersion && !session.activeId) session.activeId = draft.id;
+      return;
+    }
+    list = [draft, ...list.filter(row => row.id !== draft.id)];
+    if (version === viewVersion) {
+      showDraft(cached);
+      message(generationStatus(draft));
+    } else renderList();
+  }
+
+  async function retryGeneration() {
+    if (!entry || retryTarget || imageBusy) return;
+    const target = entry;
+    const version = ++viewVersion;
+    const editor = $('[data-pub-current]');
+    retryTarget = target;
+    editor.inert = true;
+    updateStatus();
+    try {
+      if (target.draft.status === 'ready') {
+        const saved = await saveDraft(target);
+        if (saved.generation_stage !== 'image_failed') {
+          message(words('图文稿已保存。', 'Illustrated draft saved.'));
+          return;
+        }
+      } else await saveVoice();
+      const path = `/drafts/${encodeURIComponent(target.draft.id)}`;
+      let response;
+      try {
+        response = await request(`${path}/retry`, { method: 'POST' });
+      } catch (error) {
+        const latest = await request(path, { signal: controller.signal }).catch(() => null);
+        if (!latest?.draft || latest.draft.updated_at === target.draft.updated_at) throw error;
+        response = latest;
+      }
+      acceptGeneration(response.draft, version);
+    } finally {
+      retryTarget = null;
+      editor.inert = false;
+      updateStatus();
+    }
   }
 
   async function approveSample() {
@@ -644,6 +759,7 @@ export async function renderPublishing() {
       changed(); renderCurrent(); return;
     }
     if (action === 'generate') return generate();
+    if (action === 'retry') return retryGeneration();
     if (action === 'save-draft') { await saveDraft(); await refreshList(); message(words('草稿已保存。', 'Draft saved.')); }
     if (action === 'save-voice') { await saveVoice(); message(words('写作偏好已保存。', 'Writing preferences saved.')); }
     if (action === 'save-sources') { await saveNotes(); await saveBrief(); message(words('选材与批注已保存。', 'Selections and notes saved.')); }
@@ -681,7 +797,7 @@ export async function renderPublishing() {
     saveNotes().catch(() => {}); saveBrief().catch(() => {});
   });
 
-  container.innerHTML = `<section class="publishing-page"><header class="pub-page-heading"><div><span class="pub-kicker">${words('个人创作', 'Personal publishing')}</span><h2>${words('把发现，写成你的表达。', 'Make discoveries your own.')}</h2><p>${words('留下你的眼光和几句判断，再组织成公众号文章与小红书图文。', 'Add your perspective, then shape it into WeChat articles and Xiaohongshu cards.')}</p></div><a href="/">${words('← 继续选材', '← Keep exploring')}</a></header><button type="button" class="pub-reload" data-action="reload">${words('重新读取工作区', 'Reload workspace')}</button><p class="pub-notice" data-pub-message role="status">${words('正在读取你的工作区…', 'Loading your workspace…')}</p><div class="pub-layout"><aside class="pub-sidebar"><fieldset data-pub-compose disabled><section class="pub-panel"><div class="pub-section-title"><h3>${words('本次选材', 'Selections')}</h3><span data-pub-count></span></div><div data-pub-sources></div><label class="pub-field"><span>${words('这篇我想说', 'What I want to say')}</span><textarea data-pub-brief rows="4" maxlength="4000" placeholder="${words('这些东西为什么值得放在一起？不用写成完整文章。', 'What connects these discoveries? A rough thought is enough.')}"></textarea></label><button type="button" data-action="save-sources">${words('保存批注与想法', 'Save notes & direction')}</button><div class="pub-generate"><label class="pub-field"><span>${words('图卡配色', 'Card palette')}</span><select data-generation-theme><option value="paper">${words('纸色', 'Paper')}</option><option value="ink">${words('墨色', 'Ink')}</option><option value="mint">${words('薄荷', 'Mint')}</option></select></label><button type="button" class="pub-primary" data-action="generate" disabled>${words('生成一篇新稿', 'Generate a new draft')}</button></div></section><details class="pub-panel"><summary>${words('我的写作偏好', 'My writing voice')}</summary>
+  container.innerHTML = `<section class="publishing-page"><header class="pub-page-heading"><div><span class="pub-kicker">${words('个人创作', 'Personal publishing')}</span><h2>${words('把发现，写成你的表达。', 'Make discoveries your own.')}</h2><p>${words('选好素材，一键生成带配图的公众号文章和小红书图文卡片。', 'Turn your selections into an illustrated WeChat article and Xiaohongshu cards in one click.')}</p></div><a href="/">${words('← 继续选材', '← Keep exploring')}</a></header><button type="button" class="pub-reload" data-action="reload">${words('重新读取工作区', 'Reload workspace')}</button><p class="pub-notice" data-pub-message role="status">${words('正在读取你的工作区…', 'Loading your workspace…')}</p><div class="pub-layout"><aside class="pub-sidebar"><fieldset data-pub-compose disabled><section class="pub-panel"><div class="pub-section-title"><h3>${words('本次选材', 'Selections')}</h3><span data-pub-count></span></div><div data-pub-sources></div><label class="pub-field"><span>${words('这篇我想说', 'What I want to say')}</span><textarea data-pub-brief rows="4" maxlength="4000" placeholder="${words('这些东西为什么值得放在一起？不用写成完整文章。', 'What connects these discoveries? A rough thought is enough.')}"></textarea></label><button type="button" data-action="save-sources">${words('保存批注与想法', 'Save notes & direction')}</button><div class="pub-generate"><label class="pub-field"><span>${words('图卡配色', 'Card palette')}</span><select data-generation-theme><option value="paper">${words('纸色', 'Paper')}</option><option value="ink">${words('墨色', 'Ink')}</option><option value="mint">${words('薄荷', 'Mint')}</option></select></label><button type="button" class="pub-primary" data-action="generate" disabled>${words('一键生成两份图文稿', 'Generate both illustrated drafts')}</button></div></section><details class="pub-panel"><summary>${words('我的写作偏好', 'My writing voice')}</summary>
       <label class="pub-field"><span>${words('行文风格', 'Narrative style')}</span><select data-style-preset aria-describedby="pub-style-description"></select></label>
       <div class="pub-muted"><span id="pub-style-description"></span> <a data-style-reference hidden target="_blank" rel="noopener noreferrer">${words('查看风格参考', 'View style reference')}</a></div>
       <p class="pub-muted">${words('样本可以是你写过的短评或文章。只借鉴表达习惯，不搬用其中的经历。', 'Use your own comments or articles. Samples guide expression, not new facts.')}</p><label class="pub-field"><span>${words('希望怎么写，避免怎么写', 'Preferences and things to avoid')}</span><textarea data-voice="guidance" rows="5" maxlength="12000"></textarea></label><label class="pub-field"><span>${words('我认可的文字样本', 'Writing I recognize as mine')}</span><textarea data-voice="samples" rows="9" maxlength="12000"></textarea></label><span class="pub-muted" data-pub-voice-state></span><button type="button" data-action="save-voice">${words('保存写作偏好', 'Save writing preferences')}</button></details><section class="pub-panel"><div class="pub-section-title"><h3>${words('我的草稿', 'My drafts')}</h3><button type="button" data-action="refresh-list">${words('刷新', 'Refresh')}</button></div><button type="button" data-action="new">${words('+ 新的组合', '+ New composition')}</button><div data-pub-drafts></div></section></fieldset></aside><div class="pub-main" data-pub-current></div></div></section>`;
@@ -732,6 +848,11 @@ export async function renderPublishing() {
         if (!entry.draft.wechat.images.some(item => item.image_id === imageId)) entry.draft.wechat.images.push({ image_id: imageId, caption: '', after_paragraph: 0 });
       } else entry.draft.wechat.images = entry.draft.wechat.images.filter(item => item.image_id !== imageId);
       changed(); renderCurrent(); return;
+    }
+    if (target.matches('[data-image-replace]') && target.value) {
+      const reference = entry.draft.wechat.images.find(item => item.image_id === target.dataset.imageReplace);
+      if (reference) { reference.image_id = target.value; changed(); renderCurrent(); }
+      return;
     }
     if (target.matches('[data-image-placement]')) {
       ensureImageState(entry.draft);
@@ -802,12 +923,8 @@ export async function renderPublishing() {
     $('[data-pub-brief]').value = session.brief ?? publishing.state.workspace.brief;
     renderSources(); renderList(); renderCurrent();
     const id = new URLSearchParams(window.location.search).get('id') || session.activeId;
+    pollTimer = setInterval(pollPending, 5000);
     if (id) await openDraft(id);
     message(session.generationError || words('批注会自动保存。成稿修改后请保存，再预览或导出。', 'Notes save automatically. Save draft edits before previewing or exporting.'), !!session.generationError);
-    pollTimer = setInterval(async () => {
-      updateStatus();
-      if (!active || !list.some(draft => draft.status === 'generating')) return;
-      try { await refreshList(); if (entry?.draft.status === 'generating') await openDraft(entry.draft.id); } catch { /* An explicit refresh remains available. */ }
-    }, 5000);
   } catch (error) { if (error.name !== 'AbortError') message(error.message, true); }
 }

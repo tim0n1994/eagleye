@@ -436,6 +436,7 @@ async function handleRequest(req, res) {
         { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/images$/, handlerName: '/api/publishing/drafts/:id/images' },
         { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/generate-image$/, handlerName: '/api/publishing/drafts/:id/generate-image' },
         { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/image-candidates$/, handlerName: '/api/publishing/drafts/:id/image-candidates' },
+        { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/retry$/, handlerName: '/api/publishing/drafts/:id/retry' },
         { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/cards\/(\d+)\.png$/, handlerName: '/api/publishing/drafts/:id/cards/:index.png' },
         { pattern: /^\/api\/publishing\/drafts\/([^/]+)\/export$/, handlerName: '/api/publishing/drafts/:id/export' },
         { pattern: /^\/api\/publishing\/drafts\/([^/]+)$/, handlerName: '/api/publishing/drafts/:id' },

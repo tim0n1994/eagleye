@@ -328,26 +328,31 @@ function characterWidth(character, size) {
 
 function wrap(value, size, width) {
   const lines = [];
+  const textWidth = text => Array.from(text).reduce((total, char) => total + characterWidth(char, size), 0);
   for (const paragraph of String(value || '').replace(/\r\n?/g, '\n').split('\n')) {
-    let line = '';
+    let line = [];
     let used = 0;
-    for (const character of Array.from(paragraph)) {
-      const advance = characterWidth(character, size);
-      if (used + advance > width && line) {
-        const previous = Array.from(line);
-        let carry = '';
-        // Keep closing punctuation with its preceding character and opening
-        // punctuation with the text that follows it.
-        if (/^[，。！？、；：）》】」』”’…,.!?;:)]$/u.test(character) && previous.length > 1) carry = previous.pop();
-        while (previous.length > 1 && /^[（《【「『“‘(]$/u.test(previous[previous.length - 1])) carry = previous.pop() + carry;
-        lines.push(previous.join(''));
+    const units = (paragraph.match(/[A-Za-z0-9]+(?:[._/-][A-Za-z0-9]+)*|[\s\S]/gu) || [])
+      .flatMap(unit => textWidth(unit) <= width ? [unit] : Array.from(unit));
+    for (const unit of units) {
+      const advance = textWidth(unit);
+      if (used + advance > width && line.length) {
+        const carry = [];
+        // Keep punctuation with its neighbor and keep Latin terms intact.
+        if (/^[，。！？、；：）》】」』”’…,.!?;:)]$/u.test(unit) && line.length > 1 && textWidth(line.at(-1)) + advance <= width) {
+          carry.unshift(line.pop());
+        }
+        while (line.length > 1 && /^[（《【「『“‘(]$/u.test(line.at(-1)) && textWidth(line.at(-1)) + textWidth(carry.join('')) + advance <= width) {
+          carry.unshift(line.pop());
+        }
+        lines.push(line.join(''));
         line = carry;
-        used = Array.from(carry).reduce((total, item) => total + characterWidth(item, size), 0);
+        used = textWidth(carry.join(''));
       }
-      line += character;
+      line.push(unit);
       used += advance;
     }
-    lines.push(line);
+    lines.push(line.join(''));
   }
   return lines;
 }

@@ -42,11 +42,12 @@ async function limitedJSON(response) {
   catch { fail(502, '图像服务没有返回可读取的图片，请重试。'); }
 }
 
-async function generateImage(userId, draftId, direction = '') {
+async function generateImage(userId, draftId, direction = '', { automatic = false } = {}) {
   const publishing = require('./publishing');
   const media = require('./publishing-media');
   const draft = publishing.getDraft(userId, draftId);
-  if (draft.status !== 'ready') fail(409, '请先完成文章，再为它配图。');
+  const stagedArticle = automatic && draft.status === 'generating' && draft.generation_stage === 'illustrating';
+  if (draft.status !== 'ready' && !stagedArticle) fail(409, '请先完成文章，再为它配图。');
   if (typeof direction !== 'string' || Array.from(direction).length > 1200) fail(400, '配图想法最多1200字。');
   if (draft.images.length >= 12) fail(400, '每篇最多保留12张配图。');
   const config = settings();

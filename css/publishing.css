@@ -128,3 +128,8 @@
 @media (max-width: 1250px) { .pub-image-sections, .pub-image-list { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 900px) { .pub-image-candidates { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pub-card-image { grid-template-columns: 58px minmax(0, 1fr); } .pub-card-thumb img { width: 58px; height: 58px; } .pub-card-thumb span { width: 58px; height: 58px; } }
 @media (max-width: 500px) { .pub-image-candidates { grid-template-columns: minmax(0, 1fr); } .pub-image-asset { grid-template-columns: 66px minmax(0, 1fr); } .pub-image-thumb img { width: 66px; height: 66px; } }
+
+.pub-generation { margin: 0 0 16px; padding: 14px 16px; border-left: 3px solid var(--accent); background: var(--bg-side, var(--bg)); }
+.pub-generation h3 { margin: 0; font-size: 15px; }
+.pub-generation p { margin: 6px 0 0; color: var(--fg-dim); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.pub-generation button { margin-top: 10px; }

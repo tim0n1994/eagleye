@@ -12,7 +12,7 @@ const path = require('node:path');
 const { getDB } = require('../db/connection');
 const { getValue, setValue } = require('../db/user-data');
 const { callWithMetadata } = require('./llm-shared');
-const { getProvider } = require('./llm-provider');
+const { getPublishingProvider } = require('./llm-provider');
 const { DEFAULT_STYLE, hasStyle, stylePrompt } = require('./publishing-styles');
 
 const WORKSPACE_KEY = 'publishing_workspace';
@@ -23,7 +23,9 @@ const MAX_EXCERPT_CHARS = 8000;
 const MAX_BRIEF_CHARS = 4000;
 const MAX_VOICE_CHARS = 12000;
 const THEMES = new Set(['paper', 'ink', 'mint']);
-const GENERATION_TIMEOUT_MS = 88000;
+// A background job can keep waiting when the gateway retries an upstream.
+// The general pool still applies its own configured request deadline.
+const GENERATION_TIMEOUT_MS = 480000;
 const GENERATION_MAX_TOKENS = 8192;
 const SOURCE_CONTENT_BUDGET = 48000;
 const MAX_PROMPT_CHARS = 100000;
@@ -193,6 +195,7 @@ function rowToDraft(row) {
     updated_at: row.updated_at,
     status: row.status,
     status_message: row.status_message || '',
+    generation_stage: row.generation_stage || '',
     wechat: parseStoredJSON(row.wechat_json, { title: '', summary: '', markdown: '' }),
     xiaohongshu: parseStoredJSON(row.xiaohongshu_json, { title: '', caption: '', tags: [], cards: [] }),
     sources: parseStoredJSON(row.sources_json, []),
@@ -208,25 +211,36 @@ function getDraftRow(userId, draftId) {
   return { db, row };
 }
 
-function getDraft(userId, draftId) {
-  const draft = rowToDraft(getDraftRow(userId, draftId).row);
+function getDraft(userId, draftId, { recover = false } = {}) {
+  const current = getDraftRow(userId, draftId);
+  let { row } = current;
+  if (recover && row.status === 'generating' && !activeGenerations.has(userId)) {
+    recoverInterruptedGenerations(current.db, userId);
+    row = getDraftRow(userId, draftId).row;
+  }
+  const draft = rowToDraft(row);
   draft.images = require('./publishing-media').listImages(userId, draftId);
   draft.wechat.images = draft.wechat.images || [];
   return draft;
 }
 
+function recoverInterruptedGenerations(db, userId) {
+  if (activeGenerations.has(userId)) return;
+  db.prepare(`UPDATE publishing_drafts SET
+    status = CASE WHEN generation_stage = 'illustrating' THEN 'ready' ELSE 'failed' END,
+    status_message = CASE WHEN generation_stage = 'illustrating'
+      THEN '配图已中断，文字草稿已保留，可以继续配图。'
+      ELSE '生成已中断，选材快照已保留，可以重新生成。' END,
+    generation_stage = CASE WHEN generation_stage = 'illustrating' THEN 'image_failed' ELSE '' END,
+    updated_at = ?
+    WHERE user_id = ? AND status = 'generating'`).run(nowISO(), userId);
+}
+
 function listDrafts(userId) {
   requireUser(userId);
   const db = requireDB();
-  if (!activeGenerations.has(userId)) {
-    db.prepare([
-      "UPDATE publishing_drafts SET status = 'failed',",
-      "status_message = '生成已中断，选材快照已保留，请重新生成。',",
-      'updated_at = ?',
-      "WHERE user_id = ? AND status = 'generating' AND julianday(updated_at) < julianday('now', '-2 minutes')",
-    ].join(' ')).run(nowISO(), userId);
-  }
-  return db.prepare('SELECT id, title, theme, status, status_message, created_at, updated_at FROM publishing_drafts WHERE user_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 100')
+  recoverInterruptedGenerations(db, userId);
+  return db.prepare('SELECT id, title, theme, status, status_message, generation_stage, created_at, updated_at FROM publishing_drafts WHERE user_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 100')
     .all(userId);
 }
 
@@ -408,92 +422,116 @@ function friendlyGenerationError(error) {
   if (/TRUNCATED/i.test(marker)) {
     return httpError(502, '模型输出被截断，请重试或改用上下文更短的素材。', 'LLM_TRUNCATED');
   }
+  if (['QUEUE_FULL', 'QUEUE_TIMEOUT', 'RATE_LIMIT', 'SHUTDOWN'].includes(error && error.code)) {
+    return httpError(503, '模型服务暂时不可用，选材已保留，可以稍后重试。', 'LLM_TEMPORARILY_UNAVAILABLE');
+  }
   if (/TIMEOUT|ABORT/i.test(marker) || error && error.name === 'AbortError') {
-    return httpError(504, '生成超时，素材和工作区已保留，请稍后重试。', 'LLM_TIMEOUT');
+    return httpError(504, '写稿超时，已保留本次选材和批注，可以在这份草稿上重试。', 'LLM_TIMEOUT');
   }
   if (['NO_ENDPOINT', 'POOL_DISABLED', 'CONFIG_ERROR', 'AUTH_ERROR'].includes(error && error.code)) {
     return httpError(503, '模型未配置或当前端点不可用。请在设置中配置原有 LLM provider/pool。', 'LLM_NOT_CONFIGURED');
   }
-  if (['QUEUE_FULL', 'QUEUE_TIMEOUT', 'RATE_LIMIT', 'SHUTDOWN'].includes(error && error.code)) {
-    return httpError(503, '模型服务暂时不可用，素材已保留，请稍后重试。', 'LLM_TEMPORARILY_UNAVAILABLE');
-  }
   return httpError(502, '模型调用失败，素材和工作区已保留。请检查模型配置后重试。', 'LLM_REQUEST_FAILED');
 }
 
-async function generateDraft(userId, draftId, options) {
-  requireUser(userId);
-  if (activeGenerations.get(userId)) throw httpError(409, 'This account already has a generation in progress');
-  const row = getDraftRow(userId, draftId).row;
-  if (row.status !== 'generating') return rowToDraft(row);
-  const deadline = Math.min(Math.max(Number(options && options.timeoutMs) || GENERATION_TIMEOUT_MS, 1000), 120000);
+async function writeDraftText(userId, draft, timeoutMs) {
+  const deadline = Math.min(Math.max(Number(timeoutMs) || GENERATION_TIMEOUT_MS, 1000), GENERATION_TIMEOUT_MS);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error('GENERATION_TIMEOUT')), deadline);
-  activeGenerations.set(userId, controller);
+  const timer = setTimeout(() => controller.abort(new Error('GENERATION_TIMEOUT')), deadline + 1000);
   try {
-    const provider = getProvider('general');
+    const provider = getPublishingProvider();
     if (!provider) throw httpError(503, '模型未配置。请在设置中配置原有 LLM provider/pool。', 'LLM_NOT_CONFIGURED');
-    const draft = rowToDraft(row);
     const prompt = generationPrompt({
       sources: draft.sources,
       brief: draft.brief,
       voice: getVoiceState(userId),
     });
-    let result;
-    try {
-      result = await callWithMetadata(provider, prompt, {
-        json: true,
-        maxTokens: GENERATION_MAX_TOKENS,
-        temperature: 0.7,
-        task: 'general',
-        timeoutMs: deadline,
-        signal: controller.signal,
-        validate: data => isPlainObject(data) && isPlainObject(data.wechat) && isPlainObject(data.xiaohongshu),
-      });
-    } catch (error) {
-      if (controller.signal.aborted) throw httpError(504, '生成超时，素材和工作区已保留，请稍后重试。', 'LLM_TIMEOUT');
-      throw error;
-    }
+    const result = await callWithMetadata(provider, prompt, {
+      json: true,
+      maxTokens: GENERATION_MAX_TOKENS,
+      temperature: 0.7,
+      task: 'general',
+      timeoutMs: deadline,
+      signal: controller.signal,
+      validate: data => isPlainObject(data) && isPlainObject(data.wechat) && isPlainObject(data.xiaohongshu),
+    });
     const selectedIds = draft.sources.map(source => source.id);
-    let content;
     try {
-      content = validateDraftContent(result.data.wechat, result.data.xiaohongshu, selectedIds);
+      return validateDraftContent(result.data.wechat, result.data.xiaohongshu, selectedIds);
     } catch {
       throw httpError(502, '模型输出的篇幅、字段或来源引用不符合要求，请重试；选材和批注已保留。', 'LLM_INVALID_OUTPUT');
     }
-    const db = requireDB();
-    db.prepare([
-      'UPDATE publishing_drafts SET title = ?, status = ?, status_message = ?,',
-      'wechat_json = ?, xiaohongshu_json = ?, warnings_json = ?, updated_at = ?',
-      'WHERE user_id = ? AND id = ?',
-    ].join(' ')).run(
-      content.wechat.title,
-      'ready',
-      '',
-      JSON.stringify(content.wechat),
-      JSON.stringify(content.xiaohongshu),
-      JSON.stringify(draft.warnings),
-      nowISO(),
-      userId,
-      draftId,
-    );
-    return getDraft(userId, draftId);
   } catch (error) {
-    const friendly = isHttpError(error) ? error : friendlyGenerationError(error);
-    try {
-      const db = getDB();
-      if (db) {
-        db.prepare([
-          "UPDATE publishing_drafts SET status = 'failed', status_message = ?, updated_at = ?",
-          "WHERE user_id = ? AND id = ? AND status = 'generating'",
-        ].join(' ')).run(friendly.message, nowISO(), userId, draftId);
-      }
-    } catch {
-      // Keep the generation failure as the user-facing error.
-    }
-    throw friendly;
+    if (controller.signal.aborted) throw httpError(504, '写稿超时，已保留本次选材和批注，可以在这份草稿上重试。', 'LLM_TIMEOUT');
+    throw error;
   } finally {
     clearTimeout(timer);
-    if (activeGenerations.get(userId) === controller) activeGenerations.delete(userId);
+  }
+}
+
+function hasBothImages(wechat, xiaohongshu) {
+  return Boolean(wechat.images?.length && xiaohongshu.cards?.[0]?.image_id);
+}
+
+async function illustrateDraft(db, userId, draftId) {
+  const draft = getDraft(userId, draftId);
+  const card = draft.xiaohongshu.cards[0];
+  // Reuse an existing image when resuming after a write or a manual edit.
+  const image = draft.images.find(item => item.id === draft.wechat.images[0]?.image_id)
+    || draft.images.find(item => item.id === card.image_id)
+    || draft.images[0]
+    || await require('./publishing-image-generation').generateImage(userId, draftId, '', { automatic: true });
+  if (!draft.wechat.images.length) draft.wechat.images = [{ image_id: image.id, caption: '', after_paragraph: 0 }];
+  if (!card.image_id) Object.assign(card, { image_id: image.id, image_fit: 'contain' });
+  db.prepare(`UPDATE publishing_drafts SET status = 'ready', generation_stage = '', status_message = '',
+    wechat_json = ?, xiaohongshu_json = ?, updated_at = ?
+    WHERE user_id = ? AND id = ? AND status = 'generating'`).run(
+    JSON.stringify(draft.wechat), JSON.stringify(draft.xiaohongshu), nowISO(), userId, draftId,
+  );
+}
+
+async function generateDraft(userId, draftId, { illustrated = false, timeoutMs } = {}) {
+  requireUser(userId);
+  if (activeGenerations.has(userId)) throw httpError(409, '当前账号已有一篇正在生成，请稍候。');
+  const { db, row } = getDraftRow(userId, draftId);
+  if (row.status !== 'generating') return getDraft(userId, draftId);
+  let stage = row.generation_stage === 'illustrating' ? 'illustrating' : 'writing';
+  activeGenerations.set(userId, draftId);
+  const started = Date.now();
+  try {
+    if (stage === 'writing') {
+      const content = await writeDraftText(userId, rowToDraft(row), timeoutMs);
+      db.prepare(`UPDATE publishing_drafts SET title = ?, status = ?, status_message = '', generation_stage = ?,
+        wechat_json = ?, xiaohongshu_json = ?, updated_at = ?
+        WHERE user_id = ? AND id = ? AND status = 'generating'`).run(
+        content.wechat.title, illustrated ? 'generating' : 'ready', illustrated ? 'illustrating' : '',
+        JSON.stringify(content.wechat), JSON.stringify(content.xiaohongshu), nowISO(), userId, draftId,
+      );
+      console.info(`[Publishing] ${draftId} text ready in ${Date.now() - started}ms`);
+      if (!illustrated) return getDraft(userId, draftId);
+      stage = 'illustrating';
+    }
+    await illustrateDraft(db, userId, draftId);
+    console.info(`[Publishing] ${draftId} illustrated draft ready in ${Date.now() - started}ms`);
+    return getDraft(userId, draftId);
+  } catch (error) {
+    const imageFailed = stage === 'illustrating';
+    const friendly = isHttpError(error) ? error : imageFailed
+      ? httpError(502, '配图未完成，文字草稿已保留，可以重试配图。', 'IMAGE_FAILED')
+      : friendlyGenerationError(error);
+    console.warn(`[Publishing] ${draftId} ${stage} failed after ${Date.now() - started}ms (${friendly.code || friendly.statusCode})`);
+    try {
+      db.prepare(`UPDATE publishing_drafts SET status = ?, status_message = ?, generation_stage = ?, updated_at = ?
+        WHERE user_id = ? AND id = ? AND status = 'generating'`).run(
+        imageFailed ? 'ready' : 'failed', friendly.message, imageFailed ? 'image_failed' : '', nowISO(), userId, draftId,
+      );
+    } catch {
+      throw friendly;
+    }
+    if (imageFailed) return getDraft(userId, draftId);
+    throw friendly;
+  } finally {
+    activeGenerations.delete(userId);
   }
 }
 
@@ -513,10 +551,22 @@ function createDraft(userId, input) {
   const timestamp = nowISO();
   db.prepare([
     'INSERT INTO publishing_drafts',
-    '(id, user_id, title, brief, theme, status, status_message, wechat_json, xiaohongshu_json, sources_json, warnings_json, created_at, updated_at)',
-    "VALUES (?, ?, '', ?, ?, 'generating', '', '{}', '{}', ?, ?, ?, ?)",
+    '(id, user_id, title, brief, theme, status, generation_stage, sources_json, warnings_json, created_at, updated_at)',
+    "VALUES (?, ?, '', ?, ?, 'generating', 'writing', ?, ?, ?, ?)",
   ].join(' ')).run(id, userId, brief, theme, JSON.stringify(sources), JSON.stringify(generationWarnings(sources)), timestamp, timestamp);
   return getDraft(userId, id);
+}
+
+function retryDraft(userId, draftId) {
+  if (activeGenerations.has(userId)) throw httpError(409, '当前账号已有一篇正在生成，请稍候。');
+  const { db } = getDraftRow(userId, draftId);
+  recoverInterruptedGenerations(db, userId);
+  const { row } = getDraftRow(userId, draftId);
+  const stage = row.status === 'failed' ? 'writing' : row.generation_stage === 'image_failed' ? 'illustrating' : '';
+  if (!stage) throw httpError(409, '这份草稿没有待重试的生成步骤。');
+  db.prepare("UPDATE publishing_drafts SET status = 'generating', generation_stage = ?, status_message = '', updated_at = ? WHERE user_id = ? AND id = ?")
+    .run(stage, nowISO(), userId, draftId);
+  return getDraft(userId, draftId);
 }
 
 function textArray(value, label, maxItems, maxChars) {
@@ -600,6 +650,9 @@ function updateDraft(userId, draftId, input) {
   const draftRow = getDraftRow(userId, draftId);
   if (draftRow.row.status === 'generating') throw httpError(409, 'The draft is still generating');
   const current = rowToDraft(draftRow.row);
+  if (Object.hasOwn(input, 'if_generation_stage') && input.if_generation_stage !== current.generation_stage) {
+    throw httpError(409, '草稿的生成状态已变化。你的修改仍留在此页，请先查看最新草稿再合并修改。');
+  }
   current.images = require('./publishing-media').listImages(userId, draftId);
   const updates = {};
   if (Object.hasOwn(input, 'title')) updates.title = cleanText(input.title, 'title', 200, true);
@@ -612,6 +665,13 @@ function updateDraft(userId, draftId, input) {
     updates.xiaohongshu_json = JSON.stringify(validateXiaohongshuEdit(input.xiaohongshu, current));
   }
   if (!Object.keys(updates).length) throw httpError(400, 'At least one editable field is required');
+  if (current.generation_stage === 'image_failed' && hasBothImages(
+    parseStoredJSON(updates.wechat_json, current.wechat),
+    parseStoredJSON(updates.xiaohongshu_json, current.xiaohongshu),
+  )) {
+    updates.generation_stage = '';
+    updates.status_message = '';
+  }
   updates.updated_at = nowISO();
   const keys = Object.keys(updates);
   const assignments = keys.map(key => key + ' = @' + key).join(', ');
@@ -633,6 +693,9 @@ async function exportDraft(userId, draftId, format) {
   const draft = getDraft(userId, draftId);
   if (draft.status !== 'ready') {
     throw httpError(409, draft.status === 'generating' ? 'The draft is still generating' : 'A failed draft has no export content');
+  }
+  if (draft.generation_stage === 'image_failed' && ['wechat-zip', 'xiaohongshu-zip'].includes(format)) {
+    throw httpError(409, '两份图文稿的配图还未完成。请重试配图，或手动选图并保存后下载。');
   }
   const renderer = loadRenderer();
   if (typeof renderer.exportDraft !== 'function') {
@@ -697,6 +760,7 @@ module.exports = {
   saveNote,
   saveVoice,
   createDraft,
+  retryDraft,
   generateDraft,
   listDrafts,
   getDraft,
@@ -704,5 +768,4 @@ module.exports = {
   exportDraft,
   renderCard,
   workspaceResponse,
-  GENERATION_TIMEOUT_MS,
 };

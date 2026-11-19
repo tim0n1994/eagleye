@@ -344,6 +344,20 @@ function getProvider(task = 'general') {
   return cfg ? buildLegacyProvider(cfg) : null;
 }
 
+function getPublishingProvider() {
+  const model = process.env.EAGLEYE_PUBLISHING_TEXT_MODEL?.trim();
+  if (!model) return getProvider('general');
+  const gateway = [
+    { base: process.env.LLM_BASE_URL, key: process.env.LLM_API_KEY },
+    { base: process.env.OPENAI_BASE_URL, key: process.env.OPENAI_API_KEY },
+  ].find(route => route.base && route.key);
+  if (!gateway) return null;
+  return buildLegacyProvider({
+    provider: 'openai', model, api_key: gateway.key,
+    base_url: gateway.base.replace(/\/chat\/completions\/?$/, ''),
+  });
+}
+
 function getEnrichProvider() {
   const pool = require('./llm-pool').getPoolProvider('enrich');
   if (pool) return pool;
@@ -391,6 +405,7 @@ function extractJSON(text) {
 
 module.exports = {
   getProvider,
+  getPublishingProvider,
   getEnrichProvider,
   getProviderInfo,
   extractJSON,
