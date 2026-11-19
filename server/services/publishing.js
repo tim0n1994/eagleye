@@ -13,6 +13,7 @@ const { getDB } = require('../db/connection');
 const { getValue, setValue } = require('../db/user-data');
 const { callWithMetadata } = require('./llm-shared');
 const { getProvider } = require('./llm-provider');
+const { DEFAULT_STYLE, hasStyle, stylePrompt } = require('./publishing-styles');
 
 const WORKSPACE_KEY = 'publishing_workspace';
 const VOICE_KEY = 'publishing_voice';
@@ -86,6 +87,7 @@ function normalizedVoice(value) {
   return {
     guidance: typeof source.guidance === 'string' ? source.guidance : '',
     samples: typeof source.samples === 'string' ? source.samples : '',
+    style_preset: hasStyle(source.style_preset) ? source.style_preset : DEFAULT_STYLE,
   };
 }
 
@@ -284,6 +286,8 @@ function saveVoice(userId, input) {
   if (!isPlainObject(input)) throw httpError(400, 'Request body must be an object');
   const payload = isPlainObject(input.voice) ? input.voice : input;
   const current = getVoiceState(userId);
+  const stylePreset = Object.hasOwn(payload, 'style_preset') ? payload.style_preset : current.style_preset;
+  if (!hasStyle(stylePreset)) throw httpError(400, '所选行文风格不可用，请重新选择。');
   const next = {
     guidance: Object.hasOwn(payload, 'guidance')
       ? cleanText(payload.guidance, 'voice.guidance', MAX_VOICE_CHARS, true)
@@ -291,6 +295,7 @@ function saveVoice(userId, input) {
     samples: Object.hasOwn(payload, 'samples')
       ? cleanText(payload.samples, 'voice.samples', MAX_VOICE_CHARS, true)
       : current.samples,
+    style_preset: stylePreset,
   };
   setValue(VOICE_KEY, next, userId);
   return next;
@@ -384,6 +389,7 @@ function generationPrompt(input) {
     getWritingReferences(),
     input.brief.trim() ? '作者本次想说：\n' + input.brief.trim() : '',
     voiceParts.join('\n\n'),
+    stylePrompt(input.voice.style_preset),
     '素材 JSON（content为原文片段，original_summary为来源摘要，summary为AI摘要，note为作者批注，excerpt为作者选中的段落）：',
     JSON.stringify(input.sources),
     '',

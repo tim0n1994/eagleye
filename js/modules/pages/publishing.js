@@ -96,6 +96,7 @@ export async function renderPublishing() {
   let noteTimer, briefTimer, pollTimer, previewController;
   let urls = [];
   let list = [];
+  let stylePresets = [];
   let entry = null;
   let viewVersion = 0;
   let imageCandidates = [];
@@ -134,6 +135,17 @@ export async function renderPublishing() {
     const value = session.brief;
     await publishing.setBrief(value);
     if (session.brief === value) session.brief = null;
+  }
+
+  function showStyleDetails() {
+    const preset = stylePresets.find(item => item.id === $('[data-style-preset]').value);
+    const description = preset?.description;
+    $('#pub-style-description').textContent = words(description?.zh, description?.en) || '';
+    const link = $('[data-style-reference]');
+    const url = sourceUrl(preset?.reference_url);
+    if (url) link.href = url;
+    else link.removeAttribute('href');
+    link.hidden = !url;
   }
 
   async function saveVoice() {
@@ -669,7 +681,10 @@ export async function renderPublishing() {
     saveNotes().catch(() => {}); saveBrief().catch(() => {});
   });
 
-  container.innerHTML = `<section class="publishing-page"><header class="pub-page-heading"><div><span class="pub-kicker">${words('个人创作', 'Personal publishing')}</span><h2>${words('把发现，写成你的表达。', 'Make discoveries your own.')}</h2><p>${words('留下你的眼光和几句判断，再组织成公众号文章与小红书图文。', 'Add your perspective, then shape it into WeChat articles and Xiaohongshu cards.')}</p></div><a href="/">${words('← 继续选材', '← Keep exploring')}</a></header><button type="button" class="pub-reload" data-action="reload">${words('重新读取工作区', 'Reload workspace')}</button><p class="pub-notice" data-pub-message role="status">${words('正在读取你的工作区…', 'Loading your workspace…')}</p><div class="pub-layout"><aside class="pub-sidebar"><fieldset data-pub-compose disabled><section class="pub-panel"><div class="pub-section-title"><h3>${words('本次选材', 'Selections')}</h3><span data-pub-count></span></div><div data-pub-sources></div><label class="pub-field"><span>${words('这篇我想说', 'What I want to say')}</span><textarea data-pub-brief rows="4" maxlength="4000" placeholder="${words('这些东西为什么值得放在一起？不用写成完整文章。', 'What connects these discoveries? A rough thought is enough.')}"></textarea></label><button type="button" data-action="save-sources">${words('保存批注与想法', 'Save notes & direction')}</button><div class="pub-generate"><label class="pub-field"><span>${words('图卡配色', 'Card palette')}</span><select data-generation-theme><option value="paper">${words('纸色', 'Paper')}</option><option value="ink">${words('墨色', 'Ink')}</option><option value="mint">${words('薄荷', 'Mint')}</option></select></label><button type="button" class="pub-primary" data-action="generate" disabled>${words('生成一篇新稿', 'Generate a new draft')}</button></div></section><details class="pub-panel"><summary>${words('我的写作偏好', 'My writing voice')}</summary><p class="pub-muted">${words('样本可以是你写过的短评或文章。只借鉴表达习惯，不搬用其中的经历。', 'Use your own comments or articles. Samples guide expression, not new facts.')}</p><label class="pub-field"><span>${words('希望怎么写，避免怎么写', 'Preferences and things to avoid')}</span><textarea data-voice="guidance" rows="5" maxlength="12000"></textarea></label><label class="pub-field"><span>${words('我认可的文字样本', 'Writing I recognize as mine')}</span><textarea data-voice="samples" rows="9" maxlength="12000"></textarea></label><span class="pub-muted" data-pub-voice-state></span><button type="button" data-action="save-voice">${words('保存写作偏好', 'Save writing preferences')}</button></details><section class="pub-panel"><div class="pub-section-title"><h3>${words('我的草稿', 'My drafts')}</h3><button type="button" data-action="refresh-list">${words('刷新', 'Refresh')}</button></div><button type="button" data-action="new">${words('+ 新的组合', '+ New composition')}</button><div data-pub-drafts></div></section></fieldset></aside><div class="pub-main" data-pub-current></div></div></section>`;
+  container.innerHTML = `<section class="publishing-page"><header class="pub-page-heading"><div><span class="pub-kicker">${words('个人创作', 'Personal publishing')}</span><h2>${words('把发现，写成你的表达。', 'Make discoveries your own.')}</h2><p>${words('留下你的眼光和几句判断，再组织成公众号文章与小红书图文。', 'Add your perspective, then shape it into WeChat articles and Xiaohongshu cards.')}</p></div><a href="/">${words('← 继续选材', '← Keep exploring')}</a></header><button type="button" class="pub-reload" data-action="reload">${words('重新读取工作区', 'Reload workspace')}</button><p class="pub-notice" data-pub-message role="status">${words('正在读取你的工作区…', 'Loading your workspace…')}</p><div class="pub-layout"><aside class="pub-sidebar"><fieldset data-pub-compose disabled><section class="pub-panel"><div class="pub-section-title"><h3>${words('本次选材', 'Selections')}</h3><span data-pub-count></span></div><div data-pub-sources></div><label class="pub-field"><span>${words('这篇我想说', 'What I want to say')}</span><textarea data-pub-brief rows="4" maxlength="4000" placeholder="${words('这些东西为什么值得放在一起？不用写成完整文章。', 'What connects these discoveries? A rough thought is enough.')}"></textarea></label><button type="button" data-action="save-sources">${words('保存批注与想法', 'Save notes & direction')}</button><div class="pub-generate"><label class="pub-field"><span>${words('图卡配色', 'Card palette')}</span><select data-generation-theme><option value="paper">${words('纸色', 'Paper')}</option><option value="ink">${words('墨色', 'Ink')}</option><option value="mint">${words('薄荷', 'Mint')}</option></select></label><button type="button" class="pub-primary" data-action="generate" disabled>${words('生成一篇新稿', 'Generate a new draft')}</button></div></section><details class="pub-panel"><summary>${words('我的写作偏好', 'My writing voice')}</summary>
+      <label class="pub-field"><span>${words('行文风格', 'Narrative style')}</span><select data-style-preset aria-describedby="pub-style-description"></select></label>
+      <div class="pub-muted"><span id="pub-style-description"></span> <a data-style-reference hidden target="_blank" rel="noopener noreferrer">${words('查看风格参考', 'View style reference')}</a></div>
+      <p class="pub-muted">${words('样本可以是你写过的短评或文章。只借鉴表达习惯，不搬用其中的经历。', 'Use your own comments or articles. Samples guide expression, not new facts.')}</p><label class="pub-field"><span>${words('希望怎么写，避免怎么写', 'Preferences and things to avoid')}</span><textarea data-voice="guidance" rows="5" maxlength="12000"></textarea></label><label class="pub-field"><span>${words('我认可的文字样本', 'Writing I recognize as mine')}</span><textarea data-voice="samples" rows="9" maxlength="12000"></textarea></label><span class="pub-muted" data-pub-voice-state></span><button type="button" data-action="save-voice">${words('保存写作偏好', 'Save writing preferences')}</button></details><section class="pub-panel"><div class="pub-section-title"><h3>${words('我的草稿', 'My drafts')}</h3><button type="button" data-action="refresh-list">${words('刷新', 'Refresh')}</button></div><button type="button" data-action="new">${words('+ 新的组合', '+ New composition')}</button><div data-pub-drafts></div></section></fieldset></aside><div class="pub-main" data-pub-current></div></div></section>`;
 
   container.addEventListener('input', event => {
     const target = event.target;
@@ -695,6 +710,13 @@ export async function renderPublishing() {
   }, { signal: controller.signal });
   container.addEventListener('change', event => {
     const target = event.target;
+    if (target.matches('[data-style-preset]')) {
+      session.voice.style_preset = target.value;
+      session.voiceDirty = true;
+      showStyleDetails();
+      updateStatus();
+      return;
+    }
     if (!entry) return;
     if (target.matches('[data-image-file]')) {
       const files = [...target.files];
@@ -759,7 +781,20 @@ export async function renderPublishing() {
     loadImageConfig();
     const [voiceData, draftsData] = await Promise.all([request('/voice', { signal: controller.signal }), request('/drafts', { signal: controller.signal })]);
     if (!active) return;
-    if (!session.voiceDirty) session.voice = voiceData.voice;
+    if (!session.voiceDirty) session.voice = { guidance: '', samples: '', ...voiceData.voice };
+    stylePresets = Array.isArray(voiceData.style_presets) ? voiceData.style_presets : [];
+    if (!stylePresets.length) {
+      stylePresets = [{ id: 'personal', label: { zh: '个人风格', en: 'Personal' },
+        description: { zh: '使用你的写作偏好和认可的文字样本。', en: 'Use your preferences and approved writing samples.' } }];
+    }
+    const select = $('[data-style-preset]');
+    for (const preset of stylePresets) {
+      select.add(new Option(words(preset.label.zh, preset.label.en), preset.id));
+    }
+    select.value = session.voice.style_preset || 'personal';
+    if (select.selectedIndex < 0) select.selectedIndex = 0;
+    select.disabled = stylePresets.length === 1;
+    showStyleDetails();
     loaded = true;
     list = draftsData.drafts || [];
     $('[data-voice="guidance"]').value = session.voice.guidance || '';

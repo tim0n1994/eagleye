@@ -9,6 +9,7 @@
 const { sendJSON, sendError } = require('./_shared');
 const publishing = require('../services/publishing');
 const publishingMedia = require('../services/publishing-media');
+const { listStyles } = require('../services/publishing-styles');
 
 function methodNotAllowed(res, allowed) {
   res.setHeader('Allow', allowed.join(', '));
@@ -90,7 +91,7 @@ function registerPublishingRoutes(routes) {
   });
 
   routes['/api/publishing/voice'] = route(['GET', 'PUT'], async (req, res) => {
-    if (req.method === 'GET') return sendJSON(res, 200, { voice: publishing.getVoiceState(req.user.id) });
+    if (req.method === 'GET') return sendJSON(res, 200, { voice: publishing.getVoiceState(req.user.id), style_presets: listStyles() });
     const body = await readJSON(req, 40000);
     return sendJSON(res, 200, { voice: publishing.saveVoice(req.user.id, body) });
   });
