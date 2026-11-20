@@ -16,7 +16,6 @@ const { isWithinFetchWindow, compactDigestDate, todayDigestDate } = require('../
 // Known RSS/news sources for humanoid robotics companies
 const HUMAN_NEWS_SOURCES = [
   { name: 'Tesla Optimus', url: 'https://www.tesla.cn/blog', type: 'scrape' },
-  { name: 'Boston Dynamics', url: 'https://bostondynamics.com/blog', type: 'scrape' },
   { name: 'Figure AI', url: 'https://www.figure.ai/news', type: 'scrape' },
   { name: '1X Technologies', url: 'https://www.1x.tech/discover', type: 'scrape' },
   { name: 'Agility Robotics', url: 'https://www.agilityrobotics.com/press-releases', articlePath: '/content/', type: 'scrape' },
@@ -26,8 +25,9 @@ const HUMAN_NEWS_SOURCES = [
   { name: 'Unitree', url: 'https://www.unitree.com/news/', type: 'scrape' },
 ];
 
-// Humanoid robotics RSS feeds from industry aggregators
+// Official and industry RSS/Atom feeds.
 const HUMAN_FEEDS = [
+  { name: 'Boston Dynamics', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UC7vVhkEfw4nOGp8TyDk7RcQ', type: 'rss' },
   { name: 'Engineered Arts', url: 'https://media.engineeredarts.com/feed/', type: 'rss' },
   { name: 'IEEE Spectrum Robotics', url: 'https://spectrum.ieee.org/feeds/topic/robotics.rss', type: 'rss' },
   { name: 'TechCrunch Robotics', url: 'https://techcrunch.com/category/robotics/feed/', type: 'rss' },

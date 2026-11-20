@@ -6,19 +6,10 @@ const collectors = require('../services/server-collectors');
 const { setTimeout: sleep } = require('node:timers/promises');
 const { readXiaohongshuConfig } = require('../services/xiaohongshu-config');
 
-/** Parse a "YYYY-MM-DD" (or partial) string into an ISO timestamp. */
-function parseXhsDate(value) {
-  const s = String(value || '').trim();
-  if (!s) return new Date().toISOString();
-  // YYYY-MM-DD  →  YYYY-MM-DDT00:00:00Z
-  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (m) {
-    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
-    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
-  }
-  const parsed = Date.parse(s);
-  return isNaN(parsed) ? new Date().toISOString() : new Date(parsed).toISOString();
-}
+const NOTE_PATHS = ['explore', 'search_result', 'discovery/item'];
+const noteIdFromUrl = url => String(url || '').match(
+  /^https?:\/\/(?:www\.)?xiaohongshu\.com\/(?:explore|search_result|discovery\/item)\/([a-f0-9]{24})(?:[/?#]|$)/i
+)?.[1]?.toLowerCase();
 
 class XiaoHongShuConnector extends BaseConnector {
   constructor() {
@@ -29,17 +20,18 @@ class XiaoHongShuConnector extends BaseConnector {
   _noteToItem(note) {
     const url = note.url || '';
     const likes = Number(String(note.likes).replace(/[^\d.]/g, '')) || 0;
-    const publishedAt = parseXhsDate(note.published_at);
+    const id = noteIdFromUrl(url);
     const title = (note.title || '').trim() || '[无标题]';
     const author = note.author || '';
 
     return this.normalize({
+      id,
       title,
       url,
       description: title,
       content: title,
       author,
-      publishedAt,
+      publishedAt: note.published_at || null,
       language: 'zh',
       score: Math.log2(1 + likes),
       sourcePayload: {
@@ -50,6 +42,24 @@ class XiaoHongShuConnector extends BaseConnector {
       },
       popularity: { likes },
     });
+  }
+
+  // Links carry rotating access parameters. Match by note ID across both
+  // current and historical URL forms while preserving the original link.
+  prepareProviderIdentityLookup(db) {
+    const byNoteUrl = db.prepare(`
+      SELECT 1 FROM information_items
+      WHERE source_id = ? AND canonical_url >= ? AND canonical_url < ?
+      AND (canonical_url = ? OR substr(canonical_url, ?, 1) = '?')
+      LIMIT 1
+    `);
+    return ({ source_id, external_id }) => {
+      if (!external_id) return false;
+      return NOTE_PATHS.some(path => {
+        const url = `https://www.xiaohongshu.com/${path}/${external_id}`;
+        return byNoteUrl.get(source_id, url, url + '@', url, url.length + 1);
+      });
+    };
   }
 
   async fetch(_date, { signal } = {}) {
@@ -70,6 +80,7 @@ class XiaoHongShuConnector extends BaseConnector {
     console.log(`  📕 XiaoHongShu: searching ${keywords.length} keywords via ${serverBackend ? 'server' : 'opencli'}...`);
 
     const allItems = [];
+    const seen = new Set();
     for (let i = 0; i < keywords.length; i++) {
       const kw = keywords[i];
       signal?.throwIfAborted();
@@ -77,14 +88,14 @@ class XiaoHongShuConnector extends BaseConnector {
       if (!result.ok) {
         throw new Error(`xiaohongshu: ${result.code || 'COLLECTION_FAILED'}`);
       } else {
-        const seen = new Set();
         if (!Array.isArray(result.data)) throw new Error('SCHEMA_ERROR');
         const items = result.data
           .filter(Boolean)
           .map(n => this._noteToItem(n))
           .filter(it => {
-            if (!it.canonical_url || seen.has(it.canonical_url)) return false;
-            seen.add(it.canonical_url);
+            const key = it.external_id || it.canonical_url;
+            if (!it.canonical_url || seen.has(key)) return false;
+            seen.add(key);
             return true;
           });
         allItems.push(...items);

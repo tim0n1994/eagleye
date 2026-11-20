@@ -76,7 +76,13 @@ function parseJSON(stdout, jsonMode) {
       const e = env.error || {};
       const codes = { not_authenticated: 'AUTH_REQUIRED', rate_limited: 'RATE_LIMITED',
         not_found: 'NOT_FOUND', network_error: 'NETWORK_ERROR' };
-      return { ok: false, code: codes[e.code] || e.code || 'ERROR', message: e.message || 'twitter-cli returned ok:false', raw: env };
+      const message = e.message || 'twitter-cli returned ok:false';
+      let code = codes[e.code] || e.code || 'ERROR';
+      if (code === 'api_error' || code === 'UPSTREAM_ERROR') {
+        if (/DeadlineExceeded|timed out|curl: \(28\)|\btimeout\b/i.test(message)) code = 'TIMEOUT';
+        else if (/network error|\b(?:TLS|SSL)\b|SSL_connect|connection (?:closed|reset)|curl: \((?:35|56)\)/i.test(message)) code = 'NETWORK_ERROR';
+      }
+      return { ok: false, code, message, raw: env };
     }
     return { ok: false, code: 'PARSE_ERROR', message: 'twitter-cli envelope missing ok field', raw: env };
   }

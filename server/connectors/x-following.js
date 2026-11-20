@@ -948,6 +948,8 @@ class XFollowingConnector extends BaseConnector {
       stats.error_code = state.last_error_code || 'FEED_COOLDOWN';
       return items;
     }
+    const isTransient = response => !response.ok && ['NETWORK_ERROR', 'TIMEOUT'].includes(response.code);
+    let consecutiveFailures = 0;
     for (let i = 0; i < batchSize; i++) {
       signal?.throwIfAborted();
       if (i) await sleep(spacingMs, undefined, { signal });
@@ -967,9 +969,7 @@ class XFollowingConnector extends BaseConnector {
       let result = await reach.twitterUserPosts(username, perUser, { signal, timeoutMs });
       // Recreate the CLI connection once after a transient failure, within the
       // original user/batch deadline. Authentication and rate limits cool down.
-      const transient = !result.ok && (result.code === 'NETWORK_ERROR' || result.code === 'TIMEOUT' ||
-        (result.code === 'UPSTREAM_ERROR' && /TLS|SSL|socket|connection (?:closed|reset)/i.test(result.message || '')));
-      if (transient && userDeadline - Date.now() > 15000) {
+      if (isTransient(result) && userDeadline - Date.now() > 15000) {
         stats.retries++;
         await sleep(3000, undefined, { signal });
         result = await reach.twitterUserPosts(username, perUser, { signal, timeoutMs: userDeadline - Date.now() });
@@ -977,23 +977,27 @@ class XFollowingConnector extends BaseConnector {
       signal?.throwIfAborted();
       if (!result.ok && result.code !== 'USER_UNAVAILABLE') {
         stats.failed++;
-        stats.error = `@${username}: ${result.code}: ${String(result.message).slice(0, 300)}`;
+        const error = `@${username}: ${result.code}: ${String(result.message).slice(0, 300)}`;
+        (stats.partialErrors ||= []).push({ username, code: result.code });
+        const transient = isTransient(result);
+        // An isolated transport failure should not prevent sampling the rest.
+        // Two in a row indicate a wider outage. Preserve the cursor on auth
+        // and rate limits so cooling down does not silently skip a user.
+        if (!['AUTH_REQUIRED', 'RATE_LIMITED'].includes(result.code)) advance();
+        if (transient && ++consecutiveFailures < 2) {
+          console.warn(`  ⚠ X roster deferred account: ${error}`);
+          continue;
+        }
+        stats.error = error;
         stats.error_code = result.code;
-        state.last_error = stats.error;
+        state.last_error = error;
         state.last_error_code = result.code;
         state.next_attempt_at = new Date(Date.now() + 30 * 60000).toISOString();
-        // Advance past the failing account: transient TLS/egress failures are
-        // host-level, not account-level, so restarting the next round at the
-        // same index would wedge the whole roster on one flaky account.
-        state.next_index = (state.next_index + 1) % users.length;
-        if (state.next_index === 0) {
-          state.completed_cycles++;
-          state.last_cycle_at = new Date().toISOString();
-        }
         checkpoint();
-        console.warn(`  ⚠ X roster paused: ${stats.error}`);
+        console.warn(`  ⚠ X roster paused: ${error}`);
         return items;
       }
+      consecutiveFailures = 0;
       if (!result.ok) {
         // A suspended/deleted/private target must not block the remaining roster.
         // Keep coverage gaps visible, without treating an unavailable target as

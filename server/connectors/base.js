@@ -300,6 +300,7 @@ class BaseConnector {
       WHERE source_id = ? AND canonical_url = ?
       LIMIT 1
     `);
+    const findByProviderIdentity = this.prepareProviderIdentityLookup?.(db);
     const hasPaperMetadata = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'paper_metadata'").get();
     const upsertPaperMetadata = hasPaperMetadata ? db.prepare(`
       INSERT INTO paper_metadata (
@@ -381,6 +382,10 @@ class BaseConnector {
     const tx = db.transaction(() => {
       for (const item of filtered) {
         if (!item.canonical_url) { details.skipped++; continue; }
+        if (findByProviderIdentity?.(item)) {
+          details.duplicates++;
+          continue;
+        }
         const priorRow = findAnyDayByUrl.get(item.source_id, item.canonical_url);
         if (priorRow && priorRow.digest_date !== item.digest_date
           && !findItemByUniqueKey.get(item.source_id, item.canonical_url, item.digest_date)) {
