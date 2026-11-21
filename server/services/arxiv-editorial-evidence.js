@@ -51,7 +51,7 @@ function evidenceKind(heading, text) {
 
 function passagesFromHtml($) {
   const passages = [];
-  $('script,style,nav,footer,.ltx_bibliography,.ltx_acknowledgements,.ltx_appendix,.ltx_abstract').remove();
+  $('script,style,nav,footer,annotation,annotation-xml,.ltx_bibliography,.ltx_acknowledgements,.ltx_appendix,.ltx_abstract').remove();
   $('section p, section figcaption').each((_i, element) => {
     const paragraph = $(element);
     const section = paragraph.closest('section');
@@ -94,15 +94,14 @@ function selectPassages(passages) {
   const chosen = [];
   for (const kind of ['method', 'result', 'boundary', 'context']) {
     const group = passages.filter(p => p.kind === kind);
-    const distinct = new Set();
+    const distinct = new Map();
     // Prefer section diversity and evidence-bearing language over repeated introductions.
     group.sort((a, b) => (/[0-9]/.test(b.text) - /[0-9]/.test(a.text)) * (kind === 'result' ? 1 : 0));
     for (const passage of group) {
-      if (distinct.has(passage.locator) && distinct.size > 1) continue;
-      if (chosen.filter(p => p.kind === kind).length >= 3) break;
-      chosen.push(passage);
-      distinct.add(passage.locator);
+      if (!distinct.has(passage.locator)) distinct.set(passage.locator, passage);
     }
+    const unique = [...distinct.values()];
+    chosen.push(...unique.concat(group.filter(passage => !unique.includes(passage))).slice(0, 3));
   }
   return chosen.map(passage => ({ ...passage, text: passage.text.slice(0, 1600) }));
 }
