@@ -3,7 +3,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID, createHash } = require('node:crypto');
 const { getValue, setValue } = require('../db/user-data');
-const { composeEdition, validateEdition, writeDate } = require('./arxiv-editorial');
+const { composeEdition, validateEdition, writeDate, ARTICLE_CITATION_ERROR } = require('./arxiv-editorial');
 const { diagram, publishingDraft, publicationZIP } = require('./arxiv-editorial-output');
 const { prepareImageUpload } = require('./publishing-media');
 const { renderCard, renderWechat } = require('./publishing-render');
@@ -221,7 +221,11 @@ async function generate(user, date) {
   void (async () => {
     try {
       const draft = await composeEdition(chosen, { angle: state.angle, notes: state.notes, onStatus: rows => {
-        job.phase = rows.some(row => row.stage === 'repair') ? '正在校对三平台稿件' : '正在撰写三平台稿件';
+        const stage = rows[0]?.stage;
+        job.phase = ({
+          article_repair: '正在核对公众号原文引用',
+          repair: '正在校对三平台稿件',
+        })[stage] || '正在撰写三平台稿件';
       } });
       job.phase = '正在生成配图';
       await fs.mkdir(workspaceDir(user, date, id), { mode: 0o700, recursive: true });
@@ -230,9 +234,10 @@ async function generate(user, date) {
       store(user, date, { ...current, drafts: { ...current.drafts, [id]: { ...draft, created_at: new Date().toISOString() } },
         error: '', generating: false });
     } catch (error) {
-      console.warn('arXiv editorial generation:', error.message);
+      console.warn('arXiv editorial generation:', date, job.phase, error.code || '', error.message);
       const current = workspace(user, date);
-      store(user, date, { ...current, generating: false, error: '生成失败，选材、批注和各版草稿已保留，可以重试。' });
+      const reason = error.code === ARTICLE_CITATION_ERROR ? '公众号正文的原文引用未通过校验' : '生成失败';
+      store(user, date, { ...current, generating: false, error: reason + '，选材、批注和各版草稿已保留，可以重试。' });
     } finally { jobs.delete(user); }
   })().catch(error => console.error('arXiv editorial workspace:', error.message));
   return { job: job.phase };
