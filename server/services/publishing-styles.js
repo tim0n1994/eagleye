@@ -7,6 +7,21 @@ const styles = new Map([
     label: { zh: '个人偏好（默认）', en: 'Personal preferences (default)' },
     description: { zh: '按你的写作偏好与认可的样本组织新稿。', en: 'Use your preferences and approved samples to shape new drafts.' },
   }],
+  ['engineering-paper-notes', {
+    label: { zh: '工程师读论文', en: 'Engineer’s paper notes' },
+    description: {
+      zh: '从一个真实的工程卡点起笔，沿机制和实验对照推到适用边界。',
+      en: 'Start from a concrete engineering snag and explain the mechanism, comparison and limits.',
+    },
+    reference_url: 'https://x.com/mylifcc',
+    prompt: [
+      '采用工程师读论文的写法。开头给一个读者见过的任务、失败步骤或反常对照，再交代论文要改的是哪一步。',
+      '顺着操作讲机制：旧流程在哪一步卡住，新方法拿什么输入、做了什么变化、给出什么输出。技术名词第一次出现就说它在这里做什么，少用抽象评价。',
+      '数字只在能改变理解时写。数字旁边交代任务、基线、指标或条件；对照不可比就明确说。分清作者报告的结果、你由此提出的假设，以及本文尚未核实的事。',
+      '句子像工程师在讲给同事听。短句负责起笔和落判断，长一点的句子负责说清因果。有趣来自具体细节，可以用一个贴近实际的反问。结尾给一个值得验证的场景或仍然存在的限制。',
+      '保留用户明确表达的个人判断。未提供亲历就从阅读和可查事实叙述。样本只提供写法，不引入其话术、经历、数字或观点。',
+    ].join('\n'),
+  }],
   ['funeralai-observer', {
     label: { zh: '葬AI · 锐评观察', en: 'FuneralAI · Sharp observation' },
     description: {
