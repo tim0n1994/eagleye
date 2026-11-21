@@ -221,7 +221,8 @@ async function generate(user, date) {
   void (async () => {
     try {
       const draft = await composeEdition(chosen, { angle: state.angle, notes: state.notes, onStatus: rows => {
-        const stage = rows[0]?.stage;
+        const { stage, issue } = rows[0] || {};
+        if (issue) console.info('arXiv editorial repair:', date, stage, issue);
         job.phase = ({
           article_repair: '正在核对公众号原文引用',
           repair: '正在校对三平台稿件',
