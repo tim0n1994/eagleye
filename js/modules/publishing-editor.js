@@ -215,7 +215,7 @@ function syncChrome() {
   });
   const dock = document.getElementById('publishingSelectionDock');
   if (dock) {
-    dock.hidden = !state.enabled || document.body.classList.contains('auth-page') || window.location.pathname === '/publishing';
+    dock.hidden = !state.enabled || document.body.classList.contains('auth-page') || ['/publishing', '/publishing/arxiv'].includes(window.location.pathname);
     dock.querySelector('[data-editor-count]').textContent = words(`已选 ${state.workspace.selected_ids.length} 条`, `${state.workspace.selected_ids.length} selected`);
     const status = dock.querySelector('[data-editor-status]');
     status.textContent = state.error || (pendingCount || noteTimers.size ? words('正在保存…', 'Saving…') : words('选择可以跨日期、跨页面组合', 'Combine selections across dates and pages'));

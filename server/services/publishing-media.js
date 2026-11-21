@@ -650,5 +650,6 @@ module.exports = {
   importSourceImage,
   listImageCandidates,
   addImageFromBase64,
+  prepareImageUpload: value => processImage(decodeBase64Image(value)),
   assertImageQuota,
 };

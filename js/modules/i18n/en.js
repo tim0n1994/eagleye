@@ -22,6 +22,7 @@ export const en = {
   'nav.papers': 'Papers',
   'nav.digest': 'Daily Digest',
   'nav.publishing': 'Create',
+  'nav.arxiv_editorial': 'Daily arXiv',
   'nav.topics': 'Topics',
   'nav.signals': 'Signals',
   'nav.sources': 'Sources',

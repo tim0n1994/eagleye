@@ -21,6 +21,7 @@ export const zh = {
   'nav.papers': '论文',
   'nav.digest': '每日简报',
   'nav.publishing': '创作',
+  'nav.arxiv_editorial': '每日 arXiv 精选',
   'nav.topics': '专题',
   'nav.signals': '信号',
   'nav.sources': '信息源',

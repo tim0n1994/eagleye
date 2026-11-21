@@ -135,3 +135,58 @@
 .pub-generation h3 { margin: 0; font-size: 15px; }
 .pub-generation p { margin: 6px 0 0; color: var(--fg-dim); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .pub-generation button { margin-top: 10px; }
+
+.pub-workbench-tabs { display: flex; flex-wrap: wrap; gap: 22px; border-bottom: 1px solid var(--rule); margin: 8px 0 24px; }
+.pub-workbench-tabs a { padding: 8px 3px 12px; border-bottom: 2px solid transparent; color: var(--fg-dim); font-size: 13px; }
+.pub-workbench-tabs a[aria-current="page"] { border-color: var(--accent); color: var(--fg); font-weight: 650; }
+.pub-arxiv .pub-page-heading { align-items: flex-end; margin-bottom: 9px; }
+.pub-arxiv .pub-page-heading h2 { margin-bottom: 7px; }
+.pub-arxiv .arv-header-actions { margin: 0; justify-content: flex-end; }
+.arv-date { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--fg-dim); white-space: nowrap; }
+.arv-date select { width: auto; padding: 5px 7px; }
+.pub-arxiv .pub-layout { grid-template-columns: minmax(255px, 0.8fr) minmax(0, 1.6fr); gap: 24px; }
+.pub-arxiv .pub-draft-heading { padding-bottom: 12px; }
+.pub-arxiv .pub-draft-heading .pub-kicker { margin-bottom: 7px; }
+.pub-arxiv .pub-draft-heading h2 { font-size: clamp(20px, 2.6vw, 28px); }
+.arv-paper-pick { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; }
+.arv-paper-pick input { margin: 3px 0 0; }
+.arv-paper-pick strong { display: block; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.arv-paper-pick small { display: block; margin-top: 5px; }
+.arv-paper details { margin: 8px 0 0 25px; }
+.arv-paper > button { margin: 9px 0 0 25px; }
+.arv-paper a, .arv-editor a { font-size: 12px; }
+.arv-paper .pub-field { margin-bottom: 0; }
+.arv-abstract { font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; color: var(--fg-dim); }
+.arv-more { width: 100%; }
+.arv-chips, .arv-evidence-strip, .arv-platforms, .arv-asset-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.arv-evidence-strip { margin: 12px 0; gap: 12px; }
+.arv-evidence-strip strong { color: var(--fg-dim); font-size: 12px; }
+.arv-chips button { padding: 2px 8px; min-height: 26px; font-size: 11px; }
+.arv-chips .arv-reviewed { border-color: var(--accent); color: var(--accent); }
+.arv-platforms { padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.arv-platforms [aria-pressed="true"] { border-color: var(--accent); background: var(--bg-side, var(--bg)); color: var(--accent); font-weight: 600; }
+.arv-editor { padding-top: 16px; }
+.arv-editor h3 { margin: 0 0 13px; font-size: 16px; }
+.arv-editor .pub-section-title h3 { margin: 0; }
+.arv-editor .pub-card-editor { margin: 12px 0; }
+.arv-editor .pub-card-editor:last-child { margin-bottom: 2px; }
+.arv-asset { display: grid; grid-template-columns: minmax(82px, 150px) minmax(0, 1fr); gap: 12px; align-items: center; min-width: 0; }
+.arv-asset-actions { margin-top: 5px; }
+.arv-asset img, .arv-no-image { display: grid; place-items: center; width: 100%; aspect-ratio: 1.59; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg-side, var(--bg)); object-fit: contain; color: var(--fg-mute); font-size: 11px; }
+.arv-card-preview { display: block; max-width: 100%; max-height: 65dvh; height: auto; margin: auto; border-radius: 6px; }
+.arv-dialog { width: min(660px, calc(100vw - 32px)); max-height: 86dvh; padding: 24px; border: 1px solid var(--rule); border-radius: 12px; color: var(--fg); background: var(--bg); box-sizing: border-box; }
+.arv-dialog::backdrop { background: rgb(0 0 0 / 50%); }
+.arv-dialog h3 { margin: 0 0 10px; }
+.arv-dialog h4 { font-size: 13px; margin: 18px 0 5px; }
+.arv-dialog blockquote { margin: 10px 0; border-left: 2px solid var(--rule); padding-left: 14px; color: var(--fg-dim); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.arv-dialog form { margin: 15px 0 0; text-align: right; }
+.arv-dialog iframe { width: 100%; height: min(60dvh, 620px); border: 1px solid var(--rule); background: white; border-radius: 6px; box-sizing: border-box; }
+@media (max-width: 900px) {
+  .pub-arxiv .pub-page-heading { align-items: flex-start; }
+  .pub-arxiv .arv-header-actions { justify-content: flex-start; }
+  .pub-arxiv .pub-layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+}
+@media (max-width: 500px) {
+  .arv-asset { grid-template-columns: 94px minmax(0, 1fr); }
+  .arv-chips button { min-height: 32px; }
+}

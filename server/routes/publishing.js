@@ -78,7 +78,44 @@ function startIllustratedDraft(req, res, draft) {
   return sendJSON(res, 202, { draft });
 }
 
+function registerArxivEditorialRoutes(routes) {
+  const editorial = require('../services/arxiv-editorial-workspace');
+  const arxivRoute = (methods, handler) => route(methods, async (req, res, parsed) => {
+    if (req.user.role !== 'admin') return sendError(res, 403, '每日 arXiv 精选仅向工作台管理员开放。');
+    const { date, draft, slot, mode, format, index } = parsed.query;
+    return handler(req, res, { date, draft, slot, mode, format, index });
+  });
+  routes['/api/publishing/arxiv'] = arxivRoute(['GET'], async (req, res, { date }) =>
+    sendJSON(res, 200, await editorial.readEdition(req.user.id, date)));
+  routes['/api/publishing/arxiv/workspace'] = arxivRoute(['PUT'], async (req, res, { date }) =>
+    sendJSON(res, 200, await editorial.saveWorkspace(req.user.id, editorial.dateValue(date), await readJSON(req, 50000))));
+  routes['/api/publishing/arxiv/draft'] = arxivRoute(['PUT'], async (req, res, { date, draft }) =>
+    sendJSON(res, 200, await editorial.saveDraft(req.user.id, editorial.dateValue(date), draft, await readJSON(req, 40000))));
+  routes['/api/publishing/arxiv/generate'] = arxivRoute(['POST'], async (req, res, { date }) =>
+    sendJSON(res, 202, await editorial.generate(req.user.id, editorial.dateValue(date))));
+  routes['/api/publishing/arxiv/image'] = arxivRoute(['GET', 'POST'], async (req, res, { date, draft, slot, mode }) => {
+    const editionDate = editorial.dateValue(date);
+    if (req.method === 'POST') {
+      const data = await readJSON(req, 12 * 1024 * 1024, 12 * 1024 * 1024);
+      return sendJSON(res, 200, await editorial.upload(req.user.id, editionDate, draft, slot, data));
+    }
+    const asset = await editorial.image(req.user.id, editionDate, draft, slot, mode);
+    res.writeHead(200, { 'Content-Type': asset.ext === 'png' ? 'image/png' : 'image/jpeg', 'X-Content-Type-Options': 'nosniff' });
+    res.end(asset.body);
+  });
+  routes['/api/publishing/arxiv/render'] = arxivRoute(['GET'], async (req, res, { date, draft, format, index }) => {
+    if (!['zip', 'wechat', 'card'].includes(format)) return sendError(res, 400, '导出格式无效。');
+    const result = await editorial.render(req.user.id, editorial.dateValue(date), draft, format, index);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'");
+    if (result.filename) res.setHeader('Content-Disposition', 'attachment; filename="' + result.filename + '"');
+    res.writeHead(200, { 'Content-Type': result.type });
+    res.end(result.body);
+  });
+}
+
 function registerPublishingRoutes(routes) {
+  registerArxivEditorialRoutes(routes);
   routes['/api/publishing/workspace'] = route(['GET', 'PUT'], async (req, res) => {
     if (req.method === 'GET') return sendJSON(res, 200, publishing.workspaceResponse(req.user.id));
     const body = await readJSON(req, 65536);

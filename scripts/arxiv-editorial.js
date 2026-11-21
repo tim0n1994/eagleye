@@ -4,45 +4,10 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { parseArgs } = require('node:util');
-const { renderAsync } = require('@resvg/resvg-js');
 const sharp = require('sharp');
-const JSZip = require('jszip');
 const { parseTweet } = require('twitter-text');
-const { exportDraft } = require('../server/services/publishing-render');
+const { diagram, publishingDraft, publicationZIP } = require('../server/services/arxiv-editorial-output');
 const { writeDate, getCandidates, selectionMarkdown, composeEdition, validateEdition } = require('../server/services/arxiv-editorial');
-
-function escapeSvg(text) {
-  return String(text).replace(/[<>&"']/g, char => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[char]);
-}
-
-async function diagram(cover, date) {
-  const rows = [
-    ['问题', cover.problem],
-    ['机制', cover.mechanism],
-    ['边界', cover.boundary],
-  ];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="680" viewBox="0 0 1080 680">
-  <rect width="1080" height="680" fill="#182920"/>
-  <text x="70" y="90" fill="#a8cdb2" font-family="sans-serif" font-size="29">arXiv 论文笔记 / ${escapeSvg(date)}</text>
-  <path d="M104 209V542" stroke="#6daa7c" stroke-width="4"/>
-  ${rows.map(([label, value], i) => {
-    const y = 150 + i * 154;
-    const chars = Array.from(value);
-    const words = chars.length > 40 ? [...chars.slice(0, 39), '…'] : chars;
-    const lines = words.length > 20 ? [words.slice(0, 20).join(''), words.slice(20).join('')] : [words.join('')];
-    return `<rect x="72" y="${y}" width="936" height="120" rx="12" fill="#243c30" stroke="#4d745b" stroke-width="2"/>
-      <circle cx="105" cy="${y + 60}" r="7" fill="#c6edb8"/>
-      <text x="134" y="${y + 72}" font-family="sans-serif" font-size="36" fill="#c6edb8">${label}</text>
-      <text font-family="sans-serif" font-size="34" fill="#fbfff4">${lines.map((line, j) => `<tspan x="252" y="${y + (lines.length === 1 ? 73 : 50 + j * 43)}">${escapeSvg(line)}</tspan>`).join('')}</text>`;
-  }).join('')}
-  <text x="72" y="643" fill="#a8cdb2" font-family="sans-serif" font-size="23">解读示意 · 数据与实验见原论文</text>
-  </svg>`;
-  const font = process.env.EAGLEYE_PUBLISHING_FONT?.trim();
-  return (await renderAsync(svg, { font: {
-    loadSystemFonts: true, ...(font ? { fontFiles: [font] } : {}),
-    defaultFontFamily: 'Noto Sans CJK SC', sansSerifFamily: 'Noto Sans CJK SC',
-  } })).asPng();
-}
 
 async function exists(file) {
   try { await fs.access(file); return true; }
@@ -82,24 +47,10 @@ async function pack(dir, coverFile) {
   const jpeg = await sharp(coverPath, { limitInputPixels: 25000000 })
     .rotate().flatten({ background: '#f5f0e7' }).resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
     .jpeg({ quality: 88 }).toBuffer();
-  const sources = file.papers.map(p => ({ id: p.id, title: p.title, url: p.url, source_label: 'arXiv · 预印本',
-    evidence_level: p.mode === 'abstract' ? 'source_summary' : 'raw_content' }));
-  const evidenceById = new Map(evidence.map(e => [e.id, e]));
-  const draft = {
-    title: edition.wechat.title, theme: 'mint', sources,
-    images: [{ id: 'cover', filename: 'cover.jpg', mime_type: 'image/jpeg', origin: 'upload',
-      data_uri: 'data:image/jpeg;base64,' + jpeg.toString('base64') }],
-    wechat: { ...edition.wechat,
-      markdown: edition.wechat.markdown.replace(/\[(E\d+)\]/g, (_tag, id) => `[〔${id}〕](${evidenceById.get(id).url})`),
-      images: [{ image_id: 'cover', after_paragraph: 0, caption: coverFile ? '配图' : '解读示意图，实验数据见原论文。' }] },
-    xiaohongshu: { ...edition.xiaohongshu, cards: edition.xiaohongshu.cards.map((card, i) => i === 0 ? { ...card, image_id: 'cover' } : card) },
-  };
-  const combined = await exportDraft(draft, 'publishing-zip');
-  const zip = await JSZip.loadAsync(combined.body);
-  zip.file('X/cover.jpg', jpeg);
-  const thread = edition.x.map(post => post.ready_text).join('\n\n--------\n\n') + '\n';
-  zip.file('X/thread.txt', thread);
-  await atomicFile(path.join(dir, '三平台发布包.zip'), await zip.generateAsync({ type: 'nodebuffer' }));
+  const draft = publishingDraft({ ...edition, evidence, papers: file.papers }, {
+    x: { body: jpeg, ext: 'jpg' }, wechat: { body: jpeg, ext: 'jpg' }, 'card-0': { body: jpeg, ext: 'jpg' },
+  }, coverFile ? '配图' : '解读示意图，实验数据见原论文。');
+  await atomicFile(path.join(dir, '三平台发布包.zip'), await publicationZIP(draft));
   await atomicFile(path.join(dir, 'X-预览.txt'), edition.x.map(post => `[${parseTweet(post.ready_text).weightedLength}/280]\n${post.ready_text}`).join('\n\n'));
 }
 

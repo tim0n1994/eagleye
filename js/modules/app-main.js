@@ -278,6 +278,10 @@ export async function initApp() {
     if (window.location.pathname !== '/publishing' || window.location.search !== query) return;
     return page.renderPublishing(params);
   });
+  router.register('/publishing/arxiv', async () => {
+    const page = await import('./pages/arxiv-editorial.js');
+    if (window.location.pathname === '/publishing/arxiv') return page.renderArxivEditorial();
+  });
   router.register('/stories', renderStories);
   router.register(/^\/trajectory\/(.+)$/, renderEntityTrajectory);
   router.register('/watchlist', renderWatchlist);
@@ -406,6 +410,7 @@ export async function initApp() {
     '/settings': 'nav.settings',
     '/saved': 'footer.saved',
     '/publishing': 'nav.publishing',
+    '/publishing/arxiv': 'nav.arxiv_editorial',
     '/stories': 'nav.stories',
     '/watchlist': 'nav.watchlist',
     '/lens': 'nav.lens',
